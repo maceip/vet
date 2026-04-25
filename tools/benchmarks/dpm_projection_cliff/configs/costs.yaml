@@ -1,0 +1,28 @@
+# The costs-first sweep that produces Chart E.
+#
+# Designed to be fast: one short trajectory, one budget, full
+# instrumentation. The skeptic's first chart, so it must be measurable
+# in minutes on any rig.
+
+name: costs
+schema_version: 1
+seed: 20260420
+repeats: 20
+
+conditions:
+  - dpm_projection
+  - dpm_checkpoints
+
+trajectory_chars:
+  - 27000
+
+memory_budget_chars:
+  - 5352
+
+model_class: gqa
+kv_dtype: fp16
+kv_dtype_policy_replay_safe: true
+
+# Cost-only sweep enables every per-call timer the driver supports so
+# the chart can decompose Append vs Put vs Thaw vs everything else.
+record_per_call_timers: true
