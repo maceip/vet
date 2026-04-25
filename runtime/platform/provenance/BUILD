@@ -45,6 +45,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/checkpoint:durable_writer",
         "//runtime/platform/hash:hasher",
         "//runtime/util:litert_status_util",
     ],

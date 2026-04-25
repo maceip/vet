@@ -28,6 +28,7 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
+#include "runtime/platform/checkpoint/durable_writer.h"
 #include "runtime/platform/hash/hasher.h"
 #include "runtime/platform/provenance/merkle_dag_store.h"
 #include "runtime/util/status_macros.h"
@@ -127,26 +128,22 @@ absl::Status LocalMerkleDagStore::Put(absl::string_view tenant_id,
   body.append(node.annotations);
 
   const std::filesystem::path path = PathFor(tenant_id, session_id, node.hash);
-  std::error_code error;
-  std::filesystem::create_directories(path.parent_path(), error);
-  if (error) {
-    return absl::InternalError(absl::StrCat(
-        "dag store: failed to create dir: ", error.message()));
-  }
+
+  // Idempotent Put with content verification: the on-disk node must match
+  // the bytes we are about to write. A "same hash, same content" claim
+  // without a content check would mask any earlier torn-write artifact or
+  // off-line mutation.
   if (std::filesystem::exists(path)) {
-    return absl::OkStatus();  // idempotent: same hash, same content.
+    std::string existing;
+    RETURN_IF_ERROR(ReadEntireFileIfExists(path, &existing));
+    if (existing == body) {
+      return absl::OkStatus();
+    }
+    return absl::DataLossError(absl::StrCat(
+        "dag store: node ", node.hash.ToHex(),
+        " already exists with different bytes; refusing to overwrite."));
   }
-  std::ofstream out(path, std::ios::out | std::ios::trunc | std::ios::binary);
-  if (!out.is_open()) {
-    return absl::InternalError(
-        absl::StrCat("dag store: failed to open ", path.string()));
-  }
-  out.write(body.data(), body.size());
-  out.flush();
-  if (!out.good()) {
-    return absl::InternalError("dag store: write failed.");
-  }
-  return absl::OkStatus();
+  return DurablyWriteFile(path, body);
 }
 
 absl::StatusOr<MerkleDagNode> LocalMerkleDagStore::Get(

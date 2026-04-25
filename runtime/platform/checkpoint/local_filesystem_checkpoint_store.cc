@@ -15,15 +15,12 @@
 #include "runtime/platform/checkpoint/local_filesystem_checkpoint_store.h"
 
 #include <array>
-#include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -32,6 +29,7 @@
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "runtime/platform/checkpoint/checkpoint_store.h"
+#include "runtime/platform/checkpoint/durable_writer.h"
 #include "runtime/platform/hash/hasher.h"
 #include "runtime/util/status_macros.h"
 
@@ -121,18 +119,6 @@ absl::StatusOr<Hash256> LocalFilesystemCheckpointStore::Put(
 
   const Hash256 address = HashBytes(algo, payload_bytes);
   const std::filesystem::path path = PathFor(tenant_id, session_id, address);
-  std::error_code error;
-  std::filesystem::create_directories(path.parent_path(), error);
-  if (error) {
-    return absl::InternalError(absl::StrCat(
-        "checkpoint store: failed to create dir: ", error.message()));
-  }
-  // If a previous Put already wrote this exact address, treat as idempotent.
-  // The bytes are content-addressed so re-writing is a no-op and we avoid
-  // a torn-write window.
-  if (std::filesystem::exists(path)) {
-    return address;
-  }
 
   std::string framed;
   framed.reserve(kStoreMagic.size() + 4 + abi_bytes.size() + 8 +
@@ -143,38 +129,26 @@ absl::StatusOr<Hash256> LocalFilesystemCheckpointStore::Put(
   AppendU64(static_cast<uint64_t>(payload_bytes.size()), &framed);
   framed.append(payload_bytes.data(), payload_bytes.size());
 
-  // Write to a temp file and rename for crash safety. Rename is atomic on
-  // a single filesystem; if the process dies mid-write the temp file is
-  // discoverable but harmless. The temp suffix combines a thread id, a
-  // monotonic counter, and a wall-clock nanosecond stamp so concurrent
-  // writers within the same process pick disjoint temp paths.
-  static std::atomic<uint64_t> tmp_counter{0};
-  const auto thread_id = std::hash<std::thread::id>{}(std::this_thread::get_id());
-  const auto wall_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                           std::chrono::steady_clock::now().time_since_epoch())
-                           .count();
-  const std::filesystem::path tmp_path = path.string() + ".tmp." +
-                                          std::to_string(thread_id) + "." +
-                                          std::to_string(wall_ns) + "." +
-                                          std::to_string(tmp_counter.fetch_add(1));
-  {
-    std::ofstream out(tmp_path,
-                      std::ios::out | std::ios::trunc | std::ios::binary);
-    if (!out.is_open()) {
-      return absl::InternalError(absl::StrCat(
-          "checkpoint store: failed to open ", tmp_path.string()));
+  // Idempotent Put. The address is content-derived from payload_bytes, but
+  // an earlier writer may have stored the same payload under a *different*
+  // ABI; we must verify the bytes-on-disk match before declaring no-op.
+  // (Otherwise a torn write or a hash collision on payload_bytes alone
+  // would silently mask a manifest mismatch.)
+  if (std::filesystem::exists(path)) {
+    std::string existing;
+    RETURN_IF_ERROR(ReadEntireFileIfExists(path, &existing));
+    if (existing == framed) {
+      return address;
     }
-    out.write(framed.data(), framed.size());
-    out.flush();
-    if (!out.good()) {
-      return absl::InternalError("checkpoint store: failed to write.");
-    }
+    return absl::DataLossError(absl::StrCat(
+        "checkpoint store: address ", address.ToHex(),
+        " already exists with different bytes; refusing to overwrite. "
+        "Identical payload_bytes under a different ABI indicates a "
+        "manifest collision."));
   }
-  std::filesystem::rename(tmp_path, path, error);
-  if (error) {
-    return absl::InternalError(absl::StrCat(
-        "checkpoint store: rename failed: ", error.message()));
-  }
+
+  // Durable write: temp file -> fsync -> atomic rename -> dir fsync.
+  RETURN_IF_ERROR(DurablyWriteFile(path, framed));
   return address;
 }
 

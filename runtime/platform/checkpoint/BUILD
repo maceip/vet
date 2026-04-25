@@ -37,6 +37,29 @@ cc_library(
 )
 
 cc_library(
+    name = "durable_writer",
+    srcs = ["durable_writer.cc"],
+    hdrs = ["durable_writer.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_test(
+    name = "durable_writer_test",
+    srcs = ["durable_writer_test.cc"],
+    deps = [
+        ":durable_writer",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/util:test_utils",
+    ],
+)
+
+cc_library(
     name = "canonical_manifest",
     srcs = ["canonical_manifest.cc"],
     hdrs = ["canonical_manifest.h"],
@@ -77,6 +100,7 @@ cc_library(
     hdrs = ["local_filesystem_checkpoint_store.h"],
     deps = [
         ":checkpoint_store",
+        ":durable_writer",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

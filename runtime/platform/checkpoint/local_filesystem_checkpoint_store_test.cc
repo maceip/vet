@@ -98,6 +98,22 @@ TEST(LocalFilesystemCheckpointStoreTest, ExistsAndList) {
               (all[0] == b && all[1] == a));
 }
 
+TEST(LocalFilesystemCheckpointStoreTest,
+     SecondPutWithSameAddressDifferentAbiIsRejected) {
+  // Same payload bytes (so same address) but different ABI bytes — the
+  // earlier "exists -> idempotent no-op" assumption was unsafe; the store
+  // must now refuse rather than silently keep the old ABI.
+  LocalFilesystemCheckpointStore store(TestRoot("ckpt_store_abi_collision"));
+  ASSERT_OK_AND_ASSIGN(Hash256 a,
+                       store.Put("tenant-a", "session-1", "abi-A", "payload",
+                                 HashAlgorithm::kBlake3));
+  auto status = store.Put("tenant-a", "session-1", "abi-B", "payload",
+                          HashAlgorithm::kBlake3);
+  EXPECT_EQ(status.status().code(), absl::StatusCode::kDataLoss);
+  ASSERT_OK_AND_ASSIGN(auto blob, store.Get("tenant-a", "session-1", a));
+  EXPECT_EQ(blob.abi_bytes, "abi-A");
+}
+
 TEST(LocalFilesystemCheckpointStoreTest, GetNotFoundReturnsNotFound) {
   LocalFilesystemCheckpointStore store(TestRoot("ckpt_store_404"));
   Hash256 fake;  // all zeros
