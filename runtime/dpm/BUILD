@@ -91,6 +91,20 @@ cc_test(
 )
 
 cc_test(
+    name = "projection_prompt_test",
+    srcs = ["projection_prompt_test.cc"],
+    deps = [
+        ":dpm",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/util:test_utils",
+    ],
+)
+
+cc_test(
     name = "engine_inference_runner_test",
     srcs = ["engine_inference_runner_test.cc"],
     deps = [
