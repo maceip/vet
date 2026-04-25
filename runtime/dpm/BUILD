@@ -61,6 +61,36 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "checkpoint_policy",
+    srcs = ["checkpoint_policy.cc"],
+    hdrs = ["checkpoint_policy.h"],
+    deps = [
+        ":dpm",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/checkpoint:kv_quantization",
+        "//runtime/platform/hash:hasher",
+        "//runtime/proto:checkpoint_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "checkpoint_policy_test",
+    srcs = ["checkpoint_policy_test.cc"],
+    deps = [
+        ":checkpoint_policy",
+        ":dpm",
+        "@com_google_googletest//:gtest_main",
+        "//runtime/platform/checkpoint:kv_quantization",
+        "//runtime/platform/hash:hasher",
+        "//runtime/proto:checkpoint_cc_proto",
+        "//runtime/util:test_utils",
+    ],
+)
+
 cc_test(
     name = "event_sourced_log_test",
     srcs = ["event_sourced_log_test.cc"],

@@ -143,6 +143,36 @@ message CheckpointAbi {
   Hash256 manifest_hash = 11;
 }
 
+// Where checkpoint metadata and blob bytes live. The policy layer enforces
+// metadata = MemoryDB, blob != MemoryDB at validation time so a misrouted
+// blob (300+ MB) cannot accidentally hit a memory-priced tier.
+enum CheckpointStorageTier {
+  STORAGE_TIER_UNSPECIFIED = 0;
+  STORAGE_TIER_LOCAL_FILE = 1;          // dev / test / S3 Files mount
+  STORAGE_TIER_S3_EXPRESS_ONE_ZONE = 2; // production blob default
+  STORAGE_TIER_MEMORYDB_METADATA = 3;   // production metadata default
+}
+
+// Transport selection for moving a checkpoint between hosts. Tier 0 is
+// rack-local RDMA; Tier 1 is cross-AZ/Region gRPC + FlatBuffers. The
+// substrate uses local mmap when no transport is needed.
+enum CheckpointTransportTier {
+  TRANSPORT_TIER_UNSPECIFIED = 0;
+  TRANSPORT_TIER_LOCAL_MMAP = 1;
+  TRANSPORT_TIER_RDMA_ROCE = 2;
+  TRANSPORT_TIER_GRPC_FLATBUFFERS = 3;
+}
+
+// Pairs a (metadata, blob) tier choice with their addressable URIs. Used
+// by ValidateCheckpointStorageTiers to enforce the tiering rules in code
+// rather than in comments.
+message CheckpointStorageBinding {
+  CheckpointStorageTier metadata_tier = 1;
+  CheckpointStorageTier blob_tier = 2;
+  string metadata_uri = 3;
+  string blob_uri = 4;
+}
+
 // What kind of trigger produced this checkpoint. Used by the policy engine
 // and recorded for audit. Entropy-shift is intentionally NOT in the default
 // set; it requires a secondary classifier and breaks the SDK-free stance.
