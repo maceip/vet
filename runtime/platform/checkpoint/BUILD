@@ -123,6 +123,33 @@ cc_test(
 )
 
 cc_library(
+    name = "upload_session",
+    srcs = ["upload_session.cc"],
+    hdrs = ["upload_session.h"],
+    deps = [
+        ":checkpoint_store",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/hash:hasher",
+    ],
+)
+
+cc_test(
+    name = "upload_session_test",
+    srcs = ["upload_session_test.cc"],
+    deps = [
+        ":local_filesystem_checkpoint_store",
+        ":upload_session",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/hash:hasher",
+        "//runtime/util:test_utils",
+    ],
+)
+
+cc_library(
     name = "checkpoint_codec",
     srcs = ["checkpoint_codec.cc"],
     hdrs = ["checkpoint_codec.h"],
