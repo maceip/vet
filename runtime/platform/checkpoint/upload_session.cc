@@ -23,6 +23,7 @@
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "runtime/platform/checkpoint/checkpoint_store.h"
 #include "runtime/platform/hash/hasher.h"
+#include "runtime/util/status_macros.h"
 
 namespace litert::lm {
 
@@ -32,8 +33,7 @@ CheckpointUploadSession::CheckpointUploadSession(
     : tenant_id_(tenant_id), session_id_(session_id), store_(store) {}
 
 absl::Status CheckpointUploadSession::BeginManifest(
-    uint64_t declared_payload_size_bytes, absl::string_view abi_bytes,
-    HashAlgorithm algo) {
+    const ManifestMeta& meta) {
   if (phase_ != Phase::kReady) {
     return absl::FailedPreconditionError(
         "CheckpointUploadSession: BeginManifest already called.");
@@ -42,15 +42,31 @@ absl::Status CheckpointUploadSession::BeginManifest(
     return absl::FailedPreconditionError(
         "CheckpointUploadSession: store is null.");
   }
-  if (declared_payload_size_bytes == 0) {
+  if (meta.declared_payload_size_bytes == 0) {
     return absl::InvalidArgumentError(
         "CheckpointUploadSession: declared_payload_size_bytes must be > 0.");
   }
-  declared_size_ = declared_payload_size_bytes;
-  abi_bytes_.assign(abi_bytes.data(), abi_bytes.size());
-  algo_ = algo;
+  if (meta.abi_bytes.empty()) {
+    return absl::InvalidArgumentError(
+        "CheckpointUploadSession: abi_bytes must be non-empty.");
+  }
+  // Reject all-zero hashes; they would silently bypass verification at
+  // commit time. Producers must pre-compute body_hash and manifest_hash
+  // before the upload begins.
+  static const Hash256 kZero;
+  if (meta.expected_body_hash == kZero) {
+    return absl::InvalidArgumentError(
+        "CheckpointUploadSession: expected_body_hash is zero; the "
+        "producer must pre-compute the body hash before BeginManifest.");
+  }
+  if (meta.manifest_hash == kZero) {
+    return absl::InvalidArgumentError(
+        "CheckpointUploadSession: manifest_hash is zero; the DPM layer "
+        "must compute it via canonical_manifest before BeginManifest.");
+  }
+  meta_ = meta;
   payload_buffer_.clear();
-  payload_buffer_.reserve(declared_payload_size_bytes);
+  payload_buffer_.reserve(meta.declared_payload_size_bytes);
   phase_ = Phase::kManifestBegun;
   return absl::OkStatus();
 }
@@ -71,10 +87,10 @@ absl::Status CheckpointUploadSession::AddFrame(uint64_t offset,
     return absl::InvalidArgumentError(
         "CheckpointUploadSession: empty frame.");
   }
-  if (next_offset_ + bytes.size() > declared_size_) {
+  if (next_offset_ + bytes.size() > meta_.declared_payload_size_bytes) {
     return absl::InvalidArgumentError(absl::StrCat(
         "CheckpointUploadSession: frame would exceed declared size (",
-        declared_size_, " bytes)."));
+        meta_.declared_payload_size_bytes, " bytes)."));
   }
   payload_buffer_.append(bytes.data(), bytes.size());
   next_offset_ += bytes.size();
@@ -87,19 +103,43 @@ absl::StatusOr<Hash256> CheckpointUploadSession::Finalize() {
     return absl::FailedPreconditionError(
         "CheckpointUploadSession: Finalize before any frames received.");
   }
-  if (next_offset_ != declared_size_) {
+  if (next_offset_ != meta_.declared_payload_size_bytes) {
     return absl::DataLossError(absl::StrCat(
-        "CheckpointUploadSession: declared ", declared_size_,
-        " bytes but received ", next_offset_, "."));
+        "CheckpointUploadSession: declared ",
+        meta_.declared_payload_size_bytes, " bytes but received ",
+        next_offset_, "."));
   }
-  // Commit through the durable store. The store does its own atomic
-  // temp+rename+fsync and content-addressing, so partial-failure recovery
-  // is the store's responsibility.
-  auto status = store_->Put(tenant_id_, session_id_, abi_bytes_,
-                            payload_buffer_, algo_);
-  if (!status.ok()) return status.status();
+
+  // Verify the assembled bytes hash to the manifest's expected
+  // body_hash. No Put happens until verification passes.
+  const Hash256 actual_body_hash =
+      HashBytes(meta_.algo, payload_buffer_);
+  if (!(actual_body_hash == meta_.expected_body_hash)) {
+    return absl::DataLossError(absl::StrCat(
+        "CheckpointUploadSession: body_hash mismatch on Finalize "
+        "(expected ", meta_.expected_body_hash.ToHex(),
+        ", got ", actual_body_hash.ToHex(),
+        "). Refusing to commit."));
+  }
+
+  ASSIGN_OR_RETURN(Hash256 stored_body_hash,
+                   store_->PutPayload(tenant_id_, session_id_,
+                                      payload_buffer_, meta_.algo));
+  if (!(stored_body_hash == meta_.expected_body_hash)) {
+    // PutPayload re-derives body_hash from the bytes; if that disagrees
+    // with our verification above the store is using a different
+    // algorithm than meta_.algo. Refuse the manifest write so we never
+    // leave a manifest pointing at the wrong payload.
+    return absl::DataLossError(
+        "CheckpointUploadSession: PutPayload returned a body_hash "
+        "that disagrees with the verified expected_body_hash; the "
+        "store and manifest hash algorithms are out of sync.");
+  }
+  RETURN_IF_ERROR(store_->PutManifest(tenant_id_, session_id_,
+                                      meta_.manifest_hash, meta_.abi_bytes,
+                                      meta_.expected_body_hash));
   phase_ = Phase::kFinalized;
-  return *status;
+  return meta_.manifest_hash;
 }
 
 }  // namespace litert::lm

@@ -36,8 +36,10 @@
 namespace litert::lm {
 namespace {
 
-constexpr std::array<char, 10> kStoreMagic = {'D', 'P', 'M', 'S', 'T',
-                                              'O', 'R', 'E', '1', '\n'};
+constexpr std::array<char, 10> kPayloadMagic = {
+    'D', 'P', 'M', 'P', 'A', 'Y', 'L', 'D', '1', '\n'};
+constexpr std::array<char, 9> kManifestMagic = {
+    'D', 'P', 'M', 'M', 'A', 'N', 'I', '1', '\n'};
 
 void AppendU32(uint32_t v, std::string* out) {
   out->push_back(static_cast<char>(v & 0xff));
@@ -47,14 +49,13 @@ void AppendU32(uint32_t v, std::string* out) {
 }
 
 void AppendU64(uint64_t v, std::string* out) {
-  for (int i = 0; i < 8; ++i) {
+  for (int i = 0; i < 8; ++i)
     out->push_back(static_cast<char>((v >> (i * 8)) & 0xff));
-  }
 }
 
 absl::StatusOr<uint32_t> ReadU32(absl::string_view& view) {
   if (view.size() < 4) {
-    return absl::DataLossError(".dpmckpt truncated reading u32.");
+    return absl::DataLossError("checkpoint file truncated reading u32.");
   }
   uint32_t v =
       static_cast<uint32_t>(static_cast<unsigned char>(view[0])) |
@@ -67,7 +68,7 @@ absl::StatusOr<uint32_t> ReadU32(absl::string_view& view) {
 
 absl::StatusOr<uint64_t> ReadU64(absl::string_view& view) {
   if (view.size() < 8) {
-    return absl::DataLossError(".dpmckpt truncated reading u64.");
+    return absl::DataLossError("checkpoint file truncated reading u64.");
   }
   uint64_t v = 0;
   for (int i = 0; i < 8; ++i) {
@@ -100,138 +101,211 @@ LocalFilesystemCheckpointStore::LocalFilesystemCheckpointStore(
     std::filesystem::path root_path)
     : root_path_(std::move(root_path)) {}
 
-std::filesystem::path LocalFilesystemCheckpointStore::PathFor(
+std::filesystem::path LocalFilesystemCheckpointStore::PayloadPathFor(
     absl::string_view tenant_id, absl::string_view session_id,
-    const Hash256& address) const {
+    const Hash256& body_hash) const {
   return root_path_ / std::string(tenant_id) / std::string(session_id) /
-         (address.ToHex() + ".dpmckpt");
+         "payloads" / (body_hash.ToHex() + ".dpmpayload");
 }
 
-absl::StatusOr<Hash256> LocalFilesystemCheckpointStore::Put(
+std::filesystem::path LocalFilesystemCheckpointStore::ManifestPathFor(
     absl::string_view tenant_id, absl::string_view session_id,
-    absl::string_view abi_bytes, absl::string_view payload_bytes,
-    HashAlgorithm algo) {
-  RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
-  if (abi_bytes.size() > 0xFFFFFFFFu) {
-    return absl::ResourceExhaustedError(
-        "checkpoint ABI exceeds u32 size cap.");
-  }
+    const Hash256& manifest_hash) const {
+  return root_path_ / std::string(tenant_id) / std::string(session_id) /
+         "manifests" / (manifest_hash.ToHex() + ".dpmmanifest");
+}
 
-  const Hash256 address = HashBytes(algo, payload_bytes);
-  const std::filesystem::path path = PathFor(tenant_id, session_id, address);
+// ----------------------------------------------------------------------
+// Payloads.
+
+absl::StatusOr<Hash256> LocalFilesystemCheckpointStore::PutPayload(
+    absl::string_view tenant_id, absl::string_view session_id,
+    absl::string_view payload_bytes, HashAlgorithm algo) {
+  RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
+  const Hash256 body_hash = HashBytes(algo, payload_bytes);
+  const std::filesystem::path path =
+      PayloadPathFor(tenant_id, session_id, body_hash);
 
   std::string framed;
-  framed.reserve(kStoreMagic.size() + 4 + abi_bytes.size() + 8 +
-                 payload_bytes.size());
-  framed.append(kStoreMagic.data(), kStoreMagic.size());
-  AppendU32(static_cast<uint32_t>(abi_bytes.size()), &framed);
-  framed.append(abi_bytes.data(), abi_bytes.size());
+  framed.reserve(kPayloadMagic.size() + 8 + payload_bytes.size());
+  framed.append(kPayloadMagic.data(), kPayloadMagic.size());
   AppendU64(static_cast<uint64_t>(payload_bytes.size()), &framed);
   framed.append(payload_bytes.data(), payload_bytes.size());
 
-  // Idempotent Put. The address is content-derived from payload_bytes, but
-  // an earlier writer may have stored the same payload under a *different*
-  // ABI; we must verify the bytes-on-disk match before declaring no-op.
-  // (Otherwise a torn write or a hash collision on payload_bytes alone
-  // would silently mask a manifest mismatch.)
+  // Idempotent: same body_hash must mean same bytes. Mismatch is a
+  // hash-collision or corruption signal.
   if (std::filesystem::exists(path)) {
     std::string existing;
     RETURN_IF_ERROR(ReadEntireFileIfExists(path, &existing));
     if (existing == framed) {
-      return address;
+      return body_hash;
     }
     return absl::DataLossError(absl::StrCat(
-        "checkpoint store: address ", address.ToHex(),
-        " already exists with different bytes; refusing to overwrite. "
-        "Identical payload_bytes under a different ABI indicates a "
-        "manifest collision."));
+        "checkpoint store: payload at ", body_hash.ToHex(),
+        " already exists with different bytes; refusing to overwrite."));
   }
-
-  // Durable write: temp file -> fsync -> atomic rename -> dir fsync.
   RETURN_IF_ERROR(DurablyWriteFile(path, framed));
-  return address;
+  return body_hash;
 }
 
-absl::StatusOr<CheckpointStore::CheckpointBlob>
-LocalFilesystemCheckpointStore::Get(absl::string_view tenant_id,
-                                    absl::string_view session_id,
-                                    const Hash256& address) const {
+absl::StatusOr<std::string> LocalFilesystemCheckpointStore::GetPayload(
+    absl::string_view tenant_id, absl::string_view session_id,
+    const Hash256& body_hash) const {
   RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
-  const std::filesystem::path path = PathFor(tenant_id, session_id, address);
+  const std::filesystem::path path =
+      PayloadPathFor(tenant_id, session_id, body_hash);
   if (!std::filesystem::exists(path)) {
-    return absl::NotFoundError(
-        absl::StrCat("checkpoint not found: ", address.ToHex()));
+    return absl::NotFoundError(absl::StrCat(
+        "checkpoint payload not found: ", body_hash.ToHex()));
   }
   std::ifstream in(path, std::ios::in | std::ios::binary);
   if (!in.is_open()) {
-    return absl::InternalError(
-        absl::StrCat("checkpoint store: failed to open ", path.string()));
+    return absl::InternalError(absl::StrCat(
+        "checkpoint store: failed to open ", path.string()));
   }
   std::stringstream buffer;
   buffer << in.rdbuf();
   std::string data = buffer.str();
   absl::string_view view = data;
-  if (view.size() < kStoreMagic.size() ||
-      std::memcmp(view.data(), kStoreMagic.data(), kStoreMagic.size()) != 0) {
-    return absl::DataLossError("checkpoint file missing magic header.");
+  if (view.size() < kPayloadMagic.size() ||
+      std::memcmp(view.data(), kPayloadMagic.data(),
+                  kPayloadMagic.size()) != 0) {
+    return absl::DataLossError("payload missing magic header.");
   }
-  view.remove_prefix(kStoreMagic.size());
-  ASSIGN_OR_RETURN(uint32_t abi_size, ReadU32(view));
-  if (view.size() < abi_size) {
-    return absl::DataLossError("checkpoint file truncated reading ABI.");
+  view.remove_prefix(kPayloadMagic.size());
+  ASSIGN_OR_RETURN(uint64_t size, ReadU64(view));
+  if (view.size() < size) {
+    return absl::DataLossError("payload truncated reading body.");
   }
-  CheckpointBlob blob;
-  blob.abi_bytes.assign(view.data(), abi_size);
-  view.remove_prefix(abi_size);
-  ASSIGN_OR_RETURN(uint64_t payload_size, ReadU64(view));
-  if (view.size() < payload_size) {
-    return absl::DataLossError("checkpoint file truncated reading payload.");
-  }
-  blob.payload_bytes.assign(view.data(), payload_size);
-  view.remove_prefix(payload_size);
+  std::string out(view.data(), size);
+  view.remove_prefix(size);
   if (!view.empty()) {
     return absl::DataLossError(absl::StrCat(
-        "checkpoint file has ", view.size(), " trailing bytes."));
+        "payload has ", view.size(), " trailing bytes."));
   }
-
-  // Recompute the hash and verify against the requested address. Try
-  // BLAKE3 first; on mismatch try SHA-256 (the algorithm is recorded in
-  // the ABI bytes at the proto level, but the substrate cannot decode it
-  // without linking the proto. Trying both costs one extra hash on the
-  // FIPS path and keeps the substrate proto-free).
-  const Hash256 b3 = HashBytes(HashAlgorithm::kBlake3, blob.payload_bytes);
-  if (b3 == address) {
-    blob.algorithm = HashAlgorithm::kBlake3;
-    return blob;
-  }
-  const Hash256 sha = HashBytes(HashAlgorithm::kSha256, blob.payload_bytes);
-  if (sha == address) {
-    blob.algorithm = HashAlgorithm::kSha256;
-    return blob;
-  }
+  // Re-hash and compare against the requested address (BLAKE3 first then
+  // SHA-256, mirroring the substrate's "stay proto-free" stance).
+  const Hash256 b3 = HashBytes(HashAlgorithm::kBlake3, out);
+  if (b3 == body_hash) return out;
+  const Hash256 sha = HashBytes(HashAlgorithm::kSha256, out);
+  if (sha == body_hash) return out;
   return absl::DataLossError(absl::StrCat(
-      "checkpoint payload hash mismatch: expected ", address.ToHex(),
+      "payload hash mismatch: expected ", body_hash.ToHex(),
       ", got blake3=", b3.ToHex(), " sha256=", sha.ToHex()));
 }
 
-absl::StatusOr<bool> LocalFilesystemCheckpointStore::Exists(
+absl::StatusOr<bool> LocalFilesystemCheckpointStore::PayloadExists(
     absl::string_view tenant_id, absl::string_view session_id,
-    const Hash256& address) const {
+    const Hash256& body_hash) const {
   RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
-  return std::filesystem::exists(PathFor(tenant_id, session_id, address));
+  return std::filesystem::exists(
+      PayloadPathFor(tenant_id, session_id, body_hash));
 }
 
-absl::StatusOr<std::vector<Hash256>> LocalFilesystemCheckpointStore::List(
+// ----------------------------------------------------------------------
+// Manifests.
+
+absl::Status LocalFilesystemCheckpointStore::PutManifest(
+    absl::string_view tenant_id, absl::string_view session_id,
+    const Hash256& manifest_hash, absl::string_view abi_bytes,
+    const Hash256& referenced_body_hash) {
+  RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
+  if (abi_bytes.size() > 0xFFFFFFFFu) {
+    return absl::ResourceExhaustedError(
+        "checkpoint manifest ABI exceeds u32 size cap.");
+  }
+
+  const std::filesystem::path path =
+      ManifestPathFor(tenant_id, session_id, manifest_hash);
+
+  std::string framed;
+  framed.reserve(kManifestMagic.size() + 4 + abi_bytes.size() + 32);
+  framed.append(kManifestMagic.data(), kManifestMagic.size());
+  AppendU32(static_cast<uint32_t>(abi_bytes.size()), &framed);
+  framed.append(abi_bytes.data(), abi_bytes.size());
+  framed.append(reinterpret_cast<const char*>(referenced_body_hash.bytes.data()),
+                referenced_body_hash.bytes.size());
+
+  if (std::filesystem::exists(path)) {
+    std::string existing;
+    RETURN_IF_ERROR(ReadEntireFileIfExists(path, &existing));
+    if (existing == framed) {
+      return absl::OkStatus();
+    }
+    return absl::DataLossError(absl::StrCat(
+        "checkpoint store: manifest at ", manifest_hash.ToHex(),
+        " already exists with different bytes; refusing to overwrite."));
+  }
+  return DurablyWriteFile(path, framed);
+}
+
+absl::StatusOr<CheckpointStore::ManifestRecord>
+LocalFilesystemCheckpointStore::GetManifest(absl::string_view tenant_id,
+                                            absl::string_view session_id,
+                                            const Hash256& manifest_hash) const {
+  RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
+  const std::filesystem::path path =
+      ManifestPathFor(tenant_id, session_id, manifest_hash);
+  if (!std::filesystem::exists(path)) {
+    return absl::NotFoundError(absl::StrCat(
+        "manifest not found: ", manifest_hash.ToHex()));
+  }
+  std::ifstream in(path, std::ios::in | std::ios::binary);
+  if (!in.is_open()) {
+    return absl::InternalError(absl::StrCat(
+        "checkpoint store: failed to open ", path.string()));
+  }
+  std::stringstream buffer;
+  buffer << in.rdbuf();
+  std::string data = buffer.str();
+  absl::string_view view = data;
+  if (view.size() < kManifestMagic.size() ||
+      std::memcmp(view.data(), kManifestMagic.data(),
+                  kManifestMagic.size()) != 0) {
+    return absl::DataLossError("manifest missing magic header.");
+  }
+  view.remove_prefix(kManifestMagic.size());
+  ASSIGN_OR_RETURN(uint32_t abi_size, ReadU32(view));
+  if (view.size() < abi_size) {
+    return absl::DataLossError("manifest truncated reading ABI.");
+  }
+  ManifestRecord rec;
+  rec.abi_bytes.assign(view.data(), abi_size);
+  view.remove_prefix(abi_size);
+  if (view.size() < rec.referenced_body_hash.bytes.size()) {
+    return absl::DataLossError(
+        "manifest truncated reading referenced_body_hash.");
+  }
+  std::memcpy(rec.referenced_body_hash.bytes.data(), view.data(),
+              rec.referenced_body_hash.bytes.size());
+  view.remove_prefix(rec.referenced_body_hash.bytes.size());
+  if (!view.empty()) {
+    return absl::DataLossError(absl::StrCat(
+        "manifest has ", view.size(), " trailing bytes."));
+  }
+  return rec;
+}
+
+absl::StatusOr<bool> LocalFilesystemCheckpointStore::ManifestExists(
+    absl::string_view tenant_id, absl::string_view session_id,
+    const Hash256& manifest_hash) const {
+  RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
+  return std::filesystem::exists(
+      ManifestPathFor(tenant_id, session_id, manifest_hash));
+}
+
+absl::StatusOr<std::vector<Hash256>>
+LocalFilesystemCheckpointStore::ListManifests(
     absl::string_view tenant_id, absl::string_view session_id) const {
   RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
-  const std::filesystem::path dir =
-      root_path_ / std::string(tenant_id) / std::string(session_id);
+  const std::filesystem::path dir = root_path_ / std::string(tenant_id) /
+                                    std::string(session_id) / "manifests";
   std::vector<Hash256> out;
   if (!std::filesystem::exists(dir)) return out;
   for (const auto& entry : std::filesystem::directory_iterator(dir)) {
     if (!entry.is_regular_file()) continue;
     const std::string filename = entry.path().filename().string();
-    constexpr absl::string_view kSuffix = ".dpmckpt";
+    constexpr absl::string_view kSuffix = ".dpmmanifest";
     if (filename.size() < kSuffix.size() + 64) continue;
     if (filename.compare(filename.size() - kSuffix.size(), kSuffix.size(),
                          kSuffix.data(), kSuffix.size()) != 0) {

@@ -26,49 +26,62 @@
 
 namespace litert::lm {
 
-// Two-phase commit upload state machine for streaming a checkpoint payload
-// in ordered byte ranges. The state machine is transport-agnostic — gRPC,
-// RDMA, or local mmap copy can all drive it — and on Finalize it persists
-// the assembled bytes via a CheckpointStore::Put, which is itself durable
-// (atomic temp+rename+fsync) and content-addressed.
+// Two-phase commit upload state machine for streaming a checkpoint
+// payload in ordered byte ranges. Transport-agnostic: gRPC, RDMA, or
+// local mmap copy can all drive it.
+//
+// Verification contract (load-bearing):
+//   On Finalize, the assembled bytes are hashed and compared against
+//   ManifestMeta.expected_body_hash. Mismatch returns DataLoss without
+//   any Put. This is the difference between "the manifest claims X
+//   bytes arrived" and "we verified that X bytes arrived and the bytes
+//   match the manifest's body_hash before we committed."
 //
 // Lifecycle:
-//   1. construct (CheckpointUploadSession)
-//   2. BeginManifest(declared_payload_size_bytes, abi_bytes, algo)
-//   3. AddFrame(offset, bytes) once per frame, in offset order; the
-//      session checks contiguity, accumulates the bytes in order, and
-//      records each frame's hash for the manifest record.
-//   4. Finalize(): verifies declared byte count matches received; calls
-//      CheckpointStore::Put which durably writes the payload bytes
-//      (atomic temp+rename+fsync) and returns the content-address.
-//      The session then exits the kFrames phase and exposes the hash.
-//
-// The session does not perform any I/O between Begin and Finalize; bytes
-// live in memory until commit. Callers that want spill-to-disk for very
-// large payloads can wrap a custom CheckpointStore that streams to
-// temporary storage, but the contract here is "buffer in memory, commit
-// at the end."
+//   1. ctor.
+//   2. BeginManifest(meta) — declares the manifest record being
+//      committed: expected payload size, expected body_hash, algorithm,
+//      ABI bytes, and pre-computed manifest_hash.
+//   3. AddFrame(offset, bytes) one or more times, in ordered contiguous
+//      offset order.
+//   4. Finalize() — verifies (a) declared bytes received and (b)
+//      HashBytes(buffer) == expected_body_hash. On match, calls
+//      CheckpointStore::PutPayload then PutManifest. Returns the
+//      manifest_hash on success.
 class CheckpointUploadSession {
  public:
-  // The store is borrowed; the caller owns it and keeps it alive for the
-  // duration of the session.
   CheckpointUploadSession(absl::string_view tenant_id,
                           absl::string_view session_id,
                           CheckpointStore* store);
 
-  // Declares the payload's expected size and the ABI bytes to commit
-  // alongside the body. May only be called once, before any frame.
-  absl::Status BeginManifest(uint64_t declared_payload_size_bytes,
-                             absl::string_view abi_bytes, HashAlgorithm algo);
+  struct ManifestMeta {
+    // Expected size of payload bytes the upload will deliver.
+    uint64_t declared_payload_size_bytes = 0;
+    // Expected body_hash, pre-computed by the producer over the bytes
+    // that will be streamed. The session refuses to commit if the
+    // assembled bytes don't hash to this value.
+    Hash256 expected_body_hash;
+    // Hash algorithm used for both body_hash recomputation and the
+    // payload Put.
+    HashAlgorithm algo = HashAlgorithm::kBlake3;
+    // The proto-encoded CheckpointAbi bytes.
+    std::string abi_bytes;
+    // Pre-computed manifest_hash over the canonical encoding of
+    // abi_bytes (see canonical_manifest.h). The session does not
+    // recompute it here — that is the DPM layer's concern — but it
+    // is recorded with the manifest record so PutManifest can
+    // content-address by it.
+    Hash256 manifest_hash;
+  };
 
-  // Appends one ordered, contiguous frame. offset must equal the running
-  // accumulator so out-of-order or overlapping frames are rejected with
-  // InvalidArgument. AddFrame may be called many times; each call
-  // accumulates bytes and records its frame hash.
+  absl::Status BeginManifest(const ManifestMeta& meta);
+
+  // Appends one ordered, contiguous frame.
   absl::Status AddFrame(uint64_t offset, absl::string_view bytes);
 
-  // Verifies the declared byte count was received, then commits via
-  // CheckpointStore::Put. Returns the content-address Hash256.
+  // Verifies declared bytes received and HashBytes(buffer) ==
+  // expected_body_hash, then commits via PutPayload + PutManifest.
+  // Returns the manifest_hash on success.
   absl::StatusOr<Hash256> Finalize();
 
   bool finalized() const { return phase_ == Phase::kFinalized; }
@@ -87,10 +100,8 @@ class CheckpointUploadSession {
   CheckpointStore* store_;
 
   Phase phase_ = Phase::kReady;
-  uint64_t declared_size_ = 0;
+  ManifestMeta meta_;
   uint64_t next_offset_ = 0;
-  HashAlgorithm algo_ = HashAlgorithm::kBlake3;
-  std::string abi_bytes_;
   std::string payload_buffer_;
 };
 

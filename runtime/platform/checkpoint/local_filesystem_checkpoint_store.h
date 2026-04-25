@@ -27,48 +27,59 @@
 
 namespace litert::lm {
 
-// CheckpointStore backed by a POSIX-style filesystem. Layout:
-//   root_path / tenant_id / session_id / <hex_address>.dpmckpt
+// CheckpointStore backed by a POSIX-style filesystem with two independent
+// content-addressed address spaces:
 //
-// The .dpmckpt file is framed:
-//   magic "DPMSTORE1\n"
-//   abi_size: u32 le
-//   abi_bytes: bytes
-//   payload_size: u64 le
-//   payload_bytes: bytes
+//   root / tenant / session / payloads  / <body_hash>.dpmpayload
+//   root / tenant / session / manifests / <manifest_hash>.dpmmanifest
 //
-// body_hash is recomputed on every Get and the result is compared against
-// the requested address. Mismatch returns DataLoss.
+// Payload file framing:
+//   magic "DPMPAYLD1\n" | size:u64 | bytes
 //
-// This backend is suitable for development, tests, and Phase 1-style
-// S3 Files mounts (where the bucket plus Object Lock provides durability).
-// A Phase 2.2 partner can implement S3ExpressCheckpointStore by following
-// the same interface.
+// Manifest file framing:
+//   magic "DPMMANI1\n" | abi_size:u32 | abi_bytes | body_hash:32 raw bytes
+//
+// Both Put operations write through DurablyWriteFile (atomic temp +
+// fsync + rename + dir-fsync). Idempotent puts content-verify; mismatch
+// at an existing address returns DataLoss.
 class LocalFilesystemCheckpointStore : public CheckpointStore {
  public:
   explicit LocalFilesystemCheckpointStore(std::filesystem::path root_path);
 
-  absl::StatusOr<Hash256> Put(absl::string_view tenant_id,
-                              absl::string_view session_id,
-                              absl::string_view abi_bytes,
-                              absl::string_view payload_bytes,
-                              HashAlgorithm algo) override;
-
-  absl::StatusOr<CheckpointBlob> Get(absl::string_view tenant_id,
+  // Payload blobs.
+  absl::StatusOr<Hash256> PutPayload(absl::string_view tenant_id,
                                      absl::string_view session_id,
-                                     const Hash256& address) const override;
+                                     absl::string_view payload_bytes,
+                                     HashAlgorithm algo) override;
+  absl::StatusOr<std::string> GetPayload(
+      absl::string_view tenant_id, absl::string_view session_id,
+      const Hash256& body_hash) const override;
+  absl::StatusOr<bool> PayloadExists(
+      absl::string_view tenant_id, absl::string_view session_id,
+      const Hash256& body_hash) const override;
 
-  absl::StatusOr<bool> Exists(absl::string_view tenant_id,
-                              absl::string_view session_id,
-                              const Hash256& address) const override;
-
-  absl::StatusOr<std::vector<Hash256>> List(
+  // Manifest records.
+  absl::Status PutManifest(absl::string_view tenant_id,
+                           absl::string_view session_id,
+                           const Hash256& manifest_hash,
+                           absl::string_view abi_bytes,
+                           const Hash256& referenced_body_hash) override;
+  absl::StatusOr<ManifestRecord> GetManifest(
+      absl::string_view tenant_id, absl::string_view session_id,
+      const Hash256& manifest_hash) const override;
+  absl::StatusOr<bool> ManifestExists(
+      absl::string_view tenant_id, absl::string_view session_id,
+      const Hash256& manifest_hash) const override;
+  absl::StatusOr<std::vector<Hash256>> ListManifests(
       absl::string_view tenant_id,
       absl::string_view session_id) const override;
 
-  std::filesystem::path PathFor(absl::string_view tenant_id,
-                                absl::string_view session_id,
-                                const Hash256& address) const;
+  std::filesystem::path PayloadPathFor(absl::string_view tenant_id,
+                                       absl::string_view session_id,
+                                       const Hash256& body_hash) const;
+  std::filesystem::path ManifestPathFor(absl::string_view tenant_id,
+                                        absl::string_view session_id,
+                                        const Hash256& manifest_hash) const;
 
  private:
   std::filesystem::path root_path_;

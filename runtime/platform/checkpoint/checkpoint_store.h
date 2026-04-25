@@ -25,54 +25,93 @@
 
 namespace litert::lm {
 
-// Content-addressed checkpoint storage. Implementations own the on-wire /
-// at-rest representation; consumers supply the ABI proto bytes and the
-// payload bytes; the store binds them together by computing the payload's
-// hash and using it as the address.
+// Content-addressed checkpoint storage with **two** independent address
+// spaces:
 //
-// On Put, body_hash is computed by the store using the algorithm declared
-// in the ABI bytes (BLAKE3 default, SHA-256 fallback). The store then
-// writes the (abi_bytes, payload_bytes) pair under that hash. Subsequent
-// Get-by-hash returns the same bytes (and rejects with DataLoss if a hash
-// mismatch is detected).
+//   1. Payload blobs are addressed by body_hash = HashBytes(payload).
+//      Two checkpoints with the same KV bytes but different metadata
+//      (e.g. branched on a different parent) share one payload blob.
 //
-// The proto wrapping CheckpointAbi+CheckpointAnnotations should already be
-// serialized by the caller; the store does not link against the proto
-// generated code, so it can stay free of the protobuf dependency at the
-// substrate layer. (The DPM layer that calls the store has the proto.)
+//   2. Manifest records are addressed by manifest_hash, the digest the
+//      DPM layer has already computed over the proto-encoded
+//      CheckpointAbi (see runtime/platform/checkpoint/canonical_manifest).
+//      The manifest record is the (abi_bytes, body_hash) pair; the
+//      Merkle DAG node identity is the manifest_hash, not body_hash.
+//
+// The split fixes the prior shape, where the store keyed the whole
+// (abi, payload) blob by body_hash and rejected legitimate cases like
+// "same KV bytes, different parent_hashes" as a manifest collision.
+//
+// PutPayload and PutManifest are independent. A typical commit flow:
+//
+//   const Hash256 body_hash = store->PutPayload(tenant, session,
+//                                               payload_bytes, algo);
+//   ... caller fills CheckpointAbi.body_hash with body_hash, computes
+//       manifest_hash via canonical_manifest, then ...
+//   store->PutManifest(tenant, session, manifest_hash,
+//                       abi_bytes, body_hash);
+//
+// Both Put operations are idempotent on identical content (same bytes
+// at the same address is OK). A second Put under the same address with
+// different bytes returns DataLoss — that's the structural detection
+// path for hash collisions or torn-write artifacts.
 class CheckpointStore {
  public:
   virtual ~CheckpointStore() = default;
 
-  // Stores a checkpoint and returns its content address. body_hash is
-  // computed by the store using `algo`, regardless of what is in the
-  // serialized ABI bytes (the caller is responsible for keeping them in
-  // sync).
-  virtual absl::StatusOr<Hash256> Put(absl::string_view tenant_id,
-                                      absl::string_view session_id,
-                                      absl::string_view abi_bytes,
-                                      absl::string_view payload_bytes,
-                                      HashAlgorithm algo) = 0;
+  // ------------------------------------------------------------------
+  // Payload (body) blobs.
+  // ------------------------------------------------------------------
 
-  // Retrieved checkpoint. The body_hash recorded by Put is recomputed and
-  // compared against `address`; DataLoss is returned on mismatch.
-  struct CheckpointBlob {
-    std::string abi_bytes;
-    std::string payload_bytes;
-    HashAlgorithm algorithm = HashAlgorithm::kBlake3;
-  };
-  virtual absl::StatusOr<CheckpointBlob> Get(absl::string_view tenant_id,
+  // Writes the payload bytes and returns body_hash = HashBytes(payload).
+  // Idempotent: repeated calls with identical bytes return the same
+  // address. Different bytes at an existing address returns DataLoss
+  // (which would indicate either a hash collision or filesystem
+  // corruption).
+  virtual absl::StatusOr<Hash256> PutPayload(absl::string_view tenant_id,
                                              absl::string_view session_id,
-                                             const Hash256& address) const = 0;
+                                             absl::string_view payload_bytes,
+                                             HashAlgorithm algo) = 0;
 
-  virtual absl::StatusOr<bool> Exists(absl::string_view tenant_id,
-                                      absl::string_view session_id,
-                                      const Hash256& address) const = 0;
+  virtual absl::StatusOr<std::string> GetPayload(
+      absl::string_view tenant_id, absl::string_view session_id,
+      const Hash256& body_hash) const = 0;
 
-  // Lists all checkpoint addresses for a (tenant, session). Order is
-  // implementation-defined; consumers that need a chain order should walk
-  // parent_hashes via runtime/platform/provenance.
-  virtual absl::StatusOr<std::vector<Hash256>> List(
+  virtual absl::StatusOr<bool> PayloadExists(
+      absl::string_view tenant_id, absl::string_view session_id,
+      const Hash256& body_hash) const = 0;
+
+  // ------------------------------------------------------------------
+  // Manifest records.
+  // ------------------------------------------------------------------
+
+  // Stores a manifest record under manifest_hash. The caller has already
+  // computed manifest_hash over the canonical encoding of abi_bytes (see
+  // canonical_manifest.h); the store does not recompute the digest
+  // because the canonical encoding is a DPM-layer concern.
+  //
+  // referenced_body_hash is the body_hash inside abi_bytes; the store
+  // records it alongside so consumers can resolve the payload without
+  // re-parsing the proto.
+  virtual absl::Status PutManifest(absl::string_view tenant_id,
+                                   absl::string_view session_id,
+                                   const Hash256& manifest_hash,
+                                   absl::string_view abi_bytes,
+                                   const Hash256& referenced_body_hash) = 0;
+
+  struct ManifestRecord {
+    std::string abi_bytes;
+    Hash256 referenced_body_hash;
+  };
+  virtual absl::StatusOr<ManifestRecord> GetManifest(
+      absl::string_view tenant_id, absl::string_view session_id,
+      const Hash256& manifest_hash) const = 0;
+
+  virtual absl::StatusOr<bool> ManifestExists(
+      absl::string_view tenant_id, absl::string_view session_id,
+      const Hash256& manifest_hash) const = 0;
+
+  virtual absl::StatusOr<std::vector<Hash256>> ListManifests(
       absl::string_view tenant_id, absl::string_view session_id) const = 0;
 };
 
