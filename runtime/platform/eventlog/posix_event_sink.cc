@@ -14,6 +14,7 @@
 
 #include "runtime/platform/eventlog/posix_event_sink.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +23,7 @@
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -41,6 +43,7 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
+#include "absl/types/optional.h"  // from @com_google_absl
 #include "runtime/util/memory_mapped_file.h"
 #include "runtime/util/status_macros.h"
 
@@ -50,6 +53,82 @@ namespace {
 constexpr std::array<char, 8> kLogMagic = {'D', 'P', 'M', 'L',
                                            'O', 'G', '1', '\n'};
 constexpr uint32_t kMaxRecordBytes = 64 * 1024 * 1024;
+constexpr int kMaxBranchDepth = 16;
+
+// Parsed contents of branch_pointer.json.
+struct BranchPointer {
+  std::string parent_tenant_id;
+  std::string parent_session_id;
+  uint64_t parent_record_count_at_branch = 0;
+};
+
+// Tiny hand-rolled JSON for the sidecar. The format is fixed and simple
+// enough not to warrant a JSON dependency.
+std::string SerializeBranchPointer(const BranchPointer& bp) {
+  std::string out;
+  out.reserve(128 + bp.parent_tenant_id.size() + bp.parent_session_id.size());
+  out.append("{\"version\":1,\"parent_tenant_id\":\"");
+  out.append(bp.parent_tenant_id);
+  out.append("\",\"parent_session_id\":\"");
+  out.append(bp.parent_session_id);
+  out.append("\",\"parent_record_count_at_branch\":");
+  out.append(std::to_string(bp.parent_record_count_at_branch));
+  out.append("}\n");
+  return out;
+}
+
+absl::StatusOr<std::string> ExtractJsonString(absl::string_view& view,
+                                              absl::string_view key) {
+  const std::string needle = absl::StrCat("\"", key, "\":\"");
+  const size_t pos = view.find(needle);
+  if (pos == absl::string_view::npos) {
+    return absl::DataLossError(
+        absl::StrCat("branch_pointer.json missing key ", key));
+  }
+  view.remove_prefix(pos + needle.size());
+  const size_t end = view.find('"');
+  if (end == absl::string_view::npos) {
+    return absl::DataLossError("branch_pointer.json: unterminated string.");
+  }
+  std::string out(view.data(), end);
+  view.remove_prefix(end + 1);
+  return out;
+}
+
+absl::StatusOr<uint64_t> ExtractJsonUint(absl::string_view& view,
+                                         absl::string_view key) {
+  const std::string needle = absl::StrCat("\"", key, "\":");
+  const size_t pos = view.find(needle);
+  if (pos == absl::string_view::npos) {
+    return absl::DataLossError(
+        absl::StrCat("branch_pointer.json missing key ", key));
+  }
+  view.remove_prefix(pos + needle.size());
+  uint64_t value = 0;
+  size_t consumed = 0;
+  while (consumed < view.size() && view[consumed] >= '0' &&
+         view[consumed] <= '9') {
+    value = value * 10 + (view[consumed] - '0');
+    ++consumed;
+  }
+  if (consumed == 0) {
+    return absl::DataLossError(
+        absl::StrCat("branch_pointer.json key ", key, " is not numeric."));
+  }
+  view.remove_prefix(consumed);
+  return value;
+}
+
+absl::StatusOr<BranchPointer> ParseBranchPointer(absl::string_view bytes) {
+  BranchPointer bp;
+  ASSIGN_OR_RETURN(bp.parent_tenant_id,
+                   ExtractJsonString(bytes, "parent_tenant_id"));
+  ASSIGN_OR_RETURN(bp.parent_session_id,
+                   ExtractJsonString(bytes, "parent_session_id"));
+  ASSIGN_OR_RETURN(bp.parent_record_count_at_branch,
+                   ExtractJsonUint(bytes, "parent_record_count_at_branch"));
+  return bp;
+}
 
 // Process-local serialization for access to a given path. POSIX fcntl/F_SETLKW
 // locks are per-process: two threads in the same process can each hold the
@@ -334,6 +413,12 @@ std::filesystem::path PosixEventSink::RetentionSidecarPathFor(
          "events.dpmlog.retention.json";
 }
 
+std::filesystem::path PosixEventSink::BranchPointerPathFor(
+    absl::string_view tenant_id, absl::string_view session_id) const {
+  return root_path_ / std::string(tenant_id) / std::string(session_id) /
+         "branch_pointer.json";
+}
+
 absl::Status PosixEventSink::AppendRecord(absl::string_view tenant_id,
                                           absl::string_view session_id,
                                           absl::string_view record_payload) {
@@ -414,6 +499,77 @@ absl::Status PosixEventSink::AppendRecordWithRetention(
   return absl::OkStatus();
 }
 
+absl::Status PosixEventSink::CreateBranch(
+    absl::string_view parent_tenant_id, absl::string_view parent_session_id,
+    absl::string_view branch_tenant_id, absl::string_view branch_session_id,
+    uint64_t parent_record_count_at_branch) {
+  RETURN_IF_ERROR(ValidateIdentity(parent_tenant_id, parent_session_id));
+  RETURN_IF_ERROR(ValidateIdentity(branch_tenant_id, branch_session_id));
+  if (parent_tenant_id == branch_tenant_id &&
+      parent_session_id == branch_session_id) {
+    return absl::InvalidArgumentError(
+        "CreateBranch: branch identity must differ from parent identity.");
+  }
+  // The parent's records up to parent_record_count_at_branch must exist.
+  // Scanning to validate is O(records-up-to-N); cheaper than bytes since we
+  // only count, but the right answer for the structural-correctness goal.
+  uint64_t parent_record_count = 0;
+  RETURN_IF_ERROR(ForEachRecord(
+      parent_tenant_id, parent_session_id,
+      [&parent_record_count](absl::string_view) -> absl::Status {
+        ++parent_record_count;
+        return absl::OkStatus();
+      }));
+  if (parent_record_count_at_branch > parent_record_count) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "CreateBranch: parent_record_count_at_branch (",
+        parent_record_count_at_branch, ") exceeds parent's record count (",
+        parent_record_count, ")."));
+  }
+
+  // Reject if the branch identity is already in use.
+  const std::filesystem::path branch_log_path =
+      PathFor(branch_tenant_id, branch_session_id);
+  const std::filesystem::path branch_pointer_path =
+      BranchPointerPathFor(branch_tenant_id, branch_session_id);
+  if (std::filesystem::exists(branch_log_path) ||
+      std::filesystem::exists(branch_pointer_path)) {
+    return absl::AlreadyExistsError(
+        "CreateBranch: branch identity is already in use.");
+  }
+
+  std::error_code error;
+  std::filesystem::create_directories(branch_pointer_path.parent_path(),
+                                      error);
+  if (error) {
+    return absl::InternalError(absl::StrCat(
+        "CreateBranch: failed to create branch directory: ", error.message()));
+  }
+
+  BranchPointer bp;
+  bp.parent_tenant_id = std::string(parent_tenant_id);
+  bp.parent_session_id = std::string(parent_session_id);
+  bp.parent_record_count_at_branch = parent_record_count_at_branch;
+  const std::string body = SerializeBranchPointer(bp);
+
+  std::shared_ptr<std::mutex> path_mutex =
+      PathMutexRegistry::Instance().Acquire(branch_pointer_path.string());
+  std::lock_guard<std::mutex> guard(*path_mutex);
+  std::ofstream out(branch_pointer_path,
+                    std::ios::out | std::ios::trunc | std::ios::binary);
+  if (!out.is_open()) {
+    return absl::InternalError(absl::StrCat(
+        "CreateBranch: failed to open branch_pointer: ",
+        branch_pointer_path.string()));
+  }
+  out.write(body.data(), body.size());
+  out.flush();
+  if (!out.good()) {
+    return absl::InternalError("CreateBranch: failed to write branch_pointer.");
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::vector<std::string>> PosixEventSink::ReadRecords(
     absl::string_view tenant_id, absl::string_view session_id) const {
   std::vector<std::string> records;
@@ -426,11 +582,57 @@ absl::StatusOr<std::vector<std::string>> PosixEventSink::ReadRecords(
   return records;
 }
 
-absl::Status PosixEventSink::ForEachRecord(
-    absl::string_view tenant_id, absl::string_view session_id,
-    absl::FunctionRef<absl::Status(absl::string_view)> callback) const {
-  RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
-  const std::filesystem::path path = PathFor(tenant_id, session_id);
+namespace {
+
+absl::StatusOr<absl::optional<BranchPointer>> ReadBranchPointer(
+    const std::filesystem::path& branch_pointer_path) {
+  if (!std::filesystem::exists(branch_pointer_path)) {
+    return absl::optional<BranchPointer>();
+  }
+  std::ifstream in(branch_pointer_path, std::ios::in | std::ios::binary);
+  if (!in.is_open()) {
+    return absl::InternalError(
+        absl::StrCat("Failed to read branch_pointer.json: ",
+                     branch_pointer_path.string()));
+  }
+  std::stringstream buffer;
+  buffer << in.rdbuf();
+  ASSIGN_OR_RETURN(BranchPointer bp, ParseBranchPointer(buffer.str()));
+  return absl::optional<BranchPointer>(std::move(bp));
+}
+
+absl::Status ForEachRecordImpl(
+    const PosixEventSink& sink, absl::string_view tenant_id,
+    absl::string_view session_id, int depth,
+    uint64_t max_records,  // UINT64_MAX means "all"
+    absl::FunctionRef<absl::Status(absl::string_view)> callback) {
+  if (depth > kMaxBranchDepth) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Branch depth exceeds kMaxBranchDepth (", kMaxBranchDepth, ")."));
+  }
+  // First, drain the parent's records (if this is a branch).
+  uint64_t emitted = 0;
+  ASSIGN_OR_RETURN(absl::optional<BranchPointer> bp,
+                   ReadBranchPointer(sink.BranchPointerPathFor(tenant_id,
+                                                               session_id)));
+  if (bp.has_value()) {
+    const uint64_t parent_limit = std::min(bp->parent_record_count_at_branch,
+                                           max_records);
+    uint64_t parent_emitted = 0;
+    auto status = ForEachRecordImpl(
+        sink, bp->parent_tenant_id, bp->parent_session_id, depth + 1,
+        parent_limit,
+        [&](absl::string_view record) -> absl::Status {
+          ++parent_emitted;
+          return callback(record);
+        });
+    if (!status.ok()) return status;
+    emitted = parent_emitted;
+    if (emitted >= max_records) return absl::OkStatus();
+  }
+
+  // Then emit this session's own records.
+  const std::filesystem::path path = sink.PathFor(tenant_id, session_id);
   std::shared_ptr<std::mutex> path_mutex =
       PathMutexRegistry::Instance().Acquire(path.string());
   std::lock_guard<std::mutex> guard(*path_mutex);
@@ -447,7 +649,24 @@ absl::Status PosixEventSink::ForEachRecord(
 
   ASSIGN_OR_RETURN(std::unique_ptr<MemoryMappedFile> mapped_file,
                    MemoryMappedFile::Create(path.string()));
-  return ForEachMappedRecord(*mapped_file, callback);
+  return ForEachMappedRecord(*mapped_file,
+                             [&](absl::string_view record) -> absl::Status {
+                               if (emitted >= max_records) {
+                                 return absl::OkStatus();
+                               }
+                               ++emitted;
+                               return callback(record);
+                             });
+}
+
+}  // namespace
+
+absl::Status PosixEventSink::ForEachRecord(
+    absl::string_view tenant_id, absl::string_view session_id,
+    absl::FunctionRef<absl::Status(absl::string_view)> callback) const {
+  RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
+  return ForEachRecordImpl(*this, tenant_id, session_id, /*depth=*/0,
+                           /*max_records=*/UINT64_MAX, callback);
 }
 
 absl::StatusOr<EventSink::Generation> PosixEventSink::ProbeGeneration(

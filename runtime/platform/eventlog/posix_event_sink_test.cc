@@ -186,6 +186,91 @@ TEST(PosixEventSinkTest, RetentionSidecarOverwritesOnEachCall) {
   EXPECT_NE(contents.find("true"), std::string::npos);
 }
 
+TEST(PosixEventSinkTest, BranchSeesParentRecordsThenItsOwn) {
+  PosixEventSink sink(TestRoot("posix_event_sink_branch_basic"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p0"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p1"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p2"));
+
+  ASSERT_OK(sink.CreateBranch("tenant-a", "session-1",
+                              "tenant-a", "branch-X",
+                              /*parent_record_count_at_branch=*/2));
+
+  // Parent appends after branch should not show up on the branch.
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p3"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "branch-X", "b0"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "branch-X", "b1"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::string> branch_records,
+                       sink.ReadRecords("tenant-a", "branch-X"));
+  ASSERT_EQ(branch_records.size(), 4);
+  EXPECT_EQ(branch_records[0], "p0");
+  EXPECT_EQ(branch_records[1], "p1");
+  EXPECT_EQ(branch_records[2], "b0");
+  EXPECT_EQ(branch_records[3], "b1");
+
+  // Parent's view is unchanged by the branch's existence.
+  ASSERT_OK_AND_ASSIGN(std::vector<std::string> parent_records,
+                       sink.ReadRecords("tenant-a", "session-1"));
+  ASSERT_EQ(parent_records.size(), 4);
+  EXPECT_EQ(parent_records[3], "p3");
+}
+
+TEST(PosixEventSinkTest, BranchAtZeroRecordsYieldsEmptyParentSlice) {
+  PosixEventSink sink(TestRoot("posix_event_sink_branch_zero"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p0"));
+  ASSERT_OK(sink.CreateBranch("tenant-a", "session-1",
+                              "tenant-a", "branch-Y", 0));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "branch-Y", "b0"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::string> branch_records,
+                       sink.ReadRecords("tenant-a", "branch-Y"));
+  ASSERT_EQ(branch_records.size(), 1);
+  EXPECT_EQ(branch_records[0], "b0");
+}
+
+TEST(PosixEventSinkTest, BranchOfBranchSeesGrandparentSlice) {
+  PosixEventSink sink(TestRoot("posix_event_sink_branch_of_branch"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "root", "g0"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "root", "g1"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "root", "g2"));
+  ASSERT_OK(sink.CreateBranch("tenant-a", "root", "tenant-a", "B", 2));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "B", "b0"));
+  ASSERT_OK(sink.CreateBranch("tenant-a", "B", "tenant-a", "C", 3));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "C", "c0"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::string> records,
+                       sink.ReadRecords("tenant-a", "C"));
+  ASSERT_EQ(records.size(), 4);
+  EXPECT_EQ(records[0], "g0");
+  EXPECT_EQ(records[1], "g1");
+  EXPECT_EQ(records[2], "b0");
+  EXPECT_EQ(records[3], "c0");
+}
+
+TEST(PosixEventSinkTest, CreateBranchRejectsOversizedOffset) {
+  PosixEventSink sink(TestRoot("posix_event_sink_branch_oversize"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p0"));
+  EXPECT_FALSE(sink.CreateBranch("tenant-a", "session-1",
+                                 "tenant-a", "branch", 99).ok());
+}
+
+TEST(PosixEventSinkTest, CreateBranchRejectsCollidingIdentity) {
+  PosixEventSink sink(TestRoot("posix_event_sink_branch_collide"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p0"));
+  ASSERT_OK(sink.CreateBranch("tenant-a", "session-1",
+                              "tenant-a", "branch", 1));
+  EXPECT_FALSE(sink.CreateBranch("tenant-a", "session-1",
+                                 "tenant-a", "branch", 1).ok());
+}
+
+TEST(PosixEventSinkTest, CreateBranchRejectsSelfBranch) {
+  PosixEventSink sink(TestRoot("posix_event_sink_branch_self"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p0"));
+  EXPECT_FALSE(sink.CreateBranch("tenant-a", "session-1",
+                                 "tenant-a", "session-1", 1).ok());
+}
+
 TEST(PosixEventSinkTest, DetectsCorruptedTrailingByte) {
   PosixEventSink sink(TestRoot("posix_event_sink_partial"));
   ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "first"));

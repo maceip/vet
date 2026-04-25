@@ -78,6 +78,30 @@ class PosixEventSink : public EventSink {
   std::filesystem::path PathFor(absl::string_view tenant_id,
                                 absl::string_view session_id) const;
 
+  // Creates a copy-on-write branch at the substrate level. After this call:
+  //   - (branch_tenant_id, branch_session_id) is a new, addressable session.
+  //   - Reads on the branch see the first parent_record_count_at_branch
+  //     records of (parent_tenant_id, parent_session_id) followed by any
+  //     records appended to the branch itself.
+  //   - Appends to the branch never modify the parent.
+  //   - The operation is O(1) in the parent's record count: only a small
+  //     branch_pointer.json sidecar is written; the parent's bytes are not
+  //     copied.
+  //
+  // Returns InvalidArgument if either identity has bad components, if the
+  // parent does not exist, if parent_record_count_at_branch exceeds the
+  // parent's current record count, or if the branch identity already
+  // exists. Branches of branches are supported up to a fixed depth bound
+  // (kMaxBranchDepth, 16).
+  absl::Status CreateBranch(absl::string_view parent_tenant_id,
+                            absl::string_view parent_session_id,
+                            absl::string_view branch_tenant_id,
+                            absl::string_view branch_session_id,
+                            uint64_t parent_record_count_at_branch);
+
+  std::filesystem::path BranchPointerPathFor(
+      absl::string_view tenant_id, absl::string_view session_id) const;
+
  private:
   std::filesystem::path root_path_;
 };
