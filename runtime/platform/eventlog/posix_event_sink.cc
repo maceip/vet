@@ -44,6 +44,7 @@
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/types/optional.h"  // from @com_google_absl
+#include "runtime/platform/checkpoint/durable_writer.h"
 #include "runtime/util/memory_mapped_file.h"
 #include "runtime/util/status_macros.h"
 
@@ -485,18 +486,7 @@ absl::Status PosixEventSink::AppendRecordWithRetention(
   std::string body = absl::StrCat(
       "{\"retain_until_unix_seconds\":", retention.retain_until_unix_seconds,
       ",\"legal_hold\":", retention.legal_hold ? "true" : "false", "}\n");
-  std::ofstream out(sidecar, std::ios::out | std::ios::trunc | std::ios::binary);
-  if (!out.is_open()) {
-    return absl::InternalError(absl::StrCat(
-        "Failed to open DPM retention sidecar: ", sidecar.string()));
-  }
-  out.write(body.data(), body.size());
-  out.flush();
-  if (!out.good()) {
-    return absl::InternalError(absl::StrCat(
-        "Failed to write DPM retention sidecar: ", sidecar.string()));
-  }
-  return absl::OkStatus();
+  return DurablyWriteFile(sidecar, body);
 }
 
 absl::Status PosixEventSink::CreateBranch(
@@ -555,19 +545,7 @@ absl::Status PosixEventSink::CreateBranch(
   std::shared_ptr<std::mutex> path_mutex =
       PathMutexRegistry::Instance().Acquire(branch_pointer_path.string());
   std::lock_guard<std::mutex> guard(*path_mutex);
-  std::ofstream out(branch_pointer_path,
-                    std::ios::out | std::ios::trunc | std::ios::binary);
-  if (!out.is_open()) {
-    return absl::InternalError(absl::StrCat(
-        "CreateBranch: failed to open branch_pointer: ",
-        branch_pointer_path.string()));
-  }
-  out.write(body.data(), body.size());
-  out.flush();
-  if (!out.good()) {
-    return absl::InternalError("CreateBranch: failed to write branch_pointer.");
-  }
-  return absl::OkStatus();
+  return DurablyWriteFile(branch_pointer_path, body);
 }
 
 absl::StatusOr<std::vector<std::string>> PosixEventSink::ReadRecords(

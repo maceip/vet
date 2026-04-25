@@ -84,9 +84,21 @@ class PosixEventSink : public EventSink {
   //     records of (parent_tenant_id, parent_session_id) followed by any
   //     records appended to the branch itself.
   //   - Appends to the branch never modify the parent.
-  //   - The operation is O(1) in the parent's record count: only a small
-  //     branch_pointer.json sidecar is written; the parent's bytes are not
-  //     copied.
+  //
+  // Cost characteristics (peer review correctly flagged the earlier "O(1)"
+  // claim as misleading):
+  //   - On-disk write at branch creation is constant: only a small
+  //     branch_pointer.json sidecar is durably written next to the
+  //     branch's events.dpmlog. The parent's bytes are not copied.
+  //   - The validation step that confirms parent_record_count_at_branch
+  //     does not exceed the parent's current record count walks the parent
+  //     once (O(parent records)). Skipping that walk would let callers
+  //     pin a fork point past the end of history; we accept the linear
+  //     validation cost.
+  //   - Reads on the branch concatenate the parent's record stream
+  //     (truncated to parent_record_count_at_branch) with the branch's own
+  //     events.dpmlog. This is O(visible records), bounded recursion
+  //     handles branch-of-branch.
   //
   // Returns InvalidArgument if either identity has bad components, if the
   // parent does not exist, if parent_record_count_at_branch exceeds the
