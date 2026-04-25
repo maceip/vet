@@ -36,6 +36,30 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "checkpoint_codec",
+    srcs = ["checkpoint_codec.cc"],
+    hdrs = ["checkpoint_codec.h"],
+    deps = [
+        ":kv_quantization",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_test(
+    name = "checkpoint_codec_test",
+    srcs = ["checkpoint_codec_test.cc"],
+    deps = [
+        ":checkpoint_codec",
+        ":kv_quantization",
+        "@com_google_googletest//:gtest_main",
+        "//runtime/util:test_utils",
+    ],
+)
+
 cc_test(
     name = "kv_quantization_test",
     srcs = ["kv_quantization_test.cc"],
