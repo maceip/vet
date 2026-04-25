@@ -1,0 +1,163 @@
+// Copyright 2026 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package litert.lm.proto;
+
+// The Checkpoint ABI. This is the strict contract that must be honored
+// before any KV bytes move across agents, devices, or processes.
+//
+// The body of a checkpoint (the actual KV-cache payload) is content-
+// addressed by body_hash; the metadata below describes who produced it,
+// what shape it has, and which other checkpoints it depends on.
+
+// 32-byte content hash. Algorithm is recorded next to the bytes so a
+// verifier knows which primitive to run.
+message Hash256 {
+  bytes bytes = 1;             // exactly 32 bytes
+  HashAlgorithm algorithm = 2;
+}
+
+enum HashAlgorithm {
+  HASH_UNSPECIFIED = 0;
+  HASH_BLAKE3 = 1;             // default
+  HASH_SHA256 = 2;             // FIPS-140 escape hatch
+}
+
+// Coarse model architecture class. Drives KV-cache size estimation, thaw
+// compatibility, and transport sizing decisions. Pinned per session.
+enum ModelClass {
+  MODEL_CLASS_UNSPECIFIED = 0;
+  MODEL_CLASS_DENSE_MHA = 1;          // classic full attention (legacy)
+  MODEL_CLASS_GQA = 2;                // grouped-query attention
+  MODEL_CLASS_MQA = 3;                // multi-query attention
+  MODEL_CLASS_MLA = 4;                // multi-head latent attention
+  MODEL_CLASS_SLIDING_WINDOW = 5;     // bounded-window attention
+}
+
+// KV-cache encoding used in the checkpoint payload. Live in-memory caches
+// stay at the model's native precision; this is the ON-WIRE / AT-REST mode.
+enum KvDtype {
+  KV_DTYPE_UNSPECIFIED = 0;
+  KV_DTYPE_FP16 = 1;                  // fidelity escape hatch
+  KV_DTYPE_INT8_PER_TOKEN = 2;        // default: per-token absmax scaling
+  KV_DTYPE_INT4_CHANNEL = 3;          // future: per-channel int4
+}
+
+// What level of the hierarchy this checkpoint represents.
+//   0 = full snapshot (Genesis)
+//   1+ = delta against the previous level / a parent checkpoint
+//
+// Reconstruction walks parent_hashes back to a Level-0, then applies deltas
+// forward in order. Compaction periodically collapses N levels into a fresh
+// Level-0.
+message CheckpointLevel {
+  uint32 level = 1;
+  uint32 compaction_interval = 2;     // suggested rollup threshold
+}
+
+message CheckpointLogIdentity {
+  string tenant_id = 1;
+  string session_id = 2;
+  // branch_id is empty for the primary line; non-empty for forks. Two
+  // checkpoints with the same (tenant, session) but different branch_id
+  // are siblings in the Merkle DAG.
+  string branch_id = 3;
+}
+
+// The host that produced this checkpoint. architecture_tag drives thaw
+// compatibility decisions on the receiving side.
+message ProducerEnvironment {
+  // Free-form string of the form "<isa>-<accelerator>-<dtype>".
+  // Examples: "x86_64-cuda-fp16", "arm64-hexagon-int8", "arm64-anex-fp16".
+  string architecture_tag = 1;
+  // Hostname or pseudonym of the producer. Optional; for forensics only.
+  string producer_id = 2;
+  // RFC 3339 string of the runtime version. Stamped at build time.
+  string runtime_version = 3;
+}
+
+// Bound to a specific model artifact so a thaw on a different model is
+// rejected up front. The artifact hash should be over the bytes the runtime
+// actually loaded (the .litertlm bundle), not over a logical name.
+message ModelBinding {
+  // BLAKE3 of the model artifact bundle.
+  Hash256 artifact_hash = 1;
+  // Human-readable identifier echoed back into the audit trail.
+  string model_id = 2;
+  ModelClass model_class = 3;
+  // Hidden dimension and number of attention layers, recorded for cross-
+  // checks even though they are derivable from the artifact hash.
+  uint32 num_layers = 4;
+  uint32 num_kv_heads = 5;
+  uint32 head_dim = 6;
+}
+
+// The full ABI header. body_hash is the content address of the encoded
+// payload (excluding this header); the header itself is not hashed because
+// the (parent_hashes, body_hash) tuple is what defines the Merkle DAG node.
+message CheckpointAbi {
+  CheckpointLogIdentity identity = 1;
+  CheckpointLevel level = 2;
+  // Empty for genesis (level 0). One entry for a linear chain. More than
+  // one for merge points in the DAG (e.g. branch reconciliation).
+  repeated Hash256 parent_hashes = 3;
+  ProducerEnvironment producer = 4;
+  ModelBinding model = 5;
+  KvDtype kv_dtype = 6;
+  // The event-log offset this checkpoint covers up to (exclusive). Anyone
+  // thawing this checkpoint also needs the events strictly after this
+  // index to fast-forward to the live state.
+  uint64 base_event_index = 7;
+  // BLAKE3 (or SHA-256 per the algorithm field) over the payload bytes.
+  Hash256 body_hash = 8;
+  uint32 body_size_bytes = 9;
+  int64 created_unix_micros = 10;
+}
+
+// What kind of trigger produced this checkpoint. Used by the policy engine
+// and recorded for audit. Entropy-shift is intentionally NOT in the default
+// set; it requires a secondary classifier and breaks the SDK-free stance.
+enum CheckpointTrigger {
+  TRIGGER_UNSPECIFIED = 0;
+  TRIGGER_HANDOFF = 1;                // explicit handoff request
+  TRIGGER_MILESTONE_TOOL = 2;         // tool whose name is in the milestone allow-list
+  TRIGGER_TOKEN_THRESHOLD = 3;        // fixed-token interval, default 4096
+  TRIGGER_IDLE_SPECULATIVE = 4;       // background, while user is reading
+  TRIGGER_COMPACTION = 5;             // produced by hierarchical rollup
+  TRIGGER_MANUAL = 6;                 // explicit API call
+}
+
+// Optional metadata stamped on top of the ABI. Useful for audit but not
+// load-bearing for thaw correctness.
+message CheckpointAnnotations {
+  CheckpointTrigger trigger = 1;
+  // Free-form notes from the agent at handoff time.
+  string notes = 2;
+  // The tool name when trigger == TRIGGER_MILESTONE_TOOL.
+  string milestone_tool = 3;
+}
+
+// Manifest written before frames stream. The two-phase commit upload
+// protocol uses this to make uploads idempotent.
+message CheckpointManifest {
+  CheckpointAbi abi = 1;
+  CheckpointAnnotations annotations = 2;
+  // Per-frame hashes; reassembly checks each frame against its hash before
+  // reassembly into the full payload, and the concatenation hashes to
+  // abi.body_hash.
+  repeated Hash256 frame_hashes = 3;
+  uint32 frame_size_bytes = 4;
+}

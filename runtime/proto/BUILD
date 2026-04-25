@@ -61,6 +61,21 @@ alias(
     actual = ":dpm_config_cc",
 )
 
+tf_proto_library(
+    name = "checkpoint",
+    srcs = ["checkpoint.proto"],
+)
+
+alias(
+    name = "checkpoint_proto",
+    actual = ":checkpoint",
+)
+
+alias(
+    name = "checkpoint_cc_proto",
+    actual = ":checkpoint_cc",
+)
+
 alias(
     name = "sampler_params_proto",
     actual = ":sampler_params",
