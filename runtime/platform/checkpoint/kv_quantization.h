@@ -33,25 +33,60 @@ namespace litert::lm {
 // transport, KV blocks are run through the codec below so that the on-wire
 // payload is significantly smaller than the live representation.
 //
-// The default codec is INT8_PER_TOKEN absmax: for each (token, head)
-// group, the maximum absolute value is captured as an fp16 scale, and the
-// per-element values are rounded to int8 in [-127, 127]. Reconstruction is
-//   value = q * (scale / 127.0)
-// Per-token (rather than per-tensor) scaling preserves precision on outlier
-// tokens that would otherwise dominate a global absmax.
+// **Replay-safety contract.**
 //
-// FP16 is the verified-fidelity escape hatch (no quantization) and is the
-// path the determinism check uses to confirm "Thaw == Prefill" before
-// accepting a quantized form for production traffic.
+// kFp16 is the only codec considered replay-safe by default: the bytes
+// round-trip exactly, so a thawed cache is bit-identical to the source
+// cache. The Phase 1 deterministic-replay property therefore extends
+// across thaw boundaries when fp16 is used.
 //
-// INT4_CHANNEL is reserved for future implementation; the codec rejects
-// it for now.
+// kInt8PerToken is a **lossy** transport encoding. Per-(token, head) absmax
+// scaling minimizes the loss (bounded by absmax/254 per element) and
+// preserves outlier-light tokens, but a thawed int8 cache is NOT
+// bit-identical to the source. Whether the resulting decoded behavior
+// matches the source is a *target-backend* and *target-model* property
+// that the runtime cannot answer without a thaw-equivalence test on the
+// real inference stack. Callers must therefore make an explicit policy
+// choice via PickReplaySafeKvDtype() / RequireReplaySafeKvDtype() below
+// before any int8 bytes leave the producer.
+//
+// In summary:
+//   - kFp16:           always replay-safe; default.
+//   - kInt8PerToken:   replay-unsafe by default; opt-in only after a
+//                      thaw-equivalence test passes for the (model,
+//                      backend, dtype) triple.
+//   - kInt4Channel:    reserved for future implementation; codec rejects.
 
 enum class KvDtype {
   kFp16 = 0,
   kInt8PerToken = 1,
   kInt4Channel = 2,  // not implemented; codec returns Unimplemented
 };
+
+// Whether a deployment has explicitly approved a transport codec for a
+// (model, backend, dtype) triple by running and passing a thaw-equivalence
+// test. Replay-safe paths must consult this before encoding KV bytes; the
+// runtime never silently picks a lossy codec.
+struct KvDtypePolicy {
+  // Replay-safe-only mode: producers may only use kFp16. This is the
+  // safe default for any path that participates in deterministic replay.
+  bool require_replay_safe = true;
+
+  // The dtype the deployment has audited and approved for this session.
+  // Only honored when require_replay_safe is false. Defaults to kFp16.
+  KvDtype approved_dtype = KvDtype::kFp16;
+};
+
+// Returns kFp16 if `policy` requires replay-safety; otherwise returns
+// `policy.approved_dtype`. Callers should use this rather than hardcoding
+// a codec choice so the replay-safe default is honored in every code path.
+KvDtype PickReplaySafeKvDtype(const KvDtypePolicy& policy);
+
+// Returns InvalidArgument if `dtype` would be unsafe under `policy` (i.e.
+// the policy requires replay-safety and `dtype` is not kFp16). Use at the
+// boundary where a caller proposes a codec choice.
+absl::Status RequireReplaySafeKvDtype(const KvDtypePolicy& policy,
+                                      KvDtype dtype);
 
 struct KvBlockShape {
   // Number of token positions covered by this block.

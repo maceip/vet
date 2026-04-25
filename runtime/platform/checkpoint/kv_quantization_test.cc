@@ -134,6 +134,24 @@ TEST(KvQuantizationTest, ZeroShapeRejected) {
   EXPECT_FALSE(EncodeInt8PerTokenFromFp32(bad, empty).ok());
 }
 
+TEST(KvQuantizationTest, PolicyDefaultsToReplaySafeFp16) {
+  KvDtypePolicy policy;  // default: require_replay_safe = true
+  EXPECT_EQ(PickReplaySafeKvDtype(policy), KvDtype::kFp16);
+  EXPECT_OK(RequireReplaySafeKvDtype(policy, KvDtype::kFp16));
+  EXPECT_FALSE(RequireReplaySafeKvDtype(policy, KvDtype::kInt8PerToken).ok());
+}
+
+TEST(KvQuantizationTest, PolicyOptInExposesApprovedDtype) {
+  KvDtypePolicy policy;
+  policy.require_replay_safe = false;
+  policy.approved_dtype = KvDtype::kInt8PerToken;
+  EXPECT_EQ(PickReplaySafeKvDtype(policy), KvDtype::kInt8PerToken);
+  EXPECT_OK(RequireReplaySafeKvDtype(policy, KvDtype::kInt8PerToken));
+  // Even in opt-in mode, kFp16 is always allowed (it is the strictly safer
+  // choice).
+  EXPECT_OK(RequireReplaySafeKvDtype(policy, KvDtype::kFp16));
+}
+
 TEST(KvQuantizationTest, DequantizationErrorBoundIsCorrect) {
   EXPECT_NEAR(DequantizationErrorBound(127.0f * 254.0f / 254.0f), 0.5f, 1e-6f);
   EXPECT_NEAR(DequantizationErrorBound(0.0f), 0.0f, 1e-6f);

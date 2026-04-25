@@ -130,6 +130,28 @@ absl::Status ValidateShape(const KvBlockShape& shape) {
 
 }  // namespace
 
+KvDtype PickReplaySafeKvDtype(const KvDtypePolicy& policy) {
+  if (policy.require_replay_safe) {
+    return KvDtype::kFp16;
+  }
+  return policy.approved_dtype;
+}
+
+absl::Status RequireReplaySafeKvDtype(const KvDtypePolicy& policy,
+                                      KvDtype dtype) {
+  if (!policy.require_replay_safe) {
+    return absl::OkStatus();
+  }
+  if (dtype == KvDtype::kFp16) {
+    return absl::OkStatus();
+  }
+  return absl::InvalidArgumentError(
+      "KV transport codec is not replay-safe. The deployment has "
+      "require_replay_safe=true; only kFp16 is permitted unless a "
+      "thaw-equivalence test has audited and approved the lossy codec for "
+      "this (model, backend, dtype) triple.");
+}
+
 size_t EncodedSizeBytes(KvDtype dtype, const KvBlockShape& shape) {
   const size_t per_token_per_head = static_cast<size_t>(shape.head_dim);
   const size_t groups =
