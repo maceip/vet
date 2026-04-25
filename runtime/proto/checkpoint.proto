@@ -105,9 +105,21 @@ message ModelBinding {
   uint32 head_dim = 6;
 }
 
-// The full ABI header. body_hash is the content address of the encoded
-// payload (excluding this header); the header itself is not hashed because
-// the (parent_hashes, body_hash) tuple is what defines the Merkle DAG node.
+// The full ABI header.
+//
+// body_hash is the content address of the encoded payload (its bytes only).
+//
+// manifest_hash is the content address of the *header itself* canonicalized
+// and hashed: it covers identity, level, parent_hashes, producer, model,
+// kv_dtype, base_event_index, body_hash, body_size_bytes, and
+// created_unix_micros. The Merkle DAG node identity is manifest_hash, not
+// body_hash, so that tampering with model.artifact_hash, producer.
+// architecture_tag, parent_hashes, or any other header field is detected on
+// thaw / audit even when the payload bytes are untouched.
+//
+// Both fields use the same HashAlgorithm; the canonical encoding for
+// manifest_hash is documented in runtime/platform/checkpoint/
+// canonical_manifest.h.
 message CheckpointAbi {
   CheckpointLogIdentity identity = 1;
   CheckpointLevel level = 2;
@@ -125,6 +137,10 @@ message CheckpointAbi {
   Hash256 body_hash = 8;
   uint32 body_size_bytes = 9;
   int64 created_unix_micros = 10;
+  // Self-hash over the canonical encoding of every field above. This is the
+  // Merkle DAG node identity; tampering with any header field fails the
+  // verification on thaw and on audit traversal.
+  Hash256 manifest_hash = 11;
 }
 
 // What kind of trigger produced this checkpoint. Used by the policy engine

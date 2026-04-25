@@ -37,6 +37,30 @@ cc_library(
 )
 
 cc_library(
+    name = "canonical_manifest",
+    srcs = ["canonical_manifest.cc"],
+    hdrs = ["canonical_manifest.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/hash:hasher",
+    ],
+)
+
+cc_test(
+    name = "canonical_manifest_test",
+    srcs = ["canonical_manifest_test.cc"],
+    deps = [
+        ":canonical_manifest",
+        "@com_google_googletest//:gtest_main",
+        "//runtime/platform/hash:hasher",
+        "//runtime/util:test_utils",
+    ],
+)
+
+cc_library(
     name = "checkpoint_store",
     hdrs = ["checkpoint_store.h"],
     deps = [
