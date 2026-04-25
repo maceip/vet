@@ -37,6 +37,44 @@ cc_library(
 )
 
 cc_library(
+    name = "checkpoint_store",
+    hdrs = ["checkpoint_store.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/hash:hasher",
+    ],
+)
+
+cc_library(
+    name = "local_filesystem_checkpoint_store",
+    srcs = ["local_filesystem_checkpoint_store.cc"],
+    hdrs = ["local_filesystem_checkpoint_store.h"],
+    deps = [
+        ":checkpoint_store",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/hash:hasher",
+        "//runtime/util:litert_status_util",
+    ],
+)
+
+cc_test(
+    name = "local_filesystem_checkpoint_store_test",
+    srcs = ["local_filesystem_checkpoint_store_test.cc"],
+    deps = [
+        ":local_filesystem_checkpoint_store",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/hash:hasher",
+        "//runtime/util:test_utils",
+    ],
+)
+
+cc_library(
     name = "checkpoint_codec",
     srcs = ["checkpoint_codec.cc"],
     hdrs = ["checkpoint_codec.h"],
