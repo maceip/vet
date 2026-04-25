@@ -21,14 +21,10 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
-#include "runtime/util/status_macros.h"
 
 namespace litert::lm {
 namespace {
 
-// Static head of the projection prompt. Everything before [EVENT LOG]. This
-// is the prefix-cache target: identical bytes for matching
-// (schema_id, schema_json, memory_budget_chars) tuples across calls.
 constexpr absl::string_view kStaticPreamble =
     "System. You are producing a decision-ready memory view over an event "
     "log for task T. Preserve every dollar amount, date, identifier, and "
@@ -45,17 +41,15 @@ constexpr absl::string_view kStaticPreamble =
     "one-based Event Index [i] in the log. Treat correction events as "
     "superseding earlier conflicting facts.\n\n";
 
-// Marker that downstream tooling can grep for to verify boundary placement
-// in captured prompts. Intentionally part of the static head so it lives
-// inside the cached prefix.
 constexpr absl::string_view kPrefixBoundaryMarker =
     "[DPM PROJECTION PREFIX BOUNDARY v1]\n";
 
 }  // namespace
 
-absl::StatusOr<std::string> CreateProjectionPromptPrefix(
-    absl::string_view schema_id, absl::string_view schema_json,
-    size_t memory_budget_chars) {
+absl::StatusOr<ProjectionPromptParts> CreateProjectionPromptParts(
+    absl::string_view event_log, absl::string_view schema_id,
+    absl::string_view schema_json, size_t memory_budget_chars,
+    size_t max_event_log_chars) {
   if (schema_id.empty()) {
     return absl::InvalidArgumentError(
         "DPM projection requires a non-empty schema_id.");
@@ -68,28 +62,25 @@ absl::StatusOr<std::string> CreateProjectionPromptPrefix(
     return absl::InvalidArgumentError(
         "DPM projection requires a non-zero memory budget.");
   }
-  return absl::StrCat(kStaticPreamble,
-                      "[SCHEMA ID]\n", schema_id, "\n\n",
-                      "[TASK SCHEMA]\n", schema_json, "\n\n",
-                      "[MEMORY BUDGET]\n", memory_budget_chars,
-                      " characters\n\n",
-                      kPrefixBoundaryMarker);
-}
-
-absl::StatusOr<std::string> CreateProjectionPromptTail(
-    absl::string_view event_log, size_t max_event_log_chars) {
   if (max_event_log_chars > 0 && event_log.size() > max_event_log_chars) {
     return absl::ResourceExhaustedError(absl::StrCat(
         "DPM event log is too large for a single projection prompt (",
         event_log.size(), " bytes > ", max_event_log_chars,
         "); hierarchical projection is required."));
   }
-  // Tail = event log + the JSON-shape contract. The contract is part of
-  // the tail (not the cached prefix) because keeping it adjacent to the
-  // event log preserves the prompt structure operators expect when
-  // grepping captured prompts. Pinning the JSON shape here is what makes
-  // the projection bytes stable across replays.
-  return absl::StrCat(
+  ProjectionPromptParts parts;
+  parts.cacheable_prefix = absl::StrCat(
+      kStaticPreamble,
+      "[SCHEMA ID]\n", schema_id, "\n\n",
+      "[TASK SCHEMA]\n", schema_json, "\n\n",
+      "[MEMORY BUDGET]\n", memory_budget_chars, " characters\n\n",
+      kPrefixBoundaryMarker);
+  // event_log_suffix carries the variable portion: the event log itself
+  // plus the JSON-shape contract that pins projection bytes across
+  // replays. The contract sits in the suffix (not the cached prefix) so
+  // it stays adjacent to the event log when operators grep captured
+  // prompts; the determinism harness on phase1 depends on this shape.
+  parts.event_log_suffix = absl::StrCat(
       "[EVENT LOG]\n", event_log, "\n\n",
       "[EXPECTED OUTPUT]\n",
       "Return only a valid JSON object in this exact shape:\n",
@@ -97,18 +88,18 @@ absl::StatusOr<std::string> CreateProjectionPromptTail(
       "\"Compliance\":[\"... [i]\"]}\n",
       "Do not wrap the JSON in markdown or code fences. The first output "
       "byte must be '{' and the last output byte must be '}'.\n");
+  return parts;
 }
 
 absl::StatusOr<std::string> CreateProjectionPrompt(
     absl::string_view event_log, absl::string_view schema_id,
     absl::string_view schema_json, size_t memory_budget_chars,
     size_t max_event_log_chars) {
-  ASSIGN_OR_RETURN(std::string prefix,
-                   CreateProjectionPromptPrefix(schema_id, schema_json,
-                                                memory_budget_chars));
-  ASSIGN_OR_RETURN(std::string tail,
-                   CreateProjectionPromptTail(event_log, max_event_log_chars));
-  return absl::StrCat(prefix, tail);
+  auto parts = CreateProjectionPromptParts(event_log, schema_id, schema_json,
+                                           memory_budget_chars,
+                                           max_event_log_chars);
+  if (!parts.ok()) return parts.status();
+  return parts->Compose();
 }
 
 std::string CreateDeciderPrompt(absl::string_view projected_memory,

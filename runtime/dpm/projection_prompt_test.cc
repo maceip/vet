@@ -32,91 +32,70 @@ constexpr absl::string_view kSchemaJson =
     R"json({"Facts":["string with [i]"]})json";
 
 TEST(ProjectionPromptTest, PrefixIsByteIdenticalForMatchingConfig) {
-  ASSERT_OK_AND_ASSIGN(std::string p1,
-                       CreateProjectionPromptPrefix("schema-A", kSchemaJson,
-                                                    1338));
-  ASSERT_OK_AND_ASSIGN(std::string p2,
-                       CreateProjectionPromptPrefix("schema-A", kSchemaJson,
-                                                    1338));
-  EXPECT_EQ(p1, p2);
-  EXPECT_THAT(p1, HasSubstr("[DPM PROJECTION PREFIX BOUNDARY v1]"));
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionPromptParts p1,
+      CreateProjectionPromptParts("evt-A", "schema-A", kSchemaJson, 1338,
+                                  1 << 20));
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionPromptParts p2,
+      CreateProjectionPromptParts("evt-B-different", "schema-A", kSchemaJson,
+                                  1338, 1 << 20));
+  // Same config, different event logs -> identical cacheable_prefix.
+  EXPECT_EQ(p1.cacheable_prefix, p2.cacheable_prefix);
+  EXPECT_THAT(p1.cacheable_prefix,
+              HasSubstr("[DPM PROJECTION PREFIX BOUNDARY v1]"));
+  // Suffixes differ.
+  EXPECT_NE(p1.event_log_suffix, p2.event_log_suffix);
 }
 
 TEST(ProjectionPromptTest, PrefixDiffersOnAnyConfigChange) {
-  ASSERT_OK_AND_ASSIGN(std::string baseline,
-                       CreateProjectionPromptPrefix("schema-A", kSchemaJson,
-                                                    1338));
-  ASSERT_OK_AND_ASSIGN(std::string different_schema,
-                       CreateProjectionPromptPrefix("schema-B", kSchemaJson,
-                                                    1338));
-  ASSERT_OK_AND_ASSIGN(std::string different_json,
-                       CreateProjectionPromptPrefix("schema-A",
-                                                    R"json({"X":[]})json",
-                                                    1338));
-  ASSERT_OK_AND_ASSIGN(std::string different_budget,
-                       CreateProjectionPromptPrefix("schema-A", kSchemaJson,
-                                                    5352));
-  EXPECT_NE(baseline, different_schema);
-  EXPECT_NE(baseline, different_json);
-  EXPECT_NE(baseline, different_budget);
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionPromptParts baseline,
+      CreateProjectionPromptParts("evt", "schema-A", kSchemaJson, 1338,
+                                  1 << 20));
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionPromptParts diff_schema,
+      CreateProjectionPromptParts("evt", "schema-B", kSchemaJson, 1338,
+                                  1 << 20));
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionPromptParts diff_json,
+      CreateProjectionPromptParts("evt", "schema-A", R"json({"X":[]})json",
+                                  1338, 1 << 20));
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionPromptParts diff_budget,
+      CreateProjectionPromptParts("evt", "schema-A", kSchemaJson, 5352,
+                                  1 << 20));
+  EXPECT_NE(baseline.cacheable_prefix, diff_schema.cacheable_prefix);
+  EXPECT_NE(baseline.cacheable_prefix, diff_json.cacheable_prefix);
+  EXPECT_NE(baseline.cacheable_prefix, diff_budget.cacheable_prefix);
 }
 
-TEST(ProjectionPromptTest, FullPromptStartsWithPrefixBytes) {
-  ASSERT_OK_AND_ASSIGN(std::string prefix,
-                       CreateProjectionPromptPrefix("schema-A", kSchemaJson,
-                                                    1338));
-  ASSERT_OK_AND_ASSIGN(std::string prompt,
-                       CreateProjectionPrompt("event-log-bytes",
-                                              "schema-A", kSchemaJson, 1338,
-                                              /*max_event_log_chars=*/1 << 20));
-  EXPECT_THAT(prompt, StartsWith(prefix));
-}
-
-TEST(ProjectionPromptTest, DifferentEventLogsShareIdenticalPrefix) {
-  // The whole point: two prompts with the same config but different event
-  // logs must share the same bytes up to the prefix boundary so a
-  // prefix-caching backend hits the cache on the second call.
-  ASSERT_OK_AND_ASSIGN(std::string prompt1,
-                       CreateProjectionPrompt("first event log",
-                                              "schema-A", kSchemaJson, 1338,
-                                              1 << 20));
-  ASSERT_OK_AND_ASSIGN(std::string prompt2,
-                       CreateProjectionPrompt("a different event log entirely",
-                                              "schema-A", kSchemaJson, 1338,
-                                              1 << 20));
-  ASSERT_OK_AND_ASSIGN(std::string prefix,
-                       CreateProjectionPromptPrefix("schema-A", kSchemaJson,
-                                                    1338));
-  ASSERT_GE(prompt1.size(), prefix.size());
-  ASSERT_GE(prompt2.size(), prefix.size());
-  EXPECT_EQ(prompt1.substr(0, prefix.size()),
-            prompt2.substr(0, prefix.size()));
-  EXPECT_EQ(prompt1.substr(0, prefix.size()), prefix);
-}
-
-TEST(ProjectionPromptTest, ConcatenatingPrefixAndTailEqualsFullPrompt) {
-  ASSERT_OK_AND_ASSIGN(std::string prefix,
-                       CreateProjectionPromptPrefix("schema-A", kSchemaJson,
-                                                    1338));
-  ASSERT_OK_AND_ASSIGN(std::string tail,
-                       CreateProjectionPromptTail("evt", 1 << 20));
+TEST(ProjectionPromptTest, ComposeEqualsLegacyFullPrompt) {
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionPromptParts parts,
+      CreateProjectionPromptParts("event-log-bytes", "schema-A", kSchemaJson,
+                                  1338, 1 << 20));
   ASSERT_OK_AND_ASSIGN(std::string full,
-                       CreateProjectionPrompt("evt", "schema-A", kSchemaJson,
-                                              1338, 1 << 20));
-  EXPECT_EQ(absl::StrCat(prefix, tail), full);
+                       CreateProjectionPrompt("event-log-bytes", "schema-A",
+                                              kSchemaJson, 1338, 1 << 20));
+  EXPECT_EQ(parts.Compose(), full);
+  EXPECT_THAT(full, StartsWith(parts.cacheable_prefix));
 }
 
 TEST(ProjectionPromptTest, RejectsEmptySchemaAndZeroBudget) {
   EXPECT_FALSE(
-      CreateProjectionPromptPrefix("", kSchemaJson, 1338).ok());
+      CreateProjectionPromptParts("evt", "", kSchemaJson, 1338, 1 << 20).ok());
   EXPECT_FALSE(
-      CreateProjectionPromptPrefix("schema-A", "", 1338).ok());
+      CreateProjectionPromptParts("evt", "schema-A", "", 1338, 1 << 20).ok());
   EXPECT_FALSE(
-      CreateProjectionPromptPrefix("schema-A", kSchemaJson, 0).ok());
+      CreateProjectionPromptParts("evt", "schema-A", kSchemaJson, 0, 1 << 20)
+          .ok());
 }
 
-TEST(ProjectionPromptTest, TailRejectsOversizedEventLog) {
-  EXPECT_FALSE(CreateProjectionPromptTail("toolarge", /*max=*/4).ok());
+TEST(ProjectionPromptTest, RejectsOversizedEventLog) {
+  EXPECT_FALSE(CreateProjectionPromptParts("toolarge", "schema-A", kSchemaJson,
+                                           1338, /*max=*/4)
+                   .ok());
 }
 
 }  // namespace

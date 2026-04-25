@@ -23,26 +23,40 @@
 
 namespace litert::lm {
 
-// Returns the static head of a DPM projection prompt for a given
-// (schema_id, schema_json, memory_budget_chars) tuple. The output is
-// byte-deterministic for those inputs and contains no event-log data, so a
-// serving backend can render it once, tokenize it, and pin the resulting KV
-// prefix in its cache; subsequent projection calls that share the same head
-// only need to prefill the variable tail (the event log).
+// Two-part rendering of a DPM projection prompt:
 //
-// The returned prefix ends at the boundary between the static header and the
-// "[EVENT LOG]" section. CreateProjectionPrompt(prefix + tail) below is
-// guaranteed to share this byte-exact prefix for matching configs.
-absl::StatusOr<std::string> CreateProjectionPromptPrefix(
-    absl::string_view schema_id, absl::string_view schema_json,
-    size_t memory_budget_chars);
+//   - cacheable_prefix: byte-deterministic for a given
+//     (schema_id, schema_json, memory_budget_chars) tuple. Contains the
+//     system instructions, [SCHEMA ID], [TASK SCHEMA], and [MEMORY BUDGET]
+//     banners through the prefix-cache boundary marker. A serving backend
+//     can render this once and pin the resulting KV prefix; subsequent
+//     projection calls that share the same head only prefill the suffix.
+//
+//   - event_log_suffix: the variable [EVENT LOG] section.
+//
+// Compose() concatenates the two and is byte-equivalent to the legacy
+// CreateProjectionPrompt below. Tests pin both the prefix-stability
+// property (same config, different log → identical prefix) and the
+// composition equivalence.
+struct ProjectionPromptParts {
+  std::string cacheable_prefix;
+  std::string event_log_suffix;
 
-// Returns the variable tail (the framed event-log section). Concatenating
-// CreateProjectionPromptPrefix(...) + CreateProjectionPromptTail(event_log)
-// produces the same bytes as CreateProjectionPrompt(event_log, ...).
-absl::StatusOr<std::string> CreateProjectionPromptTail(
-    absl::string_view event_log, size_t max_event_log_chars);
+  std::string Compose() const {
+    return cacheable_prefix + event_log_suffix;
+  }
+};
 
+// Builds the cacheable prefix and the event-log suffix as separate strings.
+// Returns InvalidArgument if any of the static-head inputs are empty or
+// zero, or ResourceExhausted if event_log exceeds max_event_log_chars.
+absl::StatusOr<ProjectionPromptParts> CreateProjectionPromptParts(
+    absl::string_view event_log, absl::string_view schema_id,
+    absl::string_view schema_json, size_t memory_budget_chars,
+    size_t max_event_log_chars);
+
+// Convenience: returns Compose() of the parts. Equivalent in bytes to the
+// pre-merge implementation.
 absl::StatusOr<std::string> CreateProjectionPrompt(
     absl::string_view event_log, absl::string_view schema_id,
     absl::string_view schema_json, size_t memory_budget_chars,
