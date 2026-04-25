@@ -15,6 +15,7 @@
 #include "runtime/platform/checkpoint/durable_writer.h"
 
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -181,6 +182,64 @@ absl::Status DurablyWriteFile(const std::filesystem::path& target_path,
     return status;
   }
   return absl::OkStatus();
+}
+
+absl::Status DurablyCreateNewFile(const std::filesystem::path& target_path,
+                                  absl::string_view bytes) {
+  std::error_code error;
+  std::filesystem::create_directories(target_path.parent_path(), error);
+  if (error) {
+    return absl::InternalError(absl::StrCat(
+        "DurablyCreateNewFile: create_directories failed: ",
+        error.message()));
+  }
+  const std::filesystem::path tmp_path =
+      target_path.string() + UniqueTempSuffix();
+  if (auto status = WriteAndSyncToTemp(tmp_path, bytes); !status.ok()) {
+    std::filesystem::remove(tmp_path, error);
+    return status;
+  }
+
+#ifdef _WIN32
+  if (!MoveFileExW(tmp_path.wstring().c_str(), target_path.wstring().c_str(),
+                   MOVEFILE_WRITE_THROUGH)) {
+    const DWORD err = GetLastError();
+    std::filesystem::remove(tmp_path, error);
+    if (err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS) {
+      return absl::AlreadyExistsError(absl::StrCat(
+          "DurablyCreateNewFile: target already exists: ",
+          target_path.string()));
+    }
+    return absl::InternalError(absl::StrCat(
+        "DurablyCreateNewFile: MoveFileExW failed (err=", err, ") for ",
+        target_path.string()));
+  }
+  return absl::OkStatus();
+#else
+  if (link(tmp_path.string().c_str(), target_path.string().c_str()) != 0) {
+    const int err = errno;
+    std::filesystem::remove(tmp_path, error);
+    if (err == EEXIST) {
+      return absl::AlreadyExistsError(absl::StrCat(
+          "DurablyCreateNewFile: target already exists: ",
+          target_path.string()));
+    }
+    return absl::InternalError(absl::StrCat(
+        "DurablyCreateNewFile: link failed for ", target_path.string(),
+        " (errno=", err, ")."));
+  }
+  if (auto status = SyncDirectory(target_path.parent_path()); !status.ok()) {
+    std::filesystem::remove(tmp_path, error);
+    return status;
+  }
+  std::filesystem::remove(tmp_path, error);
+  if (error) {
+    return absl::InternalError(absl::StrCat(
+        "DurablyCreateNewFile: failed to remove temp file: ",
+        error.message()));
+  }
+  return SyncDirectory(target_path.parent_path());
+#endif
 }
 
 absl::Status ReadEntireFileIfExists(const std::filesystem::path& path,

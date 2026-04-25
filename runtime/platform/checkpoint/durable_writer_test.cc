@@ -19,6 +19,7 @@
 #include <thread>
 #include <vector>
 
+#include "absl/status/status.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "gtest/gtest.h"
@@ -84,6 +85,42 @@ TEST(DurableWriterTest, ConcurrentWritersToDifferentTargetsDoNotCollide) {
                                      &out));
     EXPECT_EQ(out, absl::StrCat("payload-", i));
   }
+}
+
+TEST(DurableWriterTest, CreateNewFileRejectsExistingTarget) {
+  std::filesystem::path root = TestRoot("durable_writer_create_new_existing");
+  std::filesystem::path target = root / "file.bin";
+  ASSERT_OK(DurablyCreateNewFile(target, "first"));
+  EXPECT_EQ(DurablyCreateNewFile(target, "second").code(),
+            absl::StatusCode::kAlreadyExists);
+  std::string out;
+  ASSERT_OK(ReadEntireFileIfExists(target, &out));
+  EXPECT_EQ(out, "first");
+}
+
+TEST(DurableWriterTest, ConcurrentCreateNewFilePublishesOnce) {
+  std::filesystem::path root = TestRoot("durable_writer_create_new_race");
+  std::filesystem::path target = root / "file.bin";
+  std::vector<std::thread> threads;
+  std::vector<absl::Status> statuses(16);
+  for (int i = 0; i < 16; ++i) {
+    threads.emplace_back([target, &statuses, i] {
+      statuses[i] = DurablyCreateNewFile(target, absl::StrCat("payload-", i));
+    });
+  }
+  for (auto& t : threads) t.join();
+
+  int ok_count = 0;
+  int already_exists_count = 0;
+  for (const absl::Status& status : statuses) {
+    if (status.ok()) {
+      ++ok_count;
+    } else if (status.code() == absl::StatusCode::kAlreadyExists) {
+      ++already_exists_count;
+    }
+  }
+  EXPECT_EQ(ok_count, 1);
+  EXPECT_EQ(already_exists_count, 15);
 }
 
 TEST(ReadEntireFileIfExistsTest, MissingFileReturnsEmpty) {

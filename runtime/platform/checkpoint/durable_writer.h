@@ -46,6 +46,27 @@ absl::Status DurablyWriteFile(const std::filesystem::path& target_path,
 absl::Status ReadEntireFileIfExists(const std::filesystem::path& path,
                                     std::string* out);
 
+// Creates `target_path` exclusively and writes `bytes` durably:
+//   1. Write and fsync a unique temp file in the target directory.
+//   2. Publish with no-replace semantics (link on POSIX, MoveFileEx
+//      without replace on Windows). If the target already exists, the
+//      filesystem itself serializes the create and this returns
+//      AlreadyExists.
+//   3. fsync the parent directory on POSIX so the new directory entry is
+//      committed.
+//
+// Use this for sidecars and other "publish-once" records where the
+// non-atomic exists-check + atomic-overwrite-rename pattern of
+// DurablyWriteFile is structurally wrong (concurrent creators would
+// both pass the exists-check and last-writer-wins).
+//
+// Returns AlreadyExists when the target already exists, even if the
+// existing bytes match what we would have written. Idempotent retries
+// can be implemented by a caller that reads the existing bytes and
+// compares; the primitive itself stays strict.
+absl::Status DurablyCreateNewFile(const std::filesystem::path& target_path,
+                                  absl::string_view bytes);
+
 }  // namespace litert::lm
 
 #endif  // THIRD_PARTY_ODML_LITERT_LM_RUNTIME_PLATFORM_CHECKPOINT_DURABLE_WRITER_H_

@@ -63,15 +63,56 @@ struct BranchPointer {
   uint64_t parent_record_count_at_branch = 0;
 };
 
-// Tiny hand-rolled JSON for the sidecar. The format is fixed and simple
-// enough not to warrant a JSON dependency.
+// JSON string escaper used when writing branch_pointer.json. Identity
+// validation rejects characters that would require escaping in the current
+// parser, but keeping the writer escaped makes the sidecar robust if that
+// validator is loosened later.
+void AppendJsonEscapedString(absl::string_view s, std::string* out) {
+  constexpr char kHex[] = "0123456789abcdef";
+  for (char c : s) {
+    const auto u = static_cast<unsigned char>(c);
+    switch (c) {
+      case '\\':
+        out->append("\\\\");
+        break;
+      case '"':
+        out->append("\\\"");
+        break;
+      case '\b':
+        out->append("\\b");
+        break;
+      case '\f':
+        out->append("\\f");
+        break;
+      case '\n':
+        out->append("\\n");
+        break;
+      case '\r':
+        out->append("\\r");
+        break;
+      case '\t':
+        out->append("\\t");
+        break;
+      default:
+        if (u < 0x20) {
+          // \u00XX for any other control character.
+          out->append("\\u00");
+          out->push_back(kHex[(u >> 4) & 0x0f]);
+          out->push_back(kHex[u & 0x0f]);
+        } else {
+          out->push_back(c);
+        }
+    }
+  }
+}
+
 std::string SerializeBranchPointer(const BranchPointer& bp) {
   std::string out;
   out.reserve(128 + bp.parent_tenant_id.size() + bp.parent_session_id.size());
   out.append("{\"version\":1,\"parent_tenant_id\":\"");
-  out.append(bp.parent_tenant_id);
+  AppendJsonEscapedString(bp.parent_tenant_id, &out);
   out.append("\",\"parent_session_id\":\"");
-  out.append(bp.parent_session_id);
+  AppendJsonEscapedString(bp.parent_session_id, &out);
   out.append("\",\"parent_record_count_at_branch\":");
   out.append(std::to_string(bp.parent_record_count_at_branch));
   out.append("}\n");
@@ -156,10 +197,22 @@ class PathMutexRegistry {
   std::unordered_map<std::string, std::shared_ptr<std::mutex>> mutexes_;
 };
 
+// Identity components are path components and branch_pointer.json string
+// fields. Reject:
+//   - empty / "." / ".."
+//   - path separators and filesystem meta characters
+//   - JSON string terminators / escape bytes
+//   - control bytes
 bool IsValidIdentityComponent(absl::string_view value) {
-  return !value.empty() && value != "." && value != ".." &&
-         value.find('/') == absl::string_view::npos &&
-         value.find('\\') == absl::string_view::npos;
+  if (value.empty() || value == "." || value == "..") return false;
+  for (char c : value) {
+    const auto u = static_cast<unsigned char>(c);
+    if (u < 0x20 || c == '/' || c == '\\' || c == '"' || c == '<' ||
+        c == '>' || c == ':' || c == '|' || c == '?' || c == '*') {
+      return false;
+    }
+  }
+  return true;
 }
 
 uint32_t ReadLittleEndian32(const char* data) {
@@ -190,11 +243,13 @@ absl::Status ValidateIdentity(absl::string_view tenant_id,
                               absl::string_view session_id) {
   if (!IsValidIdentityComponent(tenant_id)) {
     return absl::InvalidArgumentError(
-        "tenant_id must be non-empty and must not contain path separators.");
+        "tenant_id must be non-empty and must not contain reserved path or "
+        "JSON characters.");
   }
   if (!IsValidIdentityComponent(session_id)) {
     return absl::InvalidArgumentError(
-        "session_id must be non-empty and must not contain path separators.");
+        "session_id must be non-empty and must not contain reserved path or "
+        "JSON characters.");
   }
   return absl::OkStatus();
 }
@@ -517,11 +572,19 @@ absl::Status PosixEventSink::CreateBranch(
         parent_record_count, ")."));
   }
 
-  // Reject if the branch identity is already in use.
   const std::filesystem::path branch_log_path =
       PathFor(branch_tenant_id, branch_session_id);
   const std::filesystem::path branch_pointer_path =
       BranchPointerPathFor(branch_tenant_id, branch_session_id);
+
+  // Serialize branch publication before checking for an existing branch.
+  // Without this, same-process creators could all pass the exists check and
+  // then atomically replace branch_pointer.json one after another.
+  std::shared_ptr<std::mutex> path_mutex =
+      PathMutexRegistry::Instance().Acquire(branch_pointer_path.string());
+  std::lock_guard<std::mutex> guard(*path_mutex);
+
+  // Reject if the branch identity is already in use.
   if (std::filesystem::exists(branch_log_path) ||
       std::filesystem::exists(branch_pointer_path)) {
     return absl::AlreadyExistsError(
@@ -542,10 +605,7 @@ absl::Status PosixEventSink::CreateBranch(
   bp.parent_record_count_at_branch = parent_record_count_at_branch;
   const std::string body = SerializeBranchPointer(bp);
 
-  std::shared_ptr<std::mutex> path_mutex =
-      PathMutexRegistry::Instance().Acquire(branch_pointer_path.string());
-  std::lock_guard<std::mutex> guard(*path_mutex);
-  return DurablyWriteFile(branch_pointer_path, body);
+  return DurablyCreateNewFile(branch_pointer_path, body);
 }
 
 absl::StatusOr<std::vector<std::string>> PosixEventSink::ReadRecords(

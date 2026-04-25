@@ -53,6 +53,7 @@ cc_test(
     deps = [
         ":durable_writer",
         "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "//runtime/util:test_utils",
