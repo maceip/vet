@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>DPM Projection Cliff — interactive deck</title>
+<style>
+  body { font-family: Inter, -apple-system, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 24px; background: #f6f8fa; color: #1f2328; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.lede { color: #57606a; margin: 0 0 24px; max-width: 740px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { background: white; border: 1px solid #d0d7de;
+          border-radius: 8px; padding: 8px;
+          box-shadow: 0 1px 0 rgba(31,35,40,0.04); }
+  .card > div.chart { width: 100%; height: 420px; }
+  footer { color: #6e7781; font-size: 12px; margin-top: 24px; }
+  @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>DPM Projection Cliff — interactive deck</h1>
+<p class="lede">
+  Decision-substrate measurements from the DPM cliff bench. Hover for
+  values, drag the legend to toggle series, click axis labels to zoom.
+  Same specs ship as inline-safe SVG for GitHub markdown
+  (<code>ssr_render.mjs</code>); this page is the off-GitHub mirror.
+</p>
+<div class="grid">
+  <div class="card"><div class="chart" id="panel-a"></div></div>
+  <div class="card"><div class="chart" id="panel-b"></div></div>
+  <div class="card"><div class="chart" id="panel-e"></div></div>
+  <div class="card"><div class="chart" id="panel-f"></div></div>
+</div>
+<footer>
+  Rendered from JSONL emitted by <code>dpm_projection_cliff</code>.
+  Chart F's S3 endpoint is the actual checkpoint store the bench
+  exercised; substrate measurements are wire-real.
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<script>
+  const SPECS = {"a":{"title":{"text":"Chart A — Decision score by case and condition","subtext":"1.0 = all four probes (FRP, RCS, EDA, CRR) hit; higher is better.","textStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontWeight":600,"fontSize":16,"color":"#1f2328"},"subtextStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":11,"color":"#6e7781","fontStyle":"italic"},"left":16,"top":12},"tooltip":{"trigger":"axis","axisPointer":{"type":"shadow"}},"legend":{"top":56,"textStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a"},"type":"scroll"},"grid":{"left":56,"right":24,"top":96,"bottom":96},"xAxis":{"type":"category","data":["celery-redis-rce","minio-config-exposure","sql-injection-admin-delete"],"axisLabel":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a","rotate":25,"interval":0}},"yAxis":{"type":"value","min":0,"max":1.05,"name":"decision_score","nameTextStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a"},"axisLabel":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a"}},"series":[{"name":"summarization_baseline","type":"bar","itemStyle":{"color":"#aa3377"},"barMaxWidth":32,"label":{"show":true,"position":"top","fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":10,"color":"#57606a"},"data":[0.25,0.5,0.5],"animationDuration":800},{"name":"dpm_projection","type":"bar","itemStyle":{"color":"#4477aa"},"barMaxWidth":32,"label":{"show":true,"position":"top","fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":10,"color":"#57606a"},"data":[0,0.5,0.5],"animationDuration":800},{"name":"dpm_checkpoints","type":"bar","itemStyle":{"color":"#228833"},"barMaxWidth":32,"label":{"show":true,"position":"top","fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":10,"color":"#57606a"},"data":[0,0.5,0.5],"animationDuration":800},{"name":"dpm_checkpoints_prefix_cached","type":"bar","itemStyle":{"color":"#ee7733"},"barMaxWidth":32,"label":{"show":true,"position":"top","fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":10,"color":"#57606a"},"data":[0,0.5,0.5],"animationDuration":800}]},"b":{"title":{"text":"Chart B — Where the win comes from","subtext":"Mean decision score per architecture, averaged across all cases.","textStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontWeight":600,"fontSize":16,"color":"#1f2328"},"subtextStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":11,"color":"#6e7781","fontStyle":"italic"},"left":16,"top":12},"tooltip":{"trigger":"axis","axisPointer":{"type":"shadow"}},"grid":{"left":60,"right":24,"top":80,"bottom":80},"xAxis":{"type":"category","data":["Stateless\nsummarization","+ single-call\nprojection","+ Phase 2\ncheckpoints (S3)","+ prefix-cached\nprojection"],"axisLabel":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a","lineHeight":14,"interval":0}},"yAxis":{"type":"value","min":0,"max":1.05,"name":"Decision-alignment (FRP × RCS × CRR × EDA)","nameTextStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a"},"axisLabel":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a"}},"series":[{"type":"bar","barMaxWidth":64,"data":[{"value":0.417,"itemStyle":{"color":"#888"}},{"value":0.333,"itemStyle":{"color":"#4477aa"}},{"value":0.333,"itemStyle":{"color":"#228833"}},{"value":0.333,"itemStyle":{"color":"#ee7733"}}],"label":{"show":true,"position":"top","fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a"},"animationDuration":800}]},"e":{"title":{"text":"Chart E — Wall-clock per decision","subtext":"Stacked: prefill+decode + checkpoint persistence + cold-handoff. Smaller is better.","textStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontWeight":600,"fontSize":16,"color":"#1f2328"},"subtextStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":11,"color":"#6e7781","fontStyle":"italic"},"left":16,"top":12},"tooltip":{"trigger":"axis","axisPointer":{"type":"shadow"}},"legend":{"top":56,"textStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a"},"type":"scroll"},"grid":{"left":80,"right":24,"top":96,"bottom":64},"xAxis":{"type":"category","data":["summarization_baseline","dpm_projection","dpm_checkpoints","dpm_checkpoints_prefix_cached"],"axisLabel":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a","rotate":15,"interval":0}},"yAxis":{"type":"value","name":"Wall-clock (ms)","nameTextStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a"},"axisLabel":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a"}},"series":[{"name":"Prefill+decode (ms)","type":"bar","stack":"total","barMaxWidth":56,"itemStyle":{"color":"#4477aa"},"data":[35479.7,36445.4,72751.5,72650],"animationDuration":800},{"name":"Checkpoint Put (ms)","type":"bar","stack":"total","barMaxWidth":56,"itemStyle":{"color":"#228833"},"data":[0,45036.5,164.4,143],"animationDuration":800},{"name":"Thaw / cold handoff (ms)","type":"bar","stack":"total","barMaxWidth":56,"itemStyle":{"color":"#ee7733"},"data":[0,0,0,126],"animationDuration":800}]},"f":{"title":{"text":"Chart F — Audit-trail and handoff economics","subtext":"S3 endpoint: dpm-cliff-bench--eun1-az1--x-s3.s3express-eun1-az1.eu-north-1.amazonaws.com","textStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontWeight":600,"fontSize":16,"color":"#1f2328"},"subtextStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":11,"color":"#6e7781","fontStyle":"italic"},"left":16,"top":12},"tooltip":{"trigger":"axis","axisPointer":{"type":"shadow"}},"legend":{"top":56,"textStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a"},"type":"scroll"},"grid":{"left":80,"right":80,"top":96,"bottom":64},"xAxis":{"type":"category","data":["dpm_checkpoints","dpm_checkpoints_prefix_cached"],"axisLabel":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a","rotate":15,"interval":0}},"yAxis":[{"type":"value","name":"Bytes per decision","nameTextStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a"},"axisLabel":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a"}},{"type":"value","name":"ms per round-trip","nameTextStyle":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a"},"axisLabel":{"fontFamily":"Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif","fontSize":12,"color":"#57606a"}}],"series":[{"name":"Uploaded (bytes)","type":"bar","yAxisIndex":0,"barMaxWidth":32,"itemStyle":{"color":"#228833"},"data":[505,505],"animationDuration":800},{"name":"Downloaded on thaw (bytes)","type":"bar","yAxisIndex":0,"barMaxWidth":32,"itemStyle":{"color":"#88bb44"},"data":[0,505],"animationDuration":800},{"name":"Checkpoint Put (ms)","type":"line","yAxisIndex":1,"symbol":"circle","symbolSize":8,"lineStyle":{"width":2,"color":"#aa3377"},"itemStyle":{"color":"#aa3377"},"data":[164.4,143],"animationDuration":800},{"name":"Thaw / cold handoff (ms)","type":"line","yAxisIndex":1,"symbol":"diamond","symbolSize":8,"lineStyle":{"width":2,"color":"#ee7733"},"itemStyle":{"color":"#ee7733"},"data":[0,126],"animationDuration":800}]}};
+  const mount = (id, spec) => {
+    if (!spec) return;
+    const el = document.getElementById(id);
+    const inst = echarts.init(el, null, { renderer: "svg" });
+    inst.setOption(spec);
+    window.addEventListener("resize", () => inst.resize());
+  };
+  mount("panel-a", SPECS.a);
+  mount("panel-b", SPECS.b);
+  mount("panel-e", SPECS.e);
+  mount("panel-f", SPECS.f);
+</script>
+</body>
+</html>
