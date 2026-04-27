@@ -497,6 +497,20 @@ section {
     #f5f1e8;
 }
 
+.theme-y2k::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(100deg, transparent 0 52%, rgba(255, 77, 0, 0.11) 52% 54%, transparent 54%),
+    repeating-linear-gradient(0deg, rgba(17, 17, 25, 0.08) 0 1px, transparent 1px 6px);
+  mix-blend-mode: multiply;
+  opacity: 0.5;
+  animation: y2k-scan 8s linear infinite;
+}
+
 .theme-y2k h1,
 .theme-y2k h2 {
   letter-spacing: -0.04em;
@@ -554,6 +568,107 @@ section {
   background:
     linear-gradient(90deg, #ff4d00 0 28%, transparent 28% 36%, #004dff 36% 62%, transparent 62% 72%, #c6ff00 72%);
   transform: skewX(-18deg);
+}
+
+.theme-y2k .button,
+.theme-y2k .nav-links a,
+.theme-y2k .metric-card,
+.theme-y2k .timeline-item,
+.theme-y2k .review-card,
+.theme-y2k .future-card {
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.theme-y2k .button:hover,
+.theme-y2k .nav-links a:hover,
+.theme-y2k .metric-card:hover,
+.theme-y2k .timeline-item:hover,
+.theme-y2k .review-card:hover,
+.theme-y2k .future-card:hover {
+  transform: translate(-3px, -3px);
+  box-shadow: 16px 16px 0 rgba(17, 17, 25, 0.95);
+}
+
+.theme-y2k .selected-claim {
+  display: grid;
+  gap: 10px;
+  max-width: 760px;
+  margin: 22px 0 0;
+  border-left: 10px solid var(--accent);
+  background: #111119;
+  color: #f5f1e8;
+  padding: 16px 18px;
+  clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 0 100%);
+}
+
+.theme-y2k .selected-claim strong {
+  color: var(--accent-3);
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 3vw, 3rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+}
+
+.theme-y2k .selected-claim span {
+  color: #d5d5d8;
+}
+
+.future-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.future-card {
+  border: 3px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 18px;
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
+}
+
+.future-card.wide {
+  grid-column: 1 / -1;
+}
+
+.future-card .panel-head h3 {
+  margin-bottom: 0;
+}
+
+.future-card .chart {
+  min-height: 380px;
+}
+
+.future-card.wide .chart {
+  min-height: 430px;
+}
+
+.telemetry-note {
+  border: 3px solid var(--line);
+  background: #111119;
+  color: #f5f1e8;
+  margin-bottom: 20px;
+  padding: 18px;
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+}
+
+.telemetry-note strong {
+  color: var(--accent-3);
+  font-family: var(--font-display);
+  text-transform: uppercase;
+}
+
+@keyframes y2k-scan {
+  from {
+    transform: translateX(-3%);
+  }
+  to {
+    transform: translateX(3%);
+  }
 }
 
 /* Version 3: Gilded industrial civic dossier. */

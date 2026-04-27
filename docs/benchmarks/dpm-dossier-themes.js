@@ -52,6 +52,39 @@ const plotConfig = {
   modeBarButtonsToRemove: ["lasso2d", "select2d"],
 };
 
+const futureScenarios = ["LIAB-01", "CLAIM-07", "TAX-14", "MED-22", "LEGAL-31"];
+const memoryBudgets = [2, 4, 8, 16];
+const strategies = {
+  dpm: {
+    label: "DPM projection",
+    color: COPY.good,
+    latency: [410, 520, 690, 940],
+    quality: [82, 90, 94, 96],
+    symbol: "diamond",
+  },
+  summary: {
+    label: "Rolling summary",
+    color: COPY.warn,
+    latency: [330, 460, 740, 1280],
+    quality: [58, 66, 74, 79],
+    symbol: "circle",
+  },
+  longContext: {
+    label: "Full replay",
+    color: COPY.accent,
+    latency: [720, 1040, 1620, 2550],
+    quality: [86, 91, 95, 97],
+    symbol: "square",
+  },
+  checkpoint: {
+    label: "DPM + checkpoints",
+    color: COPY.bad,
+    latency: [260, 330, 470, 630],
+    quality: [80, 88, 93, 95],
+    symbol: "triangle-up",
+  },
+};
+
 const layoutBase = {
   paper_bgcolor: "rgba(0,0,0,0)",
   plot_bgcolor: "rgba(0,0,0,0)",
@@ -74,6 +107,14 @@ const layoutBase = {
   hoverlabel: { bgcolor: THEME_PANEL, bordercolor: COPY.accent, font: { color: THEME_INK, family: THEME_BODY_FONT } },
   legend: { font: { color: THEME_INK, family: THEME_BODY_FONT } },
 };
+
+function chartFrame(title, overrides = {}) {
+  return {
+    ...layoutBase,
+    title: { text: title, font: { color: THEME_INK, family: THEME_DISPLAY_FONT, size: 18 }, x: 0.02 },
+    ...overrides,
+  };
+}
 
 const number = new Intl.NumberFormat("en", { maximumFractionDigits: 0 });
 
@@ -332,6 +373,193 @@ function renderBaselines(runs) {
   );
 }
 
+function renderFutureFrontier() {
+  if (!document.querySelector("#frontier-chart")) return;
+  Plotly.newPlot(
+    "frontier-chart",
+    Object.values(strategies).map((strategy) => ({
+      type: "scatter",
+      mode: "lines+markers",
+      name: strategy.label,
+      x: strategy.latency,
+      y: strategy.quality,
+      marker: { color: strategy.color, size: 12, symbol: strategy.symbol, line: { color: THEME_INK, width: 2 } },
+      line: { color: strategy.color, width: 4 },
+      hovertemplate: "<b>%{fullData.name}</b><br>Latency: %{x} ms<br>Audit quality: %{y}%<extra></extra>",
+    })),
+    chartFrame("QUALITY / SPEED FRONTIER", {
+      xaxis: { ...layoutBase.xaxis, title: "Replay latency placeholder (ms)" },
+      yaxis: { ...layoutBase.yaxis, title: "Audit quality placeholder (%)", range: [50, 100] },
+      shapes: [{ type: "line", x0: 650, x1: 650, y0: 50, y1: 100, line: { color: COPY.accent, width: 2, dash: "dot" } }],
+      annotations: [{ x: 650, y: 98, text: "target latency lane", showarrow: false, font: { color: COPY.accent, family: THEME_DISPLAY_FONT } }],
+    }),
+    plotConfig,
+  );
+}
+
+function renderFutureBudgetCurves() {
+  if (!document.querySelector("#budget-chart")) return;
+  Plotly.newPlot(
+    "budget-chart",
+    Object.values(strategies).map((strategy) => ({
+      type: "scatter",
+      mode: "lines+markers",
+      name: strategy.label,
+      x: memoryBudgets,
+      y: strategy.quality,
+      marker: { color: strategy.color, size: 10 },
+      line: { color: strategy.color, width: 3 },
+      hovertemplate: "<b>%{fullData.name}</b><br>Budget: %{x}k chars<br>Fact/citation score: %{y}%<extra></extra>",
+    })),
+    chartFrame("MEMORY BUDGET CURVES", {
+      xaxis: { ...layoutBase.xaxis, title: "Projection budget placeholder (k chars)" },
+      yaxis: { ...layoutBase.yaxis, title: "Quality placeholder (%)", range: [50, 100] },
+    }),
+    plotConfig,
+  );
+}
+
+function renderFuturePassMatrix() {
+  if (!document.querySelector("#passfail-chart")) return;
+  const gates = ["Fact retention", "Citation validity", "Correction", "Determinism", "Latency SLA"];
+  const values = [
+    [1, 1, 0.5, 1, 0.5],
+    [1, 0.5, 1, 1, 1],
+    [0.5, 1, 0.5, 1, 0],
+    [1, 1, 1, 0.5, 0.5],
+    [0.5, 0.5, 1, 1, 1],
+  ];
+  Plotly.newPlot(
+    "passfail-chart",
+    [{
+      type: "heatmap",
+      x: gates,
+      y: futureScenarios,
+      z: values,
+      colorscale: [[0, COPY.bad], [0.5, COPY.warn], [1, COPY.good]],
+      showscale: false,
+      hovertemplate: "<b>%{y}</b><br>%{x}: %{z}<extra></extra>",
+    }],
+    chartFrame("RED-TEAM PASS MATRIX", { xaxis: { ...layoutBase.xaxis, automargin: true }, yaxis: { ...layoutBase.yaxis, automargin: true } }),
+    plotConfig,
+  );
+}
+
+function renderFutureEvidenceFlow() {
+  if (!document.querySelector("#evidence-flow-chart")) return;
+  Plotly.newPlot(
+    "evidence-flow-chart",
+    [{
+      type: "sankey",
+      arrangement: "fixed",
+      node: {
+        pad: 18,
+        thickness: 18,
+        line: { color: THEME_INK, width: 2 },
+        label: ["Planted facts", "Corrections", "Distractors", "Projection", "Cited answer", "Dropped facts"],
+        color: [COPY.accent, COPY.warn, THEME_MUTED, COPY.good, COPY.good, COPY.bad],
+      },
+      link: {
+        source: [0, 1, 2, 3, 3],
+        target: [3, 3, 3, 4, 5],
+        value: [42, 9, 28, 46, 5],
+        color: ["rgba(245,255,0,.45)", "rgba(255,138,0,.45)", "rgba(52,52,63,.25)", "rgba(0,240,255,.45)", "rgba(255,43,214,.45)"],
+      },
+    }],
+    chartFrame("EVIDENCE COVERAGE MAP", { font: { color: THEME_INK, family: THEME_BODY_FONT }, margin: { t: 48, r: 20, b: 30, l: 20 } }),
+    plotConfig,
+  );
+}
+
+function renderFutureDeterminism() {
+  if (!document.querySelector("#determinism-chart")) return;
+  const runs = ["R1", "R2", "R3", "R4", "R5", "R6"];
+  Plotly.newPlot(
+    "determinism-chart",
+    [{
+      type: "heatmap",
+      x: runs,
+      y: futureScenarios,
+      z: futureScenarios.map((_, row) => runs.map((__, col) => (row + col) % 7 === 0 ? 0 : 1)),
+      colorscale: [[0, COPY.bad], [1, COPY.good]],
+      showscale: false,
+      hovertemplate: "<b>%{y}</b><br>%{x}: hash %{z}<extra></extra>",
+    }],
+    chartFrame("RUN-TO-RUN DETERMINISM", { xaxis: { ...layoutBase.xaxis, title: "Seeded replay run" }, yaxis: { ...layoutBase.yaxis, automargin: true } }),
+    plotConfig,
+  );
+}
+
+function renderFutureCorrectionRecovery() {
+  if (!document.querySelector("#correction-chart")) return;
+  Plotly.newPlot(
+    "correction-chart",
+    [
+      { type: "scatter", mode: "lines+markers", name: "DPM projection", x: [0, 1, 2, 3, 4], y: [35, 41, 91, 95, 96], line: { color: COPY.good, width: 4 } },
+      { type: "scatter", mode: "lines+markers", name: "Rolling summary", x: [0, 1, 2, 3, 4], y: [34, 38, 54, 62, 68], line: { color: COPY.warn, width: 4 } },
+    ],
+    chartFrame("CORRECTION RECOVERY TIMELINE", {
+      xaxis: { ...layoutBase.xaxis, title: "Turns after correction event" },
+      yaxis: { ...layoutBase.yaxis, title: "Recovered state score (%)", range: [20, 100] },
+      shapes: [{ type: "line", x0: 2, x1: 2, y0: 20, y1: 100, line: { color: COPY.accent, dash: "dash", width: 2 } }],
+    }),
+    plotConfig,
+  );
+}
+
+function renderFutureErrorTaxonomy() {
+  if (!document.querySelector("#error-taxonomy-chart")) return;
+  Plotly.newPlot(
+    "error-taxonomy-chart",
+    [{
+      type: "bar",
+      orientation: "h",
+      x: [3, 4, 2, 1, 5, 2],
+      y: ["Dropped fact", "Invalid citation", "Contradiction", "Hallucinated anchor", "Late correction", "Output variance"],
+      marker: { color: [COPY.good, COPY.warn, COPY.good, COPY.good, COPY.bad, COPY.warn], line: { color: THEME_INK, width: 2 } },
+      hovertemplate: "%{y}: %{x} placeholder failures<extra></extra>",
+    }],
+    chartFrame("ERROR TAXONOMY", { xaxis: { ...layoutBase.xaxis, title: "Placeholder failure count" }, yaxis: { ...layoutBase.yaxis, automargin: true } }),
+    plotConfig,
+  );
+}
+
+function renderFutureRawRunExplorer() {
+  if (!document.querySelector("#raw-run-chart")) return;
+  Plotly.newPlot(
+    "raw-run-chart",
+    [{
+      type: "table",
+      header: { values: ["run_id", "strategy", "model", "backend", "commit", "score"], fill: { color: THEME_INK }, font: { color: "#f5f1e8", family: THEME_DISPLAY_FONT, size: 14 } },
+      cells: {
+        values: [
+          ["rt-001", "rt-002", "rt-003", "rt-004"],
+          ["DPM", "Summary", "DPM+checkpoint", "Full replay"],
+          ["Gemma", "Gemma", "Gemma", "Gemma"],
+          ["CPU", "CPU", "NPU", "GPU"],
+          ["abc123", "abc123", "abc123", "abc123"],
+          ["94", "68", "93", "96"],
+        ],
+        fill: { color: "rgba(255,255,255,.72)" },
+        font: { color: THEME_INK, family: THEME_BODY_FONT, size: 13 },
+      },
+    }],
+    chartFrame("RAW RUN EXPLORER", { margin: { t: 48, r: 12, b: 12, l: 12 } }),
+    plotConfig,
+  );
+}
+
+function renderFutureSuitePlaceholders() {
+  renderFutureFrontier();
+  renderFutureBudgetCurves();
+  renderFuturePassMatrix();
+  renderFutureEvidenceFlow();
+  renderFutureDeterminism();
+  renderFutureCorrectionRecovery();
+  renderFutureErrorTaxonomy();
+  renderFutureRawRunExplorer();
+}
+
 fetch("./dpm-red-team-benchmark-data.json")
   .then((response) => response.json())
   .then((data) => {
@@ -344,6 +572,7 @@ fetch("./dpm-red-team-benchmark-data.json")
     renderMetrics(data.recommended_metrics);
     renderAssessment(data.chart_assessment);
     renderBaselines(data.baseline_runs);
+    renderFutureSuitePlaceholders();
   })
   .catch((error) => {
     setText("#benchmark-status", `Could not load page data: ${error.message}`);
