@@ -7,15 +7,15 @@ approximately 27k-character synthetic event log.
 The benchmark is a follow-up workstream for XNNPack and ML Drift tuning. It
 does not gate Phase 1 correctness.
 
-The public benchmark story and chart assessment live in
-[`docs/benchmarks/dpm-red-team-benchmark.html`](../../../docs/benchmarks/dpm-red-team-benchmark.html).
+The public benchmark story and chart assessment use the selected
+[`Y2K / anti-gravity racing dossier`](../../../docs/benchmarks/dpm-dossier-y2k-wipeout.html).
 That page is intentionally wired to show a pending-baseline state until
 hardware-owned result JSON is checked in.
 
-Alternate art-directed dossier versions are also available:
+Supporting art-directed dossier versions are also available:
 
+* [`Base research dossier`](../../../docs/benchmarks/dpm-red-team-benchmark.html)
 * [`90s core / isometric`](../../../docs/benchmarks/dpm-dossier-90s-core.html)
-* [`Y2K / anti-gravity racing`](../../../docs/benchmarks/dpm-dossier-y2k-wipeout.html)
 * [`Gilded age / brass rail`](../../../docs/benchmarks/dpm-dossier-gilded-age.html)
 
 Example:

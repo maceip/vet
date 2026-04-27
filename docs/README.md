@@ -19,10 +19,10 @@ The DPM research artifacts include a GitHub Pages-ready benchmark explainer that
 frames the prefill benchmark as a red-team assessment recreation and documents
 the chart/data improvements needed for credible public claims.
 
-*   [DPM red-team benchmark](./benchmarks/dpm-red-team-benchmark.html)
-    *   [90s core dossier](./benchmarks/dpm-dossier-90s-core.html)
-    *   [Y2K/Wipeout dossier](./benchmarks/dpm-dossier-y2k-wipeout.html)
-    *   [Gilded age dossier](./benchmarks/dpm-dossier-gilded-age.html)
+*   [DPM red-team benchmark - selected Wipeout dossier](./benchmarks/dpm-dossier-y2k-wipeout.html)
+    *   [Base dossier and art-direction comparison](./benchmarks/dpm-red-team-benchmark.html)
+    *   [90s core dossier alternate](./benchmarks/dpm-dossier-90s-core.html)
+    *   [Gilded age dossier alternate](./benchmarks/dpm-dossier-gilded-age.html)
 
 ## API Reference
 
