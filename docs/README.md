@@ -23,7 +23,6 @@ the chart/data improvements needed for credible public claims.
     *   [Base dossier and art-direction comparison](./benchmarks/dpm-red-team-benchmark.html)
     *   [90s core dossier alternate](./benchmarks/dpm-dossier-90s-core.html)
     *   [Gilded age dossier alternate](./benchmarks/dpm-dossier-gilded-age.html)
-    *   [Cognito hosted login branding handoff](./benchmarks/cognito-managed-login-branding.md)
 
 ## API Reference
 
