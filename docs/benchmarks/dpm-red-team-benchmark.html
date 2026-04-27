@@ -18,6 +18,9 @@
         --green: #4fd6a3;
         --yellow: #ffd166;
         --red: #ff6b6b;
+        --cyan: #5be7ff;
+        --violet: #b69cff;
+        --shadow: 0 28px 90px rgba(0, 0, 0, 0.38);
       }
 
       * {
@@ -26,17 +29,33 @@
 
       body {
         margin: 0;
+        min-height: 100vh;
         background:
           radial-gradient(circle at top left, rgba(115, 167, 255, 0.18), transparent 32rem),
+          radial-gradient(circle at 88% 6%, rgba(79, 214, 163, 0.16), transparent 30rem),
+          radial-gradient(circle at 48% 72%, rgba(182, 156, 255, 0.1), transparent 34rem),
           linear-gradient(180deg, #0b1020 0%, #0e1426 48%, #0b1020 100%);
         color: var(--text);
         font: 16px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(169, 181, 208, 0.055) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(169, 181, 208, 0.055) 1px, transparent 1px);
+        background-size: 44px 44px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent 78%);
+      }
+
       main {
         max-width: 1180px;
         margin: 0 auto;
-        padding: 40px 22px 64px;
+        padding: 24px 22px 64px;
       }
 
       h1,
@@ -64,7 +83,70 @@
       }
 
       a {
-        color: var(--blue);
+        color: var(--cyan);
+      }
+
+      .topbar {
+        position: sticky;
+        top: 14px;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 48px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(11, 16, 32, 0.72);
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.24);
+        padding: 10px 14px 10px 18px;
+        backdrop-filter: blur(18px);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--text);
+        font-size: 0.82rem;
+        font-weight: 900;
+        letter-spacing: 0.12em;
+        text-decoration: none;
+        text-transform: uppercase;
+      }
+
+      .brand-mark {
+        width: 28px;
+        height: 28px;
+        border: 1px solid rgba(91, 231, 255, 0.38);
+        border-radius: 50%;
+        background:
+          linear-gradient(135deg, rgba(91, 231, 255, 0.22), rgba(79, 214, 163, 0.08)),
+          radial-gradient(circle, rgba(91, 231, 255, 0.72) 0 3px, transparent 4px);
+        box-shadow: 0 0 24px rgba(91, 231, 255, 0.22);
+      }
+
+      .navlinks {
+        display: flex;
+        justify-content: flex-end;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .navlinks a {
+        border: 1px solid transparent;
+        border-radius: 999px;
+        color: var(--muted);
+        padding: 7px 10px;
+        font-size: 0.82rem;
+        font-weight: 750;
+        text-decoration: none;
+      }
+
+      .navlinks a:hover {
+        border-color: var(--line);
+        background: rgba(255, 255, 255, 0.045);
+        color: var(--text);
       }
 
       .eyebrow {
@@ -76,7 +158,7 @@
       }
 
       .hero {
-        min-height: 68vh;
+        min-height: 76vh;
         display: grid;
         gap: 26px;
         align-content: center;
@@ -85,14 +167,15 @@
       .hero-grid,
       .two-col,
       .chart-grid,
-      .metric-grid {
+      .metric-grid,
+      .review-grid {
         display: grid;
         gap: 18px;
       }
 
       .hero-grid {
         grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.8fr);
-        align-items: end;
+        align-items: center;
       }
 
       .lede {
@@ -102,16 +185,85 @@
       }
 
       .panel {
-        background: rgba(18, 26, 47, 0.88);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.02)),
+          rgba(18, 26, 47, 0.88);
         border: 1px solid var(--line);
         border-radius: 24px;
-        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.25);
+        box-shadow: var(--shadow);
         padding: 22px;
+        backdrop-filter: blur(18px);
       }
 
       .callout {
+        position: relative;
+        overflow: hidden;
         border-color: rgba(79, 214, 163, 0.4);
-        background: linear-gradient(145deg, rgba(79, 214, 163, 0.12), rgba(18, 26, 47, 0.9));
+        background:
+          radial-gradient(circle at 20% 12%, rgba(255, 209, 102, 0.16), transparent 14rem),
+          linear-gradient(145deg, rgba(79, 214, 163, 0.12), rgba(18, 26, 47, 0.9));
+      }
+
+      .callout::after {
+        content: "PENDING";
+        position: absolute;
+        top: 22px;
+        right: -18px;
+        transform: rotate(12deg);
+        border: 2px solid rgba(255, 107, 107, 0.58);
+        border-radius: 12px;
+        color: #ff8f8f;
+        padding: 8px 10px;
+        font-size: 0.72rem;
+        font-weight: 950;
+        letter-spacing: 0.14em;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 28px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        border: 1px solid rgba(91, 231, 255, 0.42);
+        border-radius: 999px;
+        background: linear-gradient(135deg, rgba(91, 231, 255, 0.16), rgba(115, 167, 255, 0.08));
+        color: var(--text);
+        padding: 10px 15px;
+        font-weight: 850;
+        text-decoration: none;
+      }
+
+      .button.secondary {
+        border-color: var(--line);
+        background: rgba(255, 255, 255, 0.045);
+        color: var(--muted);
+      }
+
+      .dossier-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: start;
+        margin-bottom: 24px;
+      }
+
+      .stamp {
+        transform: rotate(7deg);
+        border: 2px solid rgba(255, 107, 107, 0.58);
+        border-radius: 12px;
+        color: #ff8f8f;
+        padding: 8px 10px;
+        font-size: 0.72rem;
+        font-weight: 950;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
       }
 
       .status {
@@ -137,8 +289,10 @@
 
       .hero-card-number {
         display: block;
-        font-size: 3rem;
+        margin: 20px 0 4px;
+        font-size: clamp(4rem, 8vw, 6.5rem);
         font-weight: 900;
+        line-height: 0.85;
         letter-spacing: -0.08em;
       }
 
@@ -146,8 +300,89 @@
         color: var(--muted);
       }
 
+      .microcopy {
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 28px;
+      }
+
+      .kpi {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.04);
+        padding: 16px;
+      }
+
+      .kpi strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 1.5rem;
+        letter-spacing: -0.04em;
+      }
+
+      .signal-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 22px;
+      }
+
+      .signal {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 12px;
+        align-items: start;
+        border: 1px solid rgba(169, 181, 208, 0.14);
+        border-radius: 14px;
+        background: rgba(8, 11, 20, 0.26);
+        padding: 12px;
+      }
+
+      .signal-dot {
+        width: 10px;
+        height: 10px;
+        margin-top: 7px;
+        border-radius: 50%;
+        background: var(--green);
+        box-shadow: 0 0 18px rgba(79, 214, 163, 0.5);
+      }
+
+      .artifact {
+        margin-top: 22px;
+        border: 1px solid rgba(91, 231, 255, 0.18);
+        border-radius: 18px;
+        background: rgba(7, 9, 18, 0.52);
+        padding: 16px;
+      }
+
+      .artifact svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
       section {
         margin-top: 72px;
+        scroll-margin-top: 100px;
+      }
+
+      .section-head {
+        display: grid;
+        grid-template-columns: minmax(0, 0.95fr) minmax(280px, 0.55fr);
+        gap: 22px;
+        align-items: end;
+        margin-bottom: 22px;
+      }
+
+      .section-note {
+        border-left: 2px solid var(--green);
+        color: var(--text);
+        padding: 4px 0 4px 16px;
       }
 
       .two-col {
@@ -164,12 +399,24 @@
       }
 
       .timeline {
+        position: relative;
         display: grid;
         gap: 12px;
         counter-reset: stage;
       }
 
+      .timeline::before {
+        content: "";
+        position: absolute;
+        left: 17px;
+        top: 22px;
+        bottom: 22px;
+        width: 1px;
+        background: linear-gradient(180deg, rgba(91, 231, 255, 0.58), rgba(79, 214, 163, 0.08));
+      }
+
       .timeline-item {
+        position: relative;
         display: grid;
         grid-template-columns: auto minmax(0, 1fr);
         gap: 14px;
@@ -194,6 +441,79 @@
 
       .chart {
         min-height: 420px;
+      }
+
+      .chart-copy {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 18px;
+        align-items: start;
+        border-bottom: 1px solid var(--line);
+        margin: -22px -22px 8px;
+        padding: 22px 22px 0;
+        background: rgba(255, 255, 255, 0.035);
+      }
+
+      .chart-badge {
+        border: 1px solid rgba(115, 167, 255, 0.28);
+        border-radius: 999px;
+        color: var(--blue);
+        padding: 6px 9px;
+        font-size: 0.72rem;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .review-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .review-card {
+        min-height: 242px;
+      }
+
+      .score-ring {
+        display: grid;
+        place-items: center;
+        width: 54px;
+        height: 54px;
+        margin-bottom: 16px;
+        border-radius: 50%;
+        background: conic-gradient(var(--green) calc(var(--score) * 1%), rgba(255, 255, 255, 0.08) 0);
+      }
+
+      .score-ring span {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        background: #11192d;
+        font-size: 0.78rem;
+        font-weight: 900;
+      }
+
+      .baseline-empty {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 18px;
+        align-items: start;
+      }
+
+      .empty-icon {
+        display: grid;
+        place-items: center;
+        width: 64px;
+        height: 64px;
+        border: 1px solid rgba(255, 209, 102, 0.32);
+        border-radius: 18px;
+        background: rgba(255, 209, 102, 0.08);
+        color: var(--yellow);
+        font-size: 1.5rem;
+        font-weight: 950;
       }
 
       table {
@@ -231,6 +551,13 @@
         color: var(--text);
       }
 
+      .source-line {
+        border-top: 1px solid var(--line);
+        margin-top: 16px;
+        padding-top: 14px;
+        font-size: 0.88rem;
+      }
+
       .footer {
         color: var(--muted);
         border-top: 1px solid var(--line);
@@ -240,9 +567,20 @@
       @media (max-width: 900px) {
         .hero-grid,
         .two-col,
+        .section-head,
         .chart-grid,
-        .metric-grid {
+        .metric-grid,
+        .review-grid,
+        .kpi-grid {
           grid-template-columns: 1fr;
+        }
+
+        .topbar {
+          position: relative;
+          top: 0;
+          align-items: flex-start;
+          border-radius: 20px;
+          flex-direction: column;
         }
 
         .chart {
@@ -253,19 +591,41 @@
   </head>
   <body>
     <main>
-      <header class="hero">
+      <nav class="topbar" aria-label="Benchmark sections">
+        <a class="brand" href="#top" aria-label="DPM benchmark top">
+          <span class="brand-mark" aria-hidden="true"></span>
+          DPM dossier
+        </a>
+        <div class="navlinks">
+          <a href="#story">Story</a>
+          <a href="#readiness">Readiness</a>
+          <a href="#design-review">Design review</a>
+          <a href="#baselines">Baselines</a>
+          <a href="#metrics">Data contract</a>
+        </div>
+      </nav>
+
+      <header class="hero" id="top">
         <div class="hero-grid">
           <div>
             <p class="eyebrow">Deterministic Projection Memory benchmark</p>
-            <h1>Can we recreate a red-team assessment and keep the evidence intact?</h1>
+            <h1>Red-team replay, rendered as evidence.</h1>
             <p class="lede">
-              This benchmark should read like an assessor's report, not a generic throughput dashboard:
-              an adversarial case log applies memory pressure, DPM projects the log into a deterministic
-              audit view, and the charts show both system cost and whether the answer remains defensible.
+              This benchmark should feel like an assessor's case file, not a generic throughput dashboard:
+              an adversarial log applies memory pressure, DPM projects it into a deterministic audit view,
+              and every chart separates measured evidence from the capture plan.
             </p>
+            <div class="hero-actions">
+              <a class="button" href="#readiness">Review the evidence stack</a>
+              <a class="button secondary" href="./dpm-red-team-benchmark-data.json">Open data JSON</a>
+            </div>
+            <div class="kpi-grid" id="hero-kpis" aria-label="Benchmark overview metrics"></div>
           </div>
           <aside class="panel callout">
-            <span class="status" id="status-chip">Loading status</span>
+            <div class="dossier-title">
+              <span class="status" id="status-chip">Loading status</span>
+              <span class="stamp">Not claimed until measured</span>
+            </div>
             <p>
               <span class="hero-card-number" id="scenario-count">--</span>
               benchmark story stages
@@ -273,11 +633,46 @@
             <p class="muted" id="benchmark-status">
               Loading benchmark metadata...
             </p>
+            <div class="signal-list" id="hero-signals"></div>
+            <div class="artifact" aria-label="Red-team benchmark flow illustration">
+              <svg viewBox="0 0 560 280" role="img" aria-labelledby="flow-title flow-desc">
+                <title id="flow-title">DPM red-team benchmark flow</title>
+                <desc id="flow-desc">Adversarial log events flow into a deterministic projection and then into scored evidence checks.</desc>
+                <defs>
+                  <linearGradient id="flowGrad" x1="0" x2="1" y1="0" y2="1">
+                    <stop offset="0" stop-color="#5be7ff" stop-opacity="0.9" />
+                    <stop offset="1" stop-color="#4fd6a3" stop-opacity="0.75" />
+                  </linearGradient>
+                </defs>
+                <rect x="16" y="24" width="528" height="232" rx="28" fill="#0b1020" stroke="#31405f" />
+                <g fill="none" stroke="#263b63" stroke-width="1">
+                  <path d="M56 64H504" />
+                  <path d="M56 110H504" />
+                  <path d="M56 156H504" />
+                  <path d="M56 202H504" />
+                </g>
+                <circle cx="92" cy="92" r="30" fill="#14213a" stroke="#5be7ff" />
+                <circle cx="280" cy="140" r="44" fill="#14213a" stroke="url(#flowGrad)" stroke-width="2" />
+                <circle cx="468" cy="188" r="30" fill="#14213a" stroke="#4fd6a3" />
+                <path d="M122 98 C180 104, 204 132, 236 138" stroke="url(#flowGrad)" stroke-width="4" fill="none" />
+                <path d="M324 146 C374 154, 402 180, 438 184" stroke="url(#flowGrad)" stroke-width="4" fill="none" />
+                <g fill="#f6f1e8" font-family="Inter, system-ui" font-weight="800" font-size="13">
+                  <text x="57" y="150">Adversarial log</text>
+                  <text x="228" y="216">DPM projection</text>
+                  <text x="410" y="132">Evidence checks</text>
+                </g>
+                <g fill="#b8bfd6" font-family="Inter, system-ui" font-size="11">
+                  <text x="58" y="168">facts, corrections, citations</text>
+                  <text x="222" y="234">schema anchored replay</text>
+                  <text x="396" y="150">quality plus latency</text>
+                </g>
+              </svg>
+            </div>
           </aside>
         </div>
       </header>
 
-      <section class="two-col">
+      <section class="two-col" id="story">
         <div>
           <p class="eyebrow">Story arc</p>
           <h2>Tell the benchmark as a red-team recreation.</h2>
@@ -291,40 +686,61 @@
         <div class="timeline" id="scenario-timeline"></div>
       </section>
 
-      <section>
-        <div class="two-col">
+      <section id="readiness">
+        <div class="section-head">
           <div>
-            <p class="eyebrow">Assessment</p>
-            <h2>Current chart/data readiness</h2>
+            <p class="eyebrow">Interactive evidence</p>
+            <h2>Charts now have editorial context and uncertainty labels.</h2>
             <p class="muted">
               The existing benchmark harness records prefill timing data, but the public artifact needs
               clearer narrative labels and correctness metrics before it can support strong research claims.
             </p>
           </div>
-          <div class="panel">
-            <p>
-              <strong>Design direction:</strong> pair each interactive chart with an interpretation sentence,
-              status labels for pending measurements, and raw-data links so readers can separate measured
-              evidence from the capture plan.
-            </p>
-          </div>
+          <p class="section-note">
+            The visual system emphasizes what is measured, what is pending, and why each metric belongs in the research claim.
+          </p>
         </div>
         <div class="chart-grid">
           <div class="panel">
-            <h3>Readiness by evidence area</h3>
+            <div class="chart-copy">
+              <div>
+                <h3>Readiness by evidence area</h3>
+                <p class="muted">Hover each bar to see the design/data recommendation behind the readiness score.</p>
+              </div>
+              <span class="chart-badge">Audit view</span>
+            </div>
             <div class="chart" id="readiness-chart"></div>
           </div>
           <div class="panel">
-            <h3>Recommended metric stack</h3>
+            <div class="chart-copy">
+              <div>
+                <h3>Recommended metric stack</h3>
+                <p class="muted">Speed is necessary, but correctness and replay metrics carry the research claim.</p>
+              </div>
+              <span class="chart-badge">Quality lens</span>
+            </div>
             <div class="chart" id="metric-chart"></div>
           </div>
         </div>
       </section>
 
+      <section id="design-review">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Full design and art review</p>
+            <h2>Upgrade the page from chart gallery to research artifact.</h2>
+          </div>
+          <p class="section-note">
+            These cards capture the art direction decisions applied in this revision and the remaining data-dependent work.
+          </p>
+        </div>
+        <div class="review-grid" id="design-review-cards"></div>
+      </section>
+
       <section>
         <p class="eyebrow">Chart critique</p>
         <h2>What to improve next</h2>
-        <div class="panel">
+        <div class="panel table-wrap">
           <table>
             <thead>
               <tr>
@@ -339,23 +755,34 @@
         </div>
       </section>
 
-      <section>
-        <p class="eyebrow">Measured baselines</p>
-        <h2>Performance charts will render automatically when hardware runs are checked in.</h2>
+      <section id="baselines">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Measured baselines</p>
+            <h2>Performance charts will render automatically when hardware runs are checked in.</h2>
+          </div>
+          <p class="section-note">
+            The page is intentionally honest: no p50/p95 claims are shown until owned hardware results exist.
+          </p>
+        </div>
         <div class="panel">
-          <div id="baseline-empty">
-            <p>
+          <div id="baseline-empty" class="baseline-empty">
+            <div class="empty-icon">!</div>
+            <div>
+              <h3>Baseline capture pending</h3>
+              <p class="muted">
               No hardware baseline runs are present yet. Add result objects from
               <code>tools/benchmarks/dpm_prefill_bench</code> to
               <code>dpm-red-team-benchmark-data.json</code> and this section will show p50/p95 wall time,
               throughput, prompt size, backend, model, and sample count.
-            </p>
+              </p>
+            </div>
           </div>
           <div class="chart" id="baseline-chart" hidden></div>
         </div>
       </section>
 
-      <section>
+      <section id="metrics">
         <p class="eyebrow">Data contract</p>
         <h2>Metrics that make the research claim credible</h2>
         <div class="metric-grid" id="metric-cards"></div>
@@ -382,16 +809,54 @@
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
         font: { color: "#edf2ff", family: "Inter, ui-sans-serif, system-ui" },
-        margin: { t: 28, r: 18, b: 72, l: 58 },
-        xaxis: { gridcolor: "#26324f", zerolinecolor: "#26324f" },
-        yaxis: { gridcolor: "#26324f", zerolinecolor: "#26324f" },
-        hoverlabel: { bgcolor: "#121a2f", bordercolor: "#73a7ff" },
+        margin: { t: 34, r: 22, b: 74, l: 64 },
+        xaxis: { gridcolor: "rgba(169, 181, 208, 0.18)", zerolinecolor: "rgba(169, 181, 208, 0.24)" },
+        yaxis: { gridcolor: "rgba(169, 181, 208, 0.18)", zerolinecolor: "rgba(169, 181, 208, 0.24)" },
+        hoverlabel: { bgcolor: "#121a2f", bordercolor: "#5be7ff" },
       };
 
       const pct = new Intl.NumberFormat("en", { maximumFractionDigits: 0 });
 
       function text(node, value) {
         document.querySelector(node).textContent = value;
+      }
+
+      function renderHeroKpis(data) {
+        const values = [
+          { label: "Scenario stages", value: data.scenario.length, tone: "red-team flow" },
+          { label: "Default log", value: "27k chars", tone: "adversarial input" },
+          { label: "Memory budget", value: "5,352 chars", tone: "projection pressure" },
+          { label: "Baselines", value: data.baseline_runs.length || "pending", tone: "measurement state" },
+        ];
+        document.querySelector("#hero-kpis").innerHTML = values
+          .map(
+            (item) => `
+              <article class="kpi">
+                <strong>${item.value}</strong>
+                <span class="microcopy">${item.label}</span><br />
+                <span class="microcopy">${item.tone}</span>
+              </article>
+            `,
+          )
+          .join("");
+      }
+
+      function renderHeroSignals(data) {
+        const signals = [
+          data.benchmark.hypothesis,
+          "Charts distinguish measured evidence from recommended capture work.",
+          "Hardware baselines stay hidden until checked-in result JSON is present.",
+        ];
+        document.querySelector("#hero-signals").innerHTML = signals
+          .map(
+            (signal) => `
+              <div class="signal">
+                <span class="signal-dot" aria-hidden="true"></span>
+                <span class="microcopy">${signal}</span>
+              </div>
+            `,
+          )
+          .join("");
       }
 
       function renderTimeline(scenario) {
@@ -403,7 +868,7 @@
                 <div>
                   <h3>${item.stage}</h3>
                   <p>${item.description}</p>
-                  <p class="muted">${item.evidence}</p>
+                  <p class="microcopy">Evidence: ${item.evidence}</p>
                 </div>
               </article>
             `,
@@ -434,7 +899,7 @@
               mode: "markers",
               y: readiness.map((item) => item.area).reverse(),
               x: readiness.map((item) => item.target).reverse(),
-              marker: { color: "#73a7ff", symbol: "line-ns-open", size: 14, line: { width: 3 } },
+              marker: { color: "#5be7ff", symbol: "line-ns-open", size: 14, line: { width: 3 } },
               hovertemplate: "Target: %{x}/5<extra></extra>",
             },
           ],
@@ -449,7 +914,7 @@
                 y: readiness.length - 0.5,
                 text: "Target",
                 showarrow: false,
-                font: { color: "#73a7ff" },
+                font: { color: "#5be7ff" },
               },
             ],
           },
@@ -478,8 +943,8 @@
               theta: ["Prefill wall time", "Prefill throughput"],
               fill: "toself",
               name: "Performance evidence captured by runner",
-              marker: { color: "#73a7ff" },
-              line: { color: "#73a7ff", width: 3 },
+              marker: { color: "#78a8ff" },
+              line: { color: "#78a8ff", width: 3 },
               hovertemplate: "<b>%{theta}</b><br>Runner source exists<extra></extra>",
             },
           ],
@@ -513,6 +978,21 @@
           .join("");
       }
 
+      function renderDesignReview(items) {
+        document.querySelector("#design-review-cards").innerHTML = items
+          .map(
+            (item) => `
+              <article class="panel review-card">
+                <div class="score-ring" style="--score: ${item.score * 20}"><span>${item.score}/5</span></div>
+                <h3>${item.area}</h3>
+                <p class="microcopy"><strong>Review:</strong> ${item.review}</p>
+                <p class="microcopy"><strong>Upgrade:</strong> ${item.upgrade}</p>
+              </article>
+            `,
+          )
+          .join("");
+      }
+
       function summarizeRun(run) {
         const wall = run.iterations.map((iteration) => iteration.wall_ms).sort((a, b) => a - b);
         const p50 = wall[Math.floor((wall.length - 1) * 0.5)];
@@ -539,6 +1019,7 @@
           return;
         }
         document.querySelector("#baseline-empty").hidden = true;
+        document.querySelector("#baseline-panel").hidden = false;
         document.querySelector("#baseline-chart").hidden = false;
         const summaries = runs.map(summarizeRun);
         Plotly.newPlot(
@@ -549,7 +1030,7 @@
               name: "p50 wall time",
               x: summaries.map((item) => item.label),
               y: summaries.map((item) => item.p50),
-              marker: { color: "#73a7ff" },
+              marker: { color: "#78a8ff" },
               customdata: summaries.map((item) => [item.samples, item.promptChars, item.avgThroughput]),
               hovertemplate:
                 "<b>%{x}</b><br>p50: %{y:.1f} ms<br>Samples: %{customdata[0]}<br>Prompt chars: %{customdata[1]}<br>Avg tok/s: %{customdata[2]:.1f}<extra></extra>",
@@ -581,7 +1062,7 @@
                 <h3>${metric.metric}</h3>
                 <p><strong>${metric.unit}</strong></p>
                 <p class="muted">${metric.why_it_matters}</p>
-                <p class="muted">Source: ${metric.source}</p>
+                <p class="muted source-line">Source: ${metric.source}</p>
               </article>
             `,
           )
@@ -594,9 +1075,12 @@
           text("#scenario-count", pct.format(data.scenario.length));
           text("#benchmark-status", data.benchmark.current_status);
           text("#status-chip", data.baseline_runs.length ? "Measured baselines present" : "Baseline capture pending");
+          renderHeroKpis(data);
+          renderHeroSignals(data);
           renderTimeline(data.scenario);
           renderReadiness(data.readiness);
           renderMetricStack(data.recommended_metrics);
+          renderDesignReview(data.design_review);
           renderAssessmentTable(data.chart_assessment);
           renderBaselines(data.baseline_runs);
           renderMetricCards(data.recommended_metrics);

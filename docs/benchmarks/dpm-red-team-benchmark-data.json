@@ -98,6 +98,32 @@
       "data_needed": "Multiple iterations per backend and stable hardware labels."
     }
   ],
+  "design_review": [
+    {
+      "area": "Narrative hierarchy",
+      "score": 4,
+      "review": "The previous page had the right sections, but the first screen still felt like a generic dashboard.",
+      "upgrade": "Use a dossier-style hero, stronger headline, persistent section navigation, and status language that frames the benchmark as a red-team replay."
+    },
+    {
+      "area": "Art direction",
+      "score": 4,
+      "review": "The dark chart theme was clean but lacked a distinctive visual metaphor for assessment, evidence, and replay.",
+      "upgrade": "Introduce a case-file aesthetic with grid texture, luminous evidence colors, stamped pending-state labels, and a compact SVG flow diagram."
+    },
+    {
+      "area": "Chart context",
+      "score": 4,
+      "review": "Interactive charts worked, but titles alone did not explain how to interpret them or what evidence quality they represented.",
+      "upgrade": "Wrap charts in editorial panels with chart badges, interpretation copy, hover guidance, and explicit measurement-state labels."
+    },
+    {
+      "area": "Trust and provenance",
+      "score": 3,
+      "review": "The page avoided fabricated numbers, but the pending-baseline state needed to be more visually prominent.",
+      "upgrade": "Keep the measured-baseline chart hidden until result JSON exists and make the capture-pending state visible in the hero and baseline section."
+    }
+  ],
   "recommended_metrics": [
     {
       "metric": "Prefill wall time",
