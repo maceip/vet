@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DPM Dossier - Y2K Wipeout</title>
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <link rel="stylesheet" href="./dpm-dossier-themes.css" />
   </head>
   <body class="theme-y2k" data-theme="y2k">
@@ -176,6 +178,41 @@
         </div>
       </section>
 
+      <section id="react-explorers">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">React telemetry modules</p>
+            <h2>Interactive replay and evidence coverage components.</h2>
+          </div>
+          <p class="section-note">
+            These are placeholder React components for the future benchmark suite: one lets readers scrub a
+            red-team scenario replay, the other shows how planted evidence flows into projection and final answer.
+          </p>
+        </div>
+        <div class="react-component-grid">
+          <article class="panel react-module">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Component 01</p>
+                <h2>Scenario replay explorer</h2>
+              </div>
+              <span class="tag">interactive</span>
+            </div>
+            <div id="scenario-replay-root"></div>
+          </article>
+          <article class="panel react-module">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Component 02</p>
+                <h2>Evidence coverage visualization</h2>
+              </div>
+              <span class="tag">coverage</span>
+            </div>
+            <div id="evidence-coverage-root"></div>
+          </article>
+        </div>
+      </section>
+
       <section>
         <div class="section-copy">
           <p class="eyebrow">Design review</p>
@@ -224,5 +261,6 @@
       <section class="metric-grid" id="metric-cards"></section>
     </main>
     <script src="./dpm-dossier-themes.js"></script>
+    <script src="./dpm-react-components.js"></script>
   </body>
 </html>
