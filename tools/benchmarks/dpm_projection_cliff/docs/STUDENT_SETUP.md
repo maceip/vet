@@ -4,6 +4,12 @@ End-to-end run of the Phase-2 DPM cliff bench (baselines + DPM checkpoint
 substrate) on the shared infrastructure. Total time: ~10 minutes the
 first run.
 
+> **Status**: the loaner-AWS-keys flow below is being replaced with a
+> Cognito + passkey + `dpm-bench login` CLI flow (no AWS keys). See
+> [CAPRICORN.md §10](CAPRICORN.md) for the rollout plan. Until that
+> ships, the AWS-keys flow below works for the existing 119-case
+> baseline run.
+
 > **Loaner mode**: you're using the shared `dpm-bench-loaner` AWS user
 > and the shared S3 Express bucket `dpm-cliff-bench--eun1-az1--x-s3` in
 > `eu-north-1`. We'll migrate to per-student IAM later.

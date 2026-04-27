@@ -8,6 +8,8 @@ render/package-lock.json
 render/out/
 corpora/all_119/
 corpora/cyber_incidents/
+corpora/external/
+corpora/capricorn/
 remote_results/
 remote_smoke/
 results_*.jsonl
