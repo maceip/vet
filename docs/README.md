@@ -13,6 +13,14 @@ added recently and still under active development.
 *   [Build and Run using Bazel](./getting-started/build-and-run.md)
 *   [(preliminary) CMake](./getting-started/cmake.md)
 
+## Research Benchmarks
+
+The DPM research artifacts include a GitHub Pages-ready benchmark explainer that
+frames the prefill benchmark as a red-team assessment recreation and documents
+the chart/data improvements needed for credible public claims.
+
+*   [DPM red-team benchmark](./benchmarks/dpm-red-team-benchmark.html)
+
 ## API Reference
 
 Here you will find detailed information about the LiteRT-LM APIs.

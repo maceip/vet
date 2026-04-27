@@ -7,6 +7,11 @@ approximately 27k-character synthetic event log.
 The benchmark is a follow-up workstream for XNNPack and ML Drift tuning. It
 does not gate Phase 1 correctness.
 
+The public benchmark story and chart assessment live in
+[`docs/benchmarks/dpm-red-team-benchmark.html`](../../../docs/benchmarks/dpm-red-team-benchmark.html).
+That page is intentionally wired to show a pending-baseline state until
+hardware-owned result JSON is checked in.
+
 Example:
 
 ```sh

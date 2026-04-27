@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "page": "dpm-red-team-assessment",
+  "last_updated": "2026-04-27",
+  "benchmark": {
+    "name": "DPM red-team assessment recreation",
+    "one_liner": "Recreate a regulated-domain red-team assessment with deterministic projection memory, then show whether the agent preserves evidence, cites facts, and recovers from drift under tight memory budgets.",
+    "hypothesis": "A stateless DPM agent should retain audit-critical facts and produce reproducible decisions while reducing prefill cost versus summary-based memory.",
+    "current_status": "Benchmark harness exists; checked-in hardware baselines are still pending."
+  },
+  "scenario": [
+    {
+      "stage": "Adversarial case log",
+      "description": "Synthetic insurance-liability events include invoices, policy limits, corrections, and compliance anchors.",
+      "evidence": "dpm_prefill_bench generates an approximately 27k-character event log."
+    },
+    {
+      "stage": "Memory pressure",
+      "description": "The projection receives a constrained memory budget and must keep legally material facts.",
+      "evidence": "Default memory_budget_chars is 5352."
+    },
+    {
+      "stage": "Deterministic projection",
+      "description": "The raw log is reframed into a schema-anchored JSON view with one-based citations.",
+      "evidence": "Projection prompt schema includes Facts, Reasoning, and Compliance arrays."
+    },
+    {
+      "stage": "Red-team checks",
+      "description": "The benchmark should score retained facts, citation integrity, contradiction handling, and reproducibility.",
+      "evidence": "Correctness scoring is recommended but not yet checked in with the prefill harness."
+    },
+    {
+      "stage": "Hardware comparison",
+      "description": "The same scenario should be run across CPU/XNNPack and NPU/ML Drift backends.",
+      "evidence": "Baseline JSON is pending hardware-owned measurements."
+    }
+  ],
+  "readiness": [
+    {
+      "area": "Story framing",
+      "score": 2,
+      "target": 5,
+      "status": "needs narrative arc",
+      "recommendation": "Lead with the red-team recreation: what an assessor tried to break, what evidence mattered, and how DPM responded."
+    },
+    {
+      "area": "Interactive presentation",
+      "score": 3,
+      "target": 5,
+      "status": "good chart affordances",
+      "recommendation": "Add callouts, uncertainty labels, and chart annotations that explain why each metric matters."
+    },
+    {
+      "area": "Latency baselines",
+      "score": 1,
+      "target": 5,
+      "status": "pending hardware",
+      "recommendation": "Capture CPU/XNNPack and NPU/ML Drift runs with model, device, delegate cache, warmup, and iteration metadata."
+    },
+    {
+      "area": "Correctness scoring",
+      "score": 1,
+      "target": 5,
+      "status": "not yet represented",
+      "recommendation": "Add fact-retention, citation-validity, contradiction-resolution, and reproducibility scores next to speed charts."
+    },
+    {
+      "area": "Data provenance",
+      "score": 2,
+      "target": 5,
+      "status": "partial metadata",
+      "recommendation": "Publish raw result JSON and summary aggregates with commit SHA, model hash, hardware SKU, and run timestamp."
+    }
+  ],
+  "chart_assessment": [
+    {
+      "theme": "Tell the benchmark story",
+      "today": "Charts risk reading as generic performance visuals without the red-team setup.",
+      "improve": "Use a top-to-bottom narrative: adversarial log, memory pressure, DPM projection, assessor checks, hardware cost.",
+      "data_needed": "Scenario manifest and scored red-team rubric."
+    },
+    {
+      "theme": "Visual hierarchy",
+      "today": "Interactive charts are high quality, but the first screen should identify the headline result and evidence quality.",
+      "improve": "Add a hero claim, confidence labels, status chips, and short interpretation text beside each chart.",
+      "data_needed": "Headline metrics with confidence intervals or pending-state labels."
+    },
+    {
+      "theme": "Compare speed with quality",
+      "today": "Prefill throughput alone cannot prove the memory system passes the assessment.",
+      "improve": "Pair latency/tokens-per-second with retained-fact accuracy, citation validity, and deterministic replay rate.",
+      "data_needed": "Evaluator outputs over repeated seeded runs."
+    },
+    {
+      "theme": "Expose reproducibility",
+      "today": "The benchmark runner can repeat iterations, but the page does not yet surface run-to-run variance.",
+      "improve": "Show p50/p95, min/max, sample count, and a raw-run hover table for each backend.",
+      "data_needed": "Multiple iterations per backend and stable hardware labels."
+    }
+  ],
+  "recommended_metrics": [
+    {
+      "metric": "Prefill wall time",
+      "unit": "ms",
+      "why_it_matters": "Shows whether stateless replay is usable under assessor-style long logs.",
+      "source": "dpm_prefill_bench iterations[].wall_ms"
+    },
+    {
+      "metric": "Prefill throughput",
+      "unit": "tokens/sec",
+      "why_it_matters": "Normalizes speed across prompt sizes and models.",
+      "source": "iterations[].prefill_turns[].tokens_per_second"
+    },
+    {
+      "metric": "Fact retention",
+      "unit": "percent",
+      "why_it_matters": "Validates that compressed projection keeps audit-critical facts.",
+      "source": "red-team evaluator rubric"
+    },
+    {
+      "metric": "Citation validity",
+      "unit": "percent",
+      "why_it_matters": "Prevents unverifiable claims in regulated decisions.",
+      "source": "citation checker over one-based event references"
+    },
+    {
+      "metric": "Replay determinism",
+      "unit": "matching outputs / runs",
+      "why_it_matters": "Supports audit replay and legal defensibility.",
+      "source": "repeated seeded projection runs"
+    },
+    {
+      "metric": "Correction recovery",
+      "unit": "percent",
+      "why_it_matters": "Measures whether correction events repair state before the next decision.",
+      "source": "adversarial correction scenarios"
+    }
+  ],
+  "baseline_runs": []
+}
