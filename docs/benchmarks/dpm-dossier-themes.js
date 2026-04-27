@@ -36,6 +36,15 @@ const THEME_COPY = {
 
 const THEME = document.body.dataset.theme || "nineties";
 const COPY = THEME_COPY[THEME];
+const THEME_STYLES = getComputedStyle(document.body);
+const THEME_INK = THEME_STYLES.getPropertyValue("--ink").trim() || "#111119";
+const THEME_MUTED = THEME_STYLES.getPropertyValue("--muted").trim() || "#34343f";
+const THEME_LINE = THEME_STYLES.getPropertyValue("--line").trim() || "rgba(17, 17, 25, 0.3)";
+const THEME_PANEL = THEME_STYLES.getPropertyValue("--panel").trim() || "rgba(255, 255, 255, 0.72)";
+const THEME_DISPLAY_FONT =
+  THEME_STYLES.getPropertyValue("--font-display").trim() || 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif';
+const THEME_BODY_FONT =
+  THEME_STYLES.getPropertyValue("--font-body").trim() || 'Inter, ui-sans-serif, system-ui, sans-serif';
 
 const plotConfig = {
   displaylogo: false,
@@ -46,11 +55,24 @@ const plotConfig = {
 const layoutBase = {
   paper_bgcolor: "rgba(0,0,0,0)",
   plot_bgcolor: "rgba(0,0,0,0)",
-  font: { color: "var(--ink)", family: "Inter, ui-sans-serif, system-ui" },
-  margin: { t: 30, r: 18, b: 72, l: 58 },
-  xaxis: { gridcolor: "rgba(80, 80, 80, 0.22)", zerolinecolor: "rgba(80, 80, 80, 0.28)" },
-  yaxis: { gridcolor: "rgba(80, 80, 80, 0.22)", zerolinecolor: "rgba(80, 80, 80, 0.28)" },
-  hoverlabel: { bgcolor: "rgba(20, 20, 30, 0.94)", bordercolor: COPY.accent },
+  font: { color: THEME_INK, family: THEME_BODY_FONT },
+  margin: { t: 38, r: 24, b: 78, l: 64 },
+  xaxis: {
+    gridcolor: THEME_LINE,
+    zerolinecolor: THEME_LINE,
+    linecolor: THEME_INK,
+    tickfont: { color: THEME_MUTED, family: THEME_BODY_FONT },
+    titlefont: { color: THEME_INK, family: THEME_DISPLAY_FONT, size: 15 },
+  },
+  yaxis: {
+    gridcolor: THEME_LINE,
+    zerolinecolor: THEME_LINE,
+    linecolor: THEME_INK,
+    tickfont: { color: THEME_MUTED, family: THEME_BODY_FONT },
+    titlefont: { color: THEME_INK, family: THEME_DISPLAY_FONT, size: 15 },
+  },
+  hoverlabel: { bgcolor: THEME_PANEL, bordercolor: COPY.accent, font: { color: THEME_INK, family: THEME_BODY_FONT } },
+  legend: { font: { color: THEME_INK, family: THEME_BODY_FONT } },
 };
 
 const number = new Intl.NumberFormat("en", { maximumFractionDigits: 0 });
@@ -161,6 +183,7 @@ function renderReadiness(readiness) {
       xaxis: { ...layoutBase.xaxis, range: [0, 5], title: "Evidence readiness score" },
       yaxis: { ...layoutBase.yaxis, automargin: true },
       annotations: [{ x: 4.72, y: readiness.length - 0.5, text: "target", showarrow: false, font: { color: COPY.accent } }],
+      title: { text: "READINESS VECTOR", font: { color: THEME_INK, family: THEME_DISPLAY_FONT, size: 18 }, x: 0.02 },
     },
     plotConfig,
   );
@@ -197,11 +220,12 @@ function renderMetricStack(metrics) {
       margin: { t: 44, r: 58, b: 48, l: 58 },
       polar: {
         bgcolor: "rgba(0,0,0,0)",
-        radialaxis: { visible: false, range: [0, 5], gridcolor: "rgba(80,80,80,0.22)" },
-        angularaxis: { gridcolor: "rgba(80,80,80,0.22)" },
+        radialaxis: { visible: false, range: [0, 5], gridcolor: THEME_LINE },
+        angularaxis: { gridcolor: THEME_LINE, tickfont: { color: THEME_INK, family: THEME_BODY_FONT } },
       },
       showlegend: true,
-      legend: { orientation: "h", y: -0.18 },
+      legend: { orientation: "h", y: -0.18, font: { color: THEME_INK, family: THEME_BODY_FONT } },
+      title: { text: "QUALITY LOCK", font: { color: THEME_INK, family: THEME_DISPLAY_FONT, size: 18 }, x: 0.02 },
     },
     plotConfig,
   );
@@ -298,7 +322,12 @@ function renderBaselines(runs) {
       { type: "bar", name: "p50 wall time", x: summaries.map((item) => item.label), y: summaries.map((item) => item.p50), marker: { color: COPY.accent } },
       { type: "bar", name: "p95 wall time", x: summaries.map((item) => item.label), y: summaries.map((item) => item.p95), marker: { color: COPY.warn } },
     ],
-    { ...layoutBase, barmode: "group", yaxis: { ...layoutBase.yaxis, title: "Wall time (ms)" } },
+    {
+      ...layoutBase,
+      barmode: "group",
+      yaxis: { ...layoutBase.yaxis, title: "Wall time (ms)" },
+      title: { text: "BASELINE TELEMETRY", font: { color: THEME_INK, family: THEME_DISPLAY_FONT, size: 18 }, x: 0.02 },
+    },
     plotConfig,
   );
 }
