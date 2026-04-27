@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DPM Dossier - Gilded Age USA</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <link rel="stylesheet" href="./dpm-dossier-themes.css" />
+  </head>
+  <body class="theme-gilded" data-theme="gilded">
+    <main>
+      <nav class="nav" aria-label="Dossier variants">
+        <a class="brand" href="./dpm-red-team-benchmark.html">DPM dossier</a>
+        <div class="nav-links">
+          <a href="./dpm-dossier-90s-core.html">90s Core</a>
+          <a href="./dpm-dossier-y2k-wipeout.html">Y2K Wipeout</a>
+        </div>
+      </nav>
+
+      <header class="hero">
+        <div class="hero-grid">
+          <section>
+            <p class="eyebrow">Version 03 / brass rail audit ledger</p>
+            <h1>The red-team assessment, cast in brass.</h1>
+            <p class="lede">
+              A civic-industrial treatment for the benchmark: locomotive force, gold-leaf ledger panels,
+              Frank Lloyd Wright geometry, and Yamasaki-style vertical rhythm around the evidence story.
+            </p>
+            <div class="actions">
+              <a class="button" href="#evidence">Inspect evidence</a>
+              <a class="button secondary" href="./dpm-red-team-benchmark-data.json">Open JSON ledger</a>
+            </div>
+          </section>
+          <aside class="dossier-card">
+            <div class="status" id="status-chip">Loading status</div>
+            <div class="art gilded-stage" aria-label="Gilded benchmark art">
+              <svg viewBox="0 0 720 460" role="img" aria-labelledby="gilded-title gilded-desc">
+                <title id="gilded-title">Gilded DPM benchmark locomotive seal</title>
+                <desc id="gilded-desc">A gold ornamental panel with rail lines, a locomotive wheel, and vertical architectural fins.</desc>
+                <defs>
+                  <linearGradient id="gold" x1="0" x2="1" y1="0" y2="1">
+                    <stop offset="0" stop-color="#fff4bf" />
+                    <stop offset="0.42" stop-color="#d5a642" />
+                    <stop offset="1" stop-color="#7a431e" />
+                  </linearGradient>
+                  <radialGradient id="brass" cx="50%" cy="45%" r="60%">
+                    <stop offset="0" stop-color="#fff2b0" />
+                    <stop offset="0.48" stop-color="#b8792b" />
+                    <stop offset="1" stop-color="#3b1d10" />
+                  </radialGradient>
+                </defs>
+                <rect x="24" y="24" width="672" height="412" rx="14" fill="#26110b" stroke="url(#gold)" stroke-width="5" />
+                <rect x="54" y="54" width="612" height="352" rx="4" fill="#140b09" stroke="#9d7130" stroke-width="2" />
+                <g stroke="#d5a642" stroke-width="2" fill="none" opacity="0.82">
+                  <path d="M90 94H630M90 366H630M94 90V370M626 90V370" />
+                  <path d="M124 124h472v212H124z" />
+                  <path d="M154 154h412v152H154z" />
+                  <path d="M90 230h540M360 90v280" />
+                </g>
+                <g fill="#d5a642" opacity="0.92">
+                  <rect x="190" y="78" width="12" height="304" />
+                  <rect x="226" y="78" width="8" height="304" />
+                  <rect x="486" y="78" width="8" height="304" />
+                  <rect x="522" y="78" width="12" height="304" />
+                </g>
+                <circle cx="360" cy="230" r="92" fill="url(#brass)" stroke="#fff4bf" stroke-width="4" />
+                <circle cx="360" cy="230" r="56" fill="#140b09" stroke="#d5a642" stroke-width="3" />
+                <circle cx="360" cy="230" r="18" fill="#fff4bf" />
+                <g stroke="#fff4bf" stroke-width="7">
+                  <path d="M360 138v184M268 230h184M295 165l130 130M425 165 295 295" />
+                </g>
+                <g fill="#8f4b22" stroke="#d5a642" stroke-width="2">
+                  <rect x="198" y="262" width="324" height="28" rx="6" />
+                  <rect x="240" y="218" width="168" height="46" rx="6" />
+                  <rect x="420" y="198" width="58" height="66" rx="6" />
+                  <path d="M508 238h34l24 24h-58z" />
+                </g>
+                <g stroke="#d5a642" stroke-width="8" stroke-linecap="round">
+                  <path d="M118 330h484" />
+                  <path d="M138 348h444" />
+                </g>
+                <g fill="#fff4bf" font-family="Georgia, serif" text-anchor="middle">
+                  <text x="360" y="126" font-size="22" font-weight="700">DETERMINISTIC PROJECTION MEMORY</text>
+                  <text x="360" y="344" font-size="16" letter-spacing="3">RED TEAM ASSESSMENT LEDGER</text>
+                </g>
+              </svg>
+              <p class="art-label">Brass rail ledger / assessment seal</p>
+            </div>
+            <div class="number" id="scenario-count">--</div>
+            <p class="microcopy" id="benchmark-status">Loading benchmark status...</p>
+            <div class="signal-list" id="hero-signals"></div>
+          </aside>
+        </div>
+      </header>
+
+      <section class="kpis" id="kpi-grid" aria-label="Benchmark overview"></section>
+
+      <section id="story" class="split">
+        <div>
+          <p class="eyebrow">Assay sequence</p>
+          <h2>Five stations on the assessment railway.</h2>
+          <p class="muted">
+            Each stage is treated like a ledger entry: evidence received, pressure applied, projection sealed,
+            checks performed, and hardware claims withheld until measured.
+          </p>
+        </div>
+        <div class="timeline" id="scenario-list"></div>
+      </section>
+
+      <section id="evidence">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Evidence gauges</p>
+            <h2>Brass instruments for readiness and metric coverage.</h2>
+          </div>
+          <p class="note">The charts keep the ornate treatment anchored in inspectable evidence and explicit pending states.</p>
+        </div>
+        <div class="chart-grid">
+          <article class="panel">
+            <h3>Readiness by evidence area</h3>
+            <div class="chart" id="readiness-chart"></div>
+          </article>
+          <article class="panel">
+            <h3>Recommended metric stack</h3>
+            <div class="chart" id="metric-chart"></div>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Ledger notes</p>
+            <h2>Design review and chart critique.</h2>
+          </div>
+          <p class="note">Gold, brass, and rail motifs are used as trust cues; the data still determines what can be claimed.</p>
+        </div>
+        <div class="variant-grid" id="review-grid"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Chart critique</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Theme</th>
+                <th>Today</th>
+                <th>Upgrade</th>
+                <th>Data needed</th>
+              </tr>
+            </thead>
+            <tbody id="assessment-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Measured baselines</h2>
+        <div id="baseline-empty" class="empty-state">Baseline capture pending. Add owned hardware JSON to unlock p50/p95 charts.</div>
+        <div class="chart" id="baseline-chart" hidden></div>
+      </section>
+
+      <section>
+        <p class="eyebrow">Data contract</p>
+        <h2>The metric ledger behind the public story.</h2>
+        <div class="metric-grid" id="metric-cards"></div>
+      </section>
+    </main>
+    <script src="./dpm-dossier-themes.js"></script>
+  </body>
+</html>

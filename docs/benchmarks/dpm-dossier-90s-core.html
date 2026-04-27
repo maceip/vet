@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DPM Dossier - 90s Core</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <link rel="stylesheet" href="./dpm-dossier-themes.css" />
+  </head>
+  <body class="theme-90s" data-theme="nineties" data-theme-label="90s core / isometric red-team dossier">
+    <main>
+      <nav class="nav" aria-label="Dossier variants">
+        <a class="brand" href="./dpm-red-team-benchmark.html">DPM dossier</a>
+        <div class="nav-links">
+          <a href="./dpm-dossier-y2k-wipeout.html">Y2K Wipeout</a>
+          <a href="./dpm-dossier-gilded-age.html">Gilded Age</a>
+        </div>
+      </nav>
+
+      <header class="hero">
+        <section>
+          <p class="eyebrow">Version 01 / Saturday-morning audit lab</p>
+          <h1>Red-team replay in a candy-colored evidence grid.</h1>
+          <p class="lede">
+            A playful 90s treatment turns the benchmark into a tabletop map: pastel blocks are planted facts,
+            peach blocks are corrections, and the projection path winds through a memory budget maze.
+          </p>
+          <div class="actions">
+            <a class="button" href="#evidence">Open the evidence stack</a>
+            <a class="button secondary" href="./dpm-red-team-benchmark-data.json">Inspect JSON</a>
+          </div>
+        </section>
+        <aside class="art stage-90s" aria-label="Isometric benchmark art">
+          <div class="dossier-card status-card">
+            <span class="status" id="status-chip">Loading status</span>
+            <span class="number" id="scenario-count">--</span>
+            <p class="micro" id="benchmark-status">Loading benchmark metadata...</p>
+            <div class="signal-list" id="hero-signals"></div>
+          </div>
+          <div class="iso-grid" aria-hidden="true">
+            <span class="iso-block mint tall"></span>
+            <span class="iso-block peach"></span>
+            <span class="iso-block sage long"></span>
+            <span class="iso-block mint"></span>
+            <span class="iso-block peach tall"></span>
+            <span class="iso-block sage"></span>
+            <span class="iso-block mint long"></span>
+            <span class="iso-block peach"></span>
+            <span class="iso-block sage tall"></span>
+            <span class="iso-block mint"></span>
+            <span class="iso-block peach long"></span>
+            <span class="iso-block sage"></span>
+          </div>
+        </aside>
+      </header>
+
+      <section class="kpis" id="kpi-grid" aria-label="Benchmark overview"></section>
+
+      <section id="story" class="split">
+        <div>
+          <p class="eyebrow">Story mode</p>
+          <h2>The assessor enters the level with planted facts and hidden corrections.</h2>
+          <p class="muted">
+            This version makes the benchmark approachable without softening the claim: every block is an
+            event-log obstacle the projection must preserve, cite, or correct.
+          </p>
+        </div>
+        <div class="timeline" id="scenario-list"></div>
+      </section>
+
+      <section id="evidence">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Interactive charts</p>
+            <h2>Evidence readiness, presented like a scorecard.</h2>
+          </div>
+          <p class="note">Hover bars and chart regions for the data/design recommendations behind each score.</p>
+        </div>
+        <div class="chart-grid">
+          <article class="panel">
+            <h3>Readiness by evidence area</h3>
+            <div class="chart" id="readiness-chart"></div>
+          </article>
+          <article class="panel">
+            <h3>Recommended metric stack</h3>
+            <div class="chart" id="metric-chart"></div>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Art review</p>
+            <h2>Design moves in this version</h2>
+          </div>
+          <p class="note">90s core keeps the charts legible while making the page feel more memorable and public-facing.</p>
+        </div>
+        <div class="variant-grid" id="review-grid"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Chart critique</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Theme</th>
+                <th>Today</th>
+                <th>Upgrade</th>
+                <th>Data needed</th>
+              </tr>
+            </thead>
+            <tbody id="assessment-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Measured baselines</h2>
+        <div id="baseline-empty" class="empty-state">Baseline capture pending. Add owned hardware JSON to unlock p50/p95 charts.</div>
+        <div class="chart" id="baseline-chart" hidden></div>
+      </section>
+
+      <section>
+        <p class="eyebrow">Data contract</p>
+        <h2>Metrics that must back the claim</h2>
+        <div class="metric-grid" id="metric-cards"></div>
+      </section>
+    </main>
+    <script src="./dpm-dossier-themes.js"></script>
+  </body>
+</html>

@@ -12,6 +12,12 @@ The public benchmark story and chart assessment live in
 That page is intentionally wired to show a pending-baseline state until
 hardware-owned result JSON is checked in.
 
+Alternate art-directed dossier versions are also available:
+
+* [`90s core / isometric`](../../../docs/benchmarks/dpm-dossier-90s-core.html)
+* [`Y2K / anti-gravity racing`](../../../docs/benchmarks/dpm-dossier-y2k-wipeout.html)
+* [`Gilded age / brass rail`](../../../docs/benchmarks/dpm-dossier-gilded-age.html)
+
 Example:
 
 ```sh

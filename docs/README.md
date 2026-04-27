@@ -20,6 +20,9 @@ frames the prefill benchmark as a red-team assessment recreation and documents
 the chart/data improvements needed for credible public claims.
 
 *   [DPM red-team benchmark](./benchmarks/dpm-red-team-benchmark.html)
+    *   [90s core dossier](./benchmarks/dpm-dossier-90s-core.html)
+    *   [Y2K/Wipeout dossier](./benchmarks/dpm-dossier-y2k-wipeout.html)
+    *   [Gilded age dossier](./benchmarks/dpm-dossier-gilded-age.html)
 
 ## API Reference
 

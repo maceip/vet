@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DPM Dossier - Y2K Wipeout</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <link rel="stylesheet" href="./dpm-dossier-themes.css" />
+  </head>
+  <body class="theme-y2k" data-theme="y2k">
+    <main>
+      <nav class="nav" aria-label="Dossier versions">
+        <a class="brand" href="./dpm-red-team-benchmark.html">DPM dossier</a>
+        <div class="nav-links">
+          <a href="./dpm-dossier-90s-core.html">90s Core</a>
+          <a href="./dpm-dossier-y2k-wipeout.html">Y2K/Wipeout</a>
+          <a href="./dpm-dossier-gilded-age.html">Gilded Age</a>
+        </div>
+      </nav>
+
+      <header class="hero">
+        <div class="hero-grid">
+        <div>
+          <p class="eyebrow">Vector-class audit racer</p>
+          <h1>Memory pressure at anti-gravity speed.</h1>
+          <p class="lede">
+            A Y2K racing broadcast treatment for the same red-team dossier: hard diagonals, HUD panels,
+            fluorescent lanes, and scoreboard-style evidence modules.
+          </p>
+          <div class="actions">
+            <a class="button" href="#readiness">Launch readiness grid</a>
+            <a class="button secondary" href="./dpm-red-team-benchmark-data.json">Telemetry JSON</a>
+          </div>
+        </div>
+        <aside class="dossier-card">
+          <div class="status" id="status-chip">Loading status</div>
+          <div class="art y2k-track-art" aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+            <p class="art-label">Vector telemetry / red-team route</p>
+          </div>
+          <div class="number" id="scenario-count">--</div>
+          <p class="microcopy" id="benchmark-status">Loading benchmark metadata...</p>
+          <p class="microcopy">assessment gates before velocity claims</p>
+          <div class="signal-list" id="hero-signals"></div>
+        </aside>
+        </div>
+      </header>
+
+      <section class="kpis" id="kpi-grid" aria-label="Benchmark overview metrics"></section>
+
+      <section id="story" class="split">
+        <div class="section-copy">
+          <p class="eyebrow">Track map</p>
+          <h2>The benchmark becomes a high-speed telemetry route.</h2>
+          <p>Each stage is a checkpoint: log ingestion, projection budget, schema lock, red-team scoring, hardware split.</p>
+        </div>
+        <div class="timeline" id="scenario-list"></div>
+      </section>
+
+      <section id="readiness" class="chart-grid">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">HUD 01</p>
+              <h2>Evidence readiness</h2>
+            </div>
+            <span class="tag">target vector</span>
+          </div>
+          <div class="chart" id="readiness-chart"></div>
+        </article>
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">HUD 02</p>
+              <h2>Metric stack</h2>
+            </div>
+            <span class="tag">quality lock</span>
+          </div>
+          <div class="chart" id="metric-chart"></div>
+        </article>
+      </section>
+
+      <section>
+        <div class="section-copy">
+          <p class="eyebrow">Design review</p>
+          <h2>Fast, synthetic, legible under motion.</h2>
+        </div>
+        <div class="review-grid" id="review-grid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Race notes</p>
+            <h2>Chart critique</h2>
+          </div>
+          <span class="tag">pit lane</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Theme</th>
+                <th>Today</th>
+                <th>Upgrade</th>
+                <th>Data needed</th>
+              </tr>
+            </thead>
+            <tbody id="assessment-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Telemetry lockout</p>
+            <h2>Measured baselines</h2>
+          </div>
+          <span class="tag">pending</span>
+        </div>
+        <div id="baseline-empty" class="empty-state">
+          No owned hardware telemetry is checked in yet. Add benchmark result JSON to unlock p50/p95 charts.
+        </div>
+        <div class="chart" id="baseline-chart" hidden></div>
+      </section>
+
+      <section class="metric-grid" id="metric-cards"></section>
+    </main>
+    <script src="./dpm-dossier-themes.js"></script>
+  </body>
+</html>
