@@ -89,23 +89,55 @@ struct ProbeExpectedMatch {
   std::string must_acknowledge;     // e.g. "correction"
 };
 
+// Rubric-shaped ground truth. Populated by adapters whose source
+// dataset has machine-checkable rubrics (AgenticQwen-Data is the
+// canonical example). When any of these vectors is non-empty, the
+// scenario test must check it in addition to (or instead of) the
+// substring-style expected_match. Optional / absent for free-form
+// session captures.
+struct ProbeRubric {
+  // Facts/strings the projected memory MUST surface for the agent to
+  // make the right next decision.
+  std::vector<std::string> must_include;
+  // Facts/strings the projected memory MUST NOT surface (e.g. user-
+  // pressure tactics that should not be propagated as authoritative
+  // facts).
+  std::vector<std::string> must_not_include;
+  // Tools the agent MUST invoke next, in the recorded order.
+  std::vector<std::string> must_call_tools;
+  // Tools the agent MUST NOT invoke (e.g. policy-violating ones).
+  std::vector<std::string> must_not_call_tools;
+  // Database / external-state predicates that must remain unchanged.
+  std::vector<std::string> database_state_must_remain;
+  // Optional free-form rubric for a downstream LLM judge to score.
+  std::string judge_rubric;
+};
+
 struct SessionProbe {
   std::string kind;                 // "next_user_intent" | "next_tool_call"
                                     // | "correction_detection"
+                                    // | "policy_preserved"
   std::string question;
   ProbeExpectedMatch expected_match;
+  ProbeRubric rubric;               // empty when the source isn't rubric-shaped
   std::string rationale;
 };
 
 struct SessionCase {
   std::string case_id;
-  std::string domain;               // "claude" | "codex"
+  std::string domain;               // "claude" | "codex" | "agentic_qwen"
   std::string source_path;
   std::string source_sha256;
   int64_t n_events = 0;
   int64_t probe_T = 0;
   std::vector<SessionEvent> events;
   std::vector<SessionProbe> probes;
+  // Twin-pair linkage for adversarial differential tests. When this
+  // case has a hack_path counterpart, paired_case_id holds the other
+  // case's id; pair_role distinguishes "normal" vs "hack". Empty
+  // for un-paired cases.
+  std::string paired_case_id;
+  std::string pair_role;            // "normal" | "hack" | ""
 };
 
 // Load one or more SessionCases from a JSON file.

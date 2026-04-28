@@ -188,5 +188,85 @@ TEST_F(Phase2SeedSessionFixture, S6_SessionResumesAcrossStoreInstances) {
       << "PHASE2_TEST_MATRIX.md §P6.";
 }
 
+// ---------- Secondary validation: AgenticQwen twin-differential -----
+//
+// This is SECONDARY VALIDATION ONLY. AgenticQwen rows fit in one
+// context window, so they cannot exercise Phase 2 cross-context /
+// hierarchical / replay-from-raw / Merkle DAG claims. They DO test
+// whether DPM's task-conditioned compression preserves policy-critical
+// facts under tight memory budgets.
+//
+// The reference test loads a synthetic AgenticQwen-shaped twin pair
+// (normal_path + hack_path linked by paired_case_id) and asserts
+// substrate-level invariants the projection must preserve regardless
+// of which path is being scored.
+
+class AgenticQwenSecondaryValidationFixture : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    // The synthetic seed lives next to the agentic_qwen adapter so
+    // the C++ test can run without downloading the real corpus. The
+    // adapter's Python output for this fixture is regenerated below
+    // via the same shape (so both stay in lockstep when one changes).
+    auto loaded = LoadSessionCasesFromFile(
+        "tools/benchmarks/dpm_projection_cliff/agentic_qwen/golden/"
+        "synthetic_seed_pair.json");
+    ASSERT_TRUE(loaded.ok()) << loaded.status();
+    ASSERT_EQ(loaded->size(), 2u)
+        << "AgenticQwen seed must produce a normal+hack twin pair";
+    cases_ = std::move(*loaded);
+  }
+  std::vector<SessionCase> cases_;
+};
+
+TEST_F(AgenticQwenSecondaryValidationFixture,
+       Twin_NormalAndHackShareEventsAndPolicyConstraints) {
+  // Property: the normal and hack twins share the events prefix
+  // (they're projections of the same conversation up to probe_T) and
+  // their rubric must_include lists share the same policy
+  // constraints — only must_call_tools / must_not_call_tools differ.
+  // This pins the differential-test invariant that DPM's projection
+  // must preserve policy facts in BOTH paths.
+  ASSERT_EQ(cases_.size(), 2u);
+  const SessionCase* normal = nullptr;
+  const SessionCase* hack = nullptr;
+  for (const auto& c : cases_) {
+    if (c.pair_role == "normal") normal = &c;
+    if (c.pair_role == "hack") hack = &c;
+  }
+  ASSERT_NE(normal, nullptr);
+  ASSERT_NE(hack, nullptr);
+  EXPECT_EQ(normal->paired_case_id, hack->case_id);
+  EXPECT_EQ(hack->paired_case_id, normal->case_id);
+  EXPECT_EQ(normal->events.size(), hack->events.size());
+
+  // Both twins must carry the same "must_include" policy facts; the
+  // user-visible failure if this drifts: DPM's projection retains
+  // policy constraints in one path but drops them in the other,
+  // making the substrate's compression behavior path-dependent.
+  ASSERT_FALSE(normal->probes.empty());
+  ASSERT_FALSE(hack->probes.empty());
+  EXPECT_EQ(normal->probes[0].rubric.must_include,
+            hack->probes[0].rubric.must_include);
+
+  // Tool-sequence rubrics differ by construction: normal lists tools
+  // that MUST be called; hack lists tools that MUST NOT be called.
+  EXPECT_FALSE(normal->probes[0].rubric.must_call_tools.empty())
+      << "normal twin must specify must_call_tools";
+  EXPECT_FALSE(hack->probes[0].rubric.must_not_call_tools.empty())
+      << "hack twin must specify must_not_call_tools";
+}
+
+TEST_F(AgenticQwenSecondaryValidationFixture,
+       Twin_RenderedEventLogsAreByteIdentical) {
+  // Stronger invariant: since the twins are projections of the SAME
+  // conversation up to probe_T, their RenderEventLog output must be
+  // byte-identical. If they're not, the adapter or the loader is
+  // perturbing the prefix between paths — and any downstream
+  // projection-determinism test would fail spuriously.
+  ASSERT_EQ(cases_.size(), 2u);
+  EXPECT_EQ(RenderEventLog(cases_[0]), RenderEventLog(cases_[1]));
+}
+
 }  // namespace
 }  // namespace litert::lm::bench

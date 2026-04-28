@@ -56,22 +56,43 @@ class Event:
 @dataclass
 class Probe:
     kind: str              # "next_user_intent" | "next_tool_call" |
-                           # "decision_recall" | "correction_detection"
+                           # "decision_recall" | "correction_detection" |
+                           # "policy_preserved" (rubric-shaped, see below)
     question: str          # what the agent under test will be asked
     expected_match: dict   # ground truth, shape varies by kind
     rationale: str         # why this probe was generated (audit trail)
+    # Rubric-shaped ground truth (optional; populated by the AgenticQwen
+    # adapter and any future rubric-emitting ingester). When populated,
+    # scenario tests check these instead of (or in addition to) the
+    # legacy substring-style expected_match. See:
+    #   tools/benchmarks/dpm_projection_cliff/agentic_qwen/README.md
+    must_include: list = field(default_factory=list)         # facts/strings the projection MUST surface
+    must_not_include: list = field(default_factory=list)     # facts/strings the projection MUST NOT surface
+    must_call_tools: list = field(default_factory=list)      # tool names the agent MUST invoke next
+    must_not_call_tools: list = field(default_factory=list)  # tool names the agent MUST NOT invoke
+    database_state_must_remain: list = field(default_factory=list)
+    judge_rubric: str = ""  # optional free-form rubric for an LLM judge
 
 
 @dataclass
 class SessionCase:
     case_id: str
-    domain: str            # "claude" | "codex"
+    domain: str            # "claude" | "codex" | "agentic_qwen"
     source_path: str
     source_sha256: str     # hash of the source file BEFORE redaction
     n_events: int          # total normalized events
     probe_T: int           # the turn we stopped at
     events: list[Event] = field(default_factory=list)
     probes: list[Probe] = field(default_factory=list)
+    # Twin-pair linkage. When this case has an adversarial twin (e.g. a
+    # hack_path counterpart to a normal_path), paired_case_id holds the
+    # other case's case_id. Scenario tests parameterized on twins read
+    # both cases and run their differential assertion (e.g. "policy
+    # constraint preserved in projection of normal_path AND of
+    # hack_path; only hack_path additionally surfaces policy violation
+    # rationale"). Empty when the case is not part of a twin set.
+    paired_case_id: str = ""
+    pair_role: str = ""    # "normal" | "hack" | "" (no pair)
 
 
 # ---- Format-specific extractors ------------------------------------

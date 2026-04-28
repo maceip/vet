@@ -127,5 +127,52 @@ TEST(SessionCaseLoaderTest, ParsesGoldenSeedCase) {
   EXPECT_EQ((*cases)[0].probes.size(), 3u);
 }
 
+TEST(SessionCaseLoaderTest, ParsesRubricFieldsAndTwinLinkage) {
+  // The AgenticQwen-style schema adds rubric fields + twin-pair
+  // linkage. The loader must round-trip them so scenario tests can
+  // run differential assertions.
+  constexpr absl::string_view rubric_case = R"json({
+    "case_id": "synth:normal",
+    "domain": "agentic_qwen",
+    "source_path": "fixture",
+    "source_sha256": "0000",
+    "n_events": 1,
+    "probe_T": 0,
+    "paired_case_id": "synth:hack",
+    "pair_role": "normal",
+    "events": [
+      {"idx": 0, "kind": "user", "role": "user",
+       "text": "request something", "timestamp": ""}
+    ],
+    "probes": [{
+      "kind": "policy_preserved",
+      "question": "did the projection preserve policy constraints?",
+      "expected_match": {"path_kind": "normal"},
+      "rationale": "agentic_qwen:normal_path",
+      "must_include": ["fact A", "fact B"],
+      "must_not_include": ["secret token"],
+      "must_call_tools": ["query", "verify"],
+      "must_not_call_tools": ["delete_all"],
+      "database_state_must_remain": ["resident.utilities unchanged"],
+      "judge_rubric": "score 1 if all preserved"
+    }]
+  })json";
+  auto cases = ParseSessionCases(rubric_case);
+  ASSERT_TRUE(cases.ok()) << cases.status();
+  ASSERT_EQ(cases->size(), 1u);
+  const auto& c = (*cases)[0];
+  EXPECT_EQ(c.paired_case_id, "synth:hack");
+  EXPECT_EQ(c.pair_role, "normal");
+  ASSERT_EQ(c.probes.size(), 1u);
+  const auto& r = c.probes[0].rubric;
+  EXPECT_THAT(r.must_include, ::testing::ElementsAre("fact A", "fact B"));
+  EXPECT_THAT(r.must_not_include, ::testing::ElementsAre("secret token"));
+  EXPECT_THAT(r.must_call_tools, ::testing::ElementsAre("query", "verify"));
+  EXPECT_THAT(r.must_not_call_tools, ::testing::ElementsAre("delete_all"));
+  EXPECT_THAT(r.database_state_must_remain,
+              ::testing::ElementsAre("resident.utilities unchanged"));
+  EXPECT_EQ(r.judge_rubric, "score 1 if all preserved");
+}
+
 }  // namespace
 }  // namespace litert::lm::bench

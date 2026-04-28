@@ -179,7 +179,10 @@ cc_test(
 cc_test(
     name = "phase2_scenario_test",
     srcs = ["scenario/phase2_scenario_test.cc"],
-    data = ["scenario/golden/seed_case.json"],
+    data = [
+        "scenario/golden/seed_case.json",
+        "agentic_qwen/golden/synthetic_seed_pair.json",
+    ],
     deps = [
         ":session_case_loader",
         "//runtime/dpm:projection_prompt",

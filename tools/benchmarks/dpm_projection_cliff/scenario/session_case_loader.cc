@@ -70,6 +70,21 @@ absl::StatusOr<SessionEvent> ParseEvent(const json& obj) {
   return e;
 }
 
+// Decode a JSON array of strings into a vector<string>. Tolerant of
+// missing field — returns empty vector. Tolerant of non-string entries —
+// silently skips them.
+std::vector<std::string> GetStrArray(const json& obj,
+                                     absl::string_view key) {
+  std::vector<std::string> out;
+  auto it = obj.find(std::string(key));
+  if (it == obj.end() || !it->is_array()) return out;
+  out.reserve(it->size());
+  for (const auto& el : *it) {
+    if (el.is_string()) out.push_back(el.get<std::string>());
+  }
+  return out;
+}
+
 absl::StatusOr<SessionProbe> ParseProbe(const json& obj) {
   if (!obj.is_object()) {
     return absl::InvalidArgumentError("probe must be a JSON object");
@@ -87,6 +102,15 @@ absl::StatusOr<SessionProbe> ParseProbe(const json& obj) {
         GetStr(*em, "correction_substring");
     p.expected_match.must_acknowledge = GetStr(*em, "must_acknowledge");
   }
+  // Rubric-shaped ground truth lives at the probe top-level (not
+  // nested under expected_match) so a probe can carry both styles.
+  p.rubric.must_include = GetStrArray(obj, "must_include");
+  p.rubric.must_not_include = GetStrArray(obj, "must_not_include");
+  p.rubric.must_call_tools = GetStrArray(obj, "must_call_tools");
+  p.rubric.must_not_call_tools = GetStrArray(obj, "must_not_call_tools");
+  p.rubric.database_state_must_remain =
+      GetStrArray(obj, "database_state_must_remain");
+  p.rubric.judge_rubric = GetStr(obj, "judge_rubric");
   return p;
 }
 
@@ -106,6 +130,8 @@ absl::StatusOr<SessionCase> ParseCase(const json& obj) {
   c.source_sha256 = GetStr(obj, "source_sha256");
   c.n_events = GetI64(obj, "n_events");
   c.probe_T = GetI64(obj, "probe_T");
+  c.paired_case_id = GetStr(obj, "paired_case_id");
+  c.pair_role = GetStr(obj, "pair_role");
 
   auto events_it = obj.find("events");
   if (events_it == obj.end() || !events_it->is_array()) {
