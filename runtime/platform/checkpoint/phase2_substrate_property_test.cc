@@ -297,8 +297,9 @@ TEST(Phase2SubstratePropertyTest, P5ReplayFromRawRecomputesStoredManifest) {
       DeterministicProjectionForRange(events, begin, end);
   const CanonicalManifestInput original_input =
       ManifestForRange(events, begin, end);
-  const StoredCheckpoint stored =
-      StoreCheckpoint(&store, &dag, original_input, original_projection);
+  ASSERT_OK_AND_ASSIGN(
+      const StoredCheckpoint stored,
+      StoreCheckpoint(&store, &dag, original_input, original_projection));
 
   ASSERT_OK_AND_ASSIGN(CheckpointStore::ManifestRecord manifest,
                        store.GetManifest(kTenant, kSession,
@@ -345,8 +346,9 @@ TEST(Phase2SubstratePropertyTest, P6CrossContextRollupSurvivesStoreReplication) 
   root_input.base_event_index = events.size();
   root_input.body_hash = H(rollup_payload);
   root_input.body_size_bytes = static_cast<uint32_t>(rollup_payload.size());
-  const StoredCheckpoint root =
-      StoreCheckpoint(&store_a, &dag_a, root_input, rollup_payload);
+  ASSERT_OK_AND_ASSIGN(
+      const StoredCheckpoint root,
+      StoreCheckpoint(&store_a, &dag_a, root_input, rollup_payload));
 
   std::filesystem::copy(root_a, root_b,
                         std::filesystem::copy_options::recursive |
