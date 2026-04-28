@@ -183,3 +183,26 @@ cc_test(
         "//runtime/util:test_utils",
     ],
 )
+
+cc_test(
+    name = "phase2_substrate_property_test",
+    srcs = ["phase2_substrate_property_test.cc"],
+    deps = [
+        ":canonical_manifest",
+        ":checkpoint_store",
+        ":durable_writer",
+        ":local_filesystem_checkpoint_store",
+        "//runtime/dpm:projection_prompt",
+        "//runtime/platform/hash:hasher",
+        "//runtime/platform/provenance:local_merkle_dag_store",
+        "//runtime/platform/provenance:merkle_dag_store",
+        "//runtime/platform/provenance:provenance_query",
+        "//runtime/util:status_macros",
+        "//runtime/util:test_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
