@@ -21,10 +21,33 @@ package(default_visibility = ["//visibility:public"])
 licenses(["notice"])
 
 cc_library(
-    name = "dpm_projection_cliff_lib",
-    srcs = ["dpm_projection_cliff.cc"],
-    hdrs = ["dpm_projection_cliff.h"],
+    name = "cliff_trajectory",
+    srcs = ["cliff_trajectory.cc"],
+    hdrs = ["cliff_trajectory.h"],
     deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "cliff_provenance",
+    srcs = ["cliff_provenance.cc"],
+    hdrs = ["cliff_provenance.h"],
+    deps = [
+        "//runtime/platform/hash:hasher",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "cliff_corpus",
+    srcs = ["cliff_corpus.cc"],
+    hdrs = ["cliff_corpus.h"],
+    deps = [
+        ":cliff_handoff",
+        ":cliff_trajectory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -32,10 +55,80 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "cliff_handoff",
+    srcs = ["cliff_handoff.cc"],
+    hdrs = ["cliff_handoff.h"],
+    deps = [
+        "//runtime/dpm",
+        "//runtime/proto:checkpoint_cc_proto",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "dpm_projection_cliff_lib",
+    srcs = ["dpm_projection_cliff.cc"],
+    hdrs = ["dpm_projection_cliff.h"],
+    additional_linker_inputs = select({
+        "@platforms//os:windows": [
+            "@litert//litert/c:windows_exported_symbols.def",
+        ],
+        "@platforms//os:linux": ["//runtime/engine:litert_lm_main.exported_symbols"],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "@litert//litert:litert_link_capi_so": [],
+        "@platforms//os:ios": ["-Wl,-exported_symbol,_LiteRt*"],
+        "@platforms//os:macos": ["-Wl,-exported_symbol,_LiteRt*"],
+        "@platforms//os:windows": [
+            "/DEF:$(location @litert//litert/c:windows_exported_symbols.def)",
+        ],
+        "@platforms//os:linux": [
+            "-Wl,--dynamic-list=$(location //runtime/engine:litert_lm_main.exported_symbols)",
+        ],
+        "//conditions:default": ["-Wl,--export-dynamic-symbol=LiteRt*"],
+    }) + select({
+        "@platforms//os:android": ["-lEGL", "-lGLESv3"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":cliff_corpus",
+        ":cliff_handoff",
+        ":cliff_provenance",
+        ":cliff_trajectory",
+        "//runtime/components:tokenizer",
+        "//runtime/conversation",
+        "//runtime/conversation:io_types",
+        "//runtime/dpm",
+        "//runtime/engine:engine_factory",
+        "//runtime/engine:engine_impl_selected",
+        "//runtime/engine:engine_interface",
+        "//runtime/engine:engine_settings",
+        "//runtime/engine:io_types",
+        "//runtime/executor:executor_settings_base",
+        "//runtime/executor:llm_executor_settings",
+        "//runtime/platform/checkpoint:checkpoint_store",
+        "//runtime/platform/checkpoint:local_filesystem_checkpoint_store",
+        "//runtime/platform/checkpoint:s3_express_checkpoint_store",
+        "//runtime/platform/hash:hasher",
+        "//runtime/proto:engine_cc_proto",
+        "//runtime/util:litert_status_util",
+        "@nlohmann_json//:json",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+    ],
+)
+
 cc_binary(
     name = "dpm_projection_cliff",
     srcs = ["dpm_projection_cliff_main.cc"],
     deps = [
+        ":cliff_corpus",
         ":dpm_projection_cliff_lib",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",

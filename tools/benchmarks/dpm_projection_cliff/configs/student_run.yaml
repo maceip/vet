@@ -1,0 +1,38 @@
+# Student-loaner run config — all 5 conditions across the corpus.
+# Use with:
+#   $BENCH --config=configs/student_run.yaml \
+#          --corpus_dir=corpora/all_119/cases \
+#          --checkpoint_backend=s3_express \
+#          --s3_bucket=dpm-cliff-bench --s3_az_id=eun1-az1 \
+#          --s3_region=eu-north-1 \
+#          --output_jsonl=/tmp/results.jsonl
+
+name: cliff_student_full_119
+schema_version: 1
+seed: 20260427
+repeats: 1
+
+# All five conditions: 4 architecture-progression baselines plus the
+# Phase-2 handoff condition that drives the headline chart D.
+conditions:
+  - rolling_summary_baseline
+  - summarization_baseline
+  - dpm_projection
+  - dpm_checkpoints
+  - dpm_checkpoints_prefix_cached
+  - dpm_checkpoints_handoff
+
+# When --corpus_dir is set the bench iterates over the YAML cases and
+# the trajectory_chars list is treated as a single-element fallback for
+# bucketing — pick a number large enough to fit the average corpus log.
+trajectory_chars:
+  - 27000
+
+# Memory budget per cell. 5352 chars ≈ 1.3K tokens after projection;
+# matches the smoke + sweep configs.
+memory_budget_chars:
+  - 5352
+
+model_class: gqa
+kv_dtype: fp16
+kv_dtype_policy_replay_safe: true

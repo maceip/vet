@@ -1,0 +1,14 @@
+# Local-run artifacts and secrets — never commit.
+broker/.broker.env
+broker/.deploy/
+broker/node_modules/
+broker/package-lock.json
+render/node_modules/
+render/package-lock.json
+render/out/
+corpora/all_119/
+corpora/cyber_incidents/
+remote_results/
+remote_smoke/
+results_*.jsonl
+*.dpmmanifest

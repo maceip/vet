@@ -24,7 +24,10 @@ with deterministic file names so the docs/blog can embed them without
 manual regeneration.
 
 Run with --mock to synthesize plausible JSONL rows for layout review
-when the driver is not yet wired.
+when the driver is not yet wired. Production runs and mock runs MUST
+NOT be mixed in the same plot invocation unless --allow_mock is set;
+otherwise stale mock rows could silently contaminate a real-hardware
+chart.
 """
 
 from __future__ import annotations
@@ -37,7 +40,7 @@ import os
 import pathlib
 import random
 import sys
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Optional, Sequence
 
 # matplotlib is intentionally a soft dependency: imported inside main so
 # `python plot.py --help` works in environments without matplotlib.
@@ -57,19 +60,53 @@ class Row:
     kv_dtype: str
     kv_dtype_policy_replay_safe: bool
     model_class: str
-    decision_score: float
-    wall_clock_decision_ms: float
-    wall_clock_append_p50_us: float
-    wall_clock_append_p99_us: float
-    disk_bytes_session_total: int
-    disk_bytes_event_log: int
-    disk_bytes_checkpoint_blobs: int
-    wall_clock_checkpoint_put_ms: float | None = None
-    wall_clock_thaw_ms: float | None = None
-    kv_bytes_per_1024_tokens: int | None = None
-    must_refill_from_log: bool | None = None
-    tamper_test: dict | None = None
+    # Decision-alignment axes from the paper. The composite score is
+    # optional/derived so reviewers can see the per-axis result and
+    # diagnose exactly which axis failed.
+    frp: Optional[float] = None
+    rcs: Optional[float] = None
+    eda: Optional[float] = None
+    crr: Optional[float] = None
+    decision_score: Optional[float] = None
+    deterministic_score: Optional[float] = None
+    scored_axis_count: Optional[int] = None
+    pending_judge_axes: Optional[str] = None
+    wall_clock_decision_ms: float = 0.0
+    wall_clock_append_p50_us: float = 0.0
+    wall_clock_append_p99_us: float = 0.0
+    disk_bytes_session_total: int = 0
+    disk_bytes_event_log: int = 0
+    disk_bytes_checkpoint_blobs: int = 0
+    wall_clock_checkpoint_put_ms: Optional[float] = None
+    wall_clock_thaw_ms: Optional[float] = None
+    wall_clock_memory_build_ms: Optional[float] = None
+    kv_bytes_per_1024_tokens: Optional[int] = None
+    must_refill_from_log: Optional[bool] = None
+    evidence_lane: Optional[str] = None
+    claim_tested: Optional[str] = None
+    tamper_test: Optional[dict] = None
+    # Provenance fields. Any row missing config_hash / git_sha is
+    # tagged unknown; production runs are expected to populate them.
+    config_hash: Optional[str] = None
+    git_sha: Optional[str] = None
+    dirty_tree: Optional[bool] = None
+    hostname: Optional[str] = None
+    os: Optional[str] = None
+    cpu_model: Optional[str] = None
+    accelerator_id: Optional[str] = None
+    model_artifact_hash: Optional[str] = None
     mock: bool = False
+
+    def composite_score(self) -> float:
+        """Returns complete four-axis score, then deterministic pre-judge mean."""
+        if self.decision_score is not None:
+            return float(self.decision_score)
+        if self.deterministic_score is not None:
+            return float(self.deterministic_score)
+        parts = [self.frp, self.rcs, self.crr, self.eda]
+        if all(p is not None for p in parts):
+            return sum(float(p) for p in parts) / 4.0
+        return float("nan")
 
 
 # ----------------------------------------------------------------------
@@ -90,35 +127,58 @@ def load_rows(paths: Iterable[str]) -> List[Row]:
                         f"unsupported schema_version in {path}: "
                         f"{obj.get('schema_version')!r}"
                     )
-                rows.append(Row(**{**_field_defaults(), **obj}))
+                # Forward-compat: ignore unknown fields rather than crash.
+                allowed = {f.name for f in dataclasses.fields(Row)}
+                merged = {**_field_defaults(),
+                          **{k: v for k, v in obj.items() if k in allowed}}
+                rows.append(Row(**merged))
     return rows
 
 
 def _field_defaults() -> dict:
     return {
+        "frp": None,
+        "rcs": None,
+        "eda": None,
+        "crr": None,
+        "decision_score": None,
         "wall_clock_checkpoint_put_ms": None,
         "wall_clock_thaw_ms": None,
         "kv_bytes_per_1024_tokens": None,
         "must_refill_from_log": None,
         "tamper_test": None,
+        "config_hash": None,
+        "git_sha": None,
+        "dirty_tree": None,
+        "hostname": None,
+        "os": None,
+        "cpu_model": None,
+        "accelerator_id": None,
+        "model_artifact_hash": None,
         "mock": False,
     }
 
 
+def reject_mixed_rows(rows: List[Row], allow_mock: bool) -> None:
+    """Refuses mixed mock+real input unless --allow_mock is set."""
+    has_mock = any(r.mock for r in rows)
+    has_real = any(not r.mock for r in rows)
+    if has_mock and has_real and not allow_mock:
+        raise SystemExit(
+            "plot.py: input mixes mock=true and mock=false rows. Stale "
+            "mock rows can silently contaminate a real-hardware chart. "
+            "Re-run with --allow_mock to acknowledge, or filter the "
+            "mock rows out of your input first.")
+
+
 # ----------------------------------------------------------------------
 # Mock data generator (for layout review).
-#
-# The point: a viewer should be able to render every chart and judge
-# the layout / typography / story before the driver is wired against
-# real hardware. Every mock row carries mock=True so production data
-# never silently mixes with synthetic shapes.
 
 
 def synthesize_mock_rows(seed: int = 20260420) -> List[Row]:
     rng = random.Random(seed)
     rows: List[Row] = []
 
-    # Trajectory sweep (Chart A + Chart B contributors).
     conditions = [
         "summarization_baseline",
         "dpm_projection",
@@ -126,42 +186,63 @@ def synthesize_mock_rows(seed: int = 20260420) -> List[Row]:
         "dpm_checkpoints_prefix_cached",
     ]
     trajectory_grid = [1000, 5000, 10000, 27000, 50000, 100000, 200000]
-    # The cliff: summarization collapses around 27k, others stay flat.
-    score_curves = {
-        "summarization_baseline":
-            lambda t: max(0.05, 0.95 - 0.85 * max(0, (t - 5000)) / 95000),
-        "dpm_projection":
-            lambda t: 0.93 - 0.04 * max(0, (t - 100000)) / 100000,
-        "dpm_checkpoints":
-            lambda t: 0.93 - 0.03 * max(0, (t - 100000)) / 100000,
-        "dpm_checkpoints_prefix_cached":
-            lambda t: 0.93 - 0.02 * max(0, (t - 100000)) / 100000,
-    }
-    latency_curves = {
-        "summarization_baseline": lambda t: 200 + 0.06 * t,
-        "dpm_projection": lambda t: 60 + 0.012 * t,
-        "dpm_checkpoints": lambda t: 30 + 0.004 * t,
-        "dpm_checkpoints_prefix_cached": lambda t: 18 + 0.002 * t,
-    }
+    # Three budget regimes drive the chart-A facets: the paper's tight /
+    # moderate / loose. Mock rows are emitted for every (condition,
+    # trajectory, budget) cell so the plot tests faceting end-to-end.
+    budget_grid = [1338, 5352, 13381]
+
+    # Per-budget cliff curves. Tight binds early; loose stays flat.
+    def score_at(condition, trajectory, budget):
+        ratio = trajectory / max(1.0, budget)  # compression ratio rho
+        if condition == "summarization_baseline":
+            cliff = 1.0 if ratio < 5 else max(0.05, 1.0 - 0.85 *
+                                              min(1.0, (ratio - 5) / 15))
+            base = 0.95 * cliff
+        elif condition == "dpm_projection":
+            base = 0.93 - 0.04 * max(0, (trajectory - 100000)) / 100000.0
+        elif condition == "dpm_checkpoints":
+            base = 0.93 - 0.03 * max(0, (trajectory - 100000)) / 100000.0
+        else:  # prefix-cached
+            base = 0.93 - 0.02 * max(0, (trajectory - 100000)) / 100000.0
+        return max(0.0, min(1.0, base))
+
+    def latency_at(condition, trajectory, budget):
+        if condition == "summarization_baseline":
+            return 200 + 0.06 * trajectory
+        if condition == "dpm_projection":
+            return 60 + 0.012 * trajectory
+        if condition == "dpm_checkpoints":
+            return 30 + 0.004 * trajectory
+        return 18 + 0.002 * trajectory
+
     for condition in conditions:
         for traj in trajectory_grid:
-            for repeat in range(3):
-                noise = rng.uniform(-0.01, 0.01)
-                rows.append(_mock_row(
-                    condition=condition,
-                    trajectory_chars=traj,
-                    memory_budget_chars=5352,
-                    repeat_idx=repeat,
-                    decision_score=max(0.0, min(
-                        1.0, score_curves[condition](traj) + noise)),
-                    wall_clock_decision_ms=latency_curves[condition](traj)
-                    + rng.uniform(-5, 5),
-                ))
+            for budget in budget_grid:
+                for repeat in range(3):
+                    s = score_at(condition, traj, budget)
+                    # Per-axis breakdown: FRP and RCS lead the cliff,
+                    # CRR and EDA follow. This matches the paper's
+                    # observation that anchors (FRP) collapse first.
+                    rows.append(_mock_row(
+                        condition=condition,
+                        trajectory_chars=traj,
+                        memory_budget_chars=budget,
+                        repeat_idx=repeat,
+                        frp=max(0.0, s - rng.uniform(0.0, 0.03)),
+                        rcs=max(0.0, s - rng.uniform(0.0, 0.05)),
+                        eda=max(0.0, s + rng.uniform(-0.02, 0.02)),
+                        crr=max(0.0, s - rng.uniform(0.0, 0.04)),
+                        decision_score=max(0.0, min(
+                            1.0, s + rng.uniform(-0.01, 0.01))),
+                        wall_clock_decision_ms=latency_at(
+                            condition, traj, budget) + rng.uniform(-5, 5),
+                    ))
 
-    # Costs sweep (Chart E). One short trajectory, two conditions, more repeats.
+    # Costs sweep — single budget so chart_e_costs has a clean filter.
     for condition in ["dpm_projection", "dpm_checkpoints"]:
         for repeat in range(20):
-            checkpoint_put = rng.uniform(110, 140) if condition == "dpm_checkpoints" else None
+            checkpoint_put = (rng.uniform(110, 140)
+                              if condition == "dpm_checkpoints" else None)
             rows.append(_mock_row(
                 condition=condition,
                 trajectory_chars=27000,
@@ -177,7 +258,6 @@ def synthesize_mock_rows(seed: int = 20260420) -> List[Row]:
                     20_000_000 if condition == "dpm_checkpoints" else 0),
             ))
 
-    # Architecture sweep (Chart C). One row per (model_class, dtype).
     arch_kv_per_1024 = {
         ("dense_mha", "fp16"):       2_400_000,
         ("dense_mha", "int8_per_token"): 1_200_000,
@@ -202,7 +282,6 @@ def synthesize_mock_rows(seed: int = 20260420) -> List[Row]:
             kv_bytes_per_1024_tokens=bytes_per_1024,
         ))
 
-    # Adversarial-audit scenarios (Chart D).
     adversarial_scenarios = [
         ("clean", None, None, "checkpoint is thaw-compatible", False),
         ("manifest_hash_mismatch_architecture_tag",
@@ -260,6 +339,14 @@ def _mock_row(**overrides) -> Row:
         disk_bytes_session_total=200_000,
         disk_bytes_event_log=180_000,
         disk_bytes_checkpoint_blobs=0,
+        config_hash="mock-config",
+        git_sha="0" * 40,
+        dirty_tree=False,
+        hostname="mock-host",
+        os="mock-os",
+        cpu_model="mock-cpu",
+        accelerator_id="mock-accelerator",
+        model_artifact_hash="0" * 64,
         mock=True,
     )
     base.update(overrides)
@@ -269,22 +356,29 @@ def _mock_row(**overrides) -> Row:
 # ----------------------------------------------------------------------
 # Charts.
 #
-# All chart functions take a list[Row] and a pathlib.Path output dir.
-# Each function picks the rows it cares about and skips the rest. The
-# functions emit a deterministic file name; tests can compare bytes
-# between runs.
+# Each chart function returns a list of paths so a faceted chart can
+# emit multiple files (one per facet). Single-file charts return a
+# one-element list.
 
 
-def chart_e_costs(rows: List[Row], out_dir: pathlib.Path) -> pathlib.Path:
-    """Costs first. The skeptic's chart."""
-    import matplotlib.pyplot as plt  # local import; soft dep
+def chart_e_costs(rows: List[Row], out_dir: pathlib.Path,
+                  trajectory_chars: int = 27000,
+                  memory_budget_chars: int = 5352) -> List[pathlib.Path]:
+    """Costs first. Filters by both trajectory and memory budget so the
+    bars do not blend regimes."""
+    import matplotlib.pyplot as plt
     import numpy as np
 
-    cost_rows = [r for r in rows if r.repeat_idx >= 0
+    cost_rows = [r for r in rows
+                 if r.repeat_idx >= 0
                  and r.condition in ("dpm_projection", "dpm_checkpoints")
-                 and r.trajectory_chars == 27000]
+                 and r.trajectory_chars == trajectory_chars
+                 and r.memory_budget_chars == memory_budget_chars]
     if not cost_rows:
-        raise SystemExit("chart E: no rows for costs sweep")
+        raise SystemExit(
+            f"chart E: no rows for (trajectory={trajectory_chars}, "
+            f"budget={memory_budget_chars}). Provide --costs_trajectory / "
+            f"--costs_budget that match a cell in your JSONL.")
 
     by_condition = {}
     for r in cost_rows:
@@ -314,29 +408,35 @@ def chart_e_costs(rows: List[Row], out_dir: pathlib.Path) -> pathlib.Path:
     ax.set_xticklabels([m[0] for m in metrics])
     ax.set_yscale("log")
     ax.set_ylabel("value (log)")
-    ax.set_title("Chart E — Costs first (mock data)" if any(r.mock for r in cost_rows)
-                 else "Chart E — Costs first")
+    title_suffix = f" — trajectory={trajectory_chars}, budget={memory_budget_chars}"
+    ax.set_title("Chart E — Costs first" + title_suffix +
+                 (" (mock)" if any(r.mock for r in cost_rows) else ""))
     ax.legend()
     fig.tight_layout()
     out = out_dir / "chart_e_costs.svg"
     fig.savefig(out)
     plt.close(fig)
-    return out
+    return [out]
 
 
-def chart_b_mechanism(rows: List[Row], out_dir: pathlib.Path) -> pathlib.Path:
-    """Mechanism breakdown — each architectural decision's contribution."""
+def chart_b_mechanism(rows: List[Row], out_dir: pathlib.Path,
+                      trajectory_chars: int = 27000,
+                      memory_budget_chars: int = 5352) -> List[pathlib.Path]:
+    """Mechanism breakdown — each architectural decision's contribution
+    at a fixed (trajectory, budget) cell."""
     import matplotlib.pyplot as plt
     import numpy as np
 
-    # Use the 27k / 5352 cell to anchor the breakdown.
-    cell = [r for r in rows if r.trajectory_chars == 27000
-                              and r.memory_budget_chars == 5352]
+    cell = [r for r in rows
+            if r.trajectory_chars == trajectory_chars
+            and r.memory_budget_chars == memory_budget_chars]
     if not cell:
-        raise SystemExit("chart B: no rows at 27000 chars / 5352 budget")
+        raise SystemExit(
+            f"chart B: no rows at trajectory={trajectory_chars}, "
+            f"budget={memory_budget_chars}.")
     by_cond = {}
     for r in cell:
-        by_cond.setdefault(r.condition, []).append(r.decision_score)
+        by_cond.setdefault(r.condition, []).append(r.composite_score())
 
     order = [
         ("summarization_baseline", "Stateless\nsummarization"),
@@ -347,8 +447,10 @@ def chart_b_mechanism(rows: List[Row], out_dir: pathlib.Path) -> pathlib.Path:
     means = [float(np.mean(by_cond.get(k, [float("nan")]))) for k, _ in order]
     fig, ax = plt.subplots(figsize=(9, 4.5))
     xs = np.arange(len(order))
-    bars = ax.bar(xs, means, color=["#888", "#4477aa", "#228833", "#aa3377"])
+    ax.bar(xs, means, color=["#888", "#4477aa", "#228833", "#aa3377"])
     for i, m in enumerate(means):
+        if math.isnan(m):
+            continue
         ax.text(i, m + 0.01, f"{m:.2f}", ha="center", va="bottom",
                 fontsize=10)
         if i > 0 and not math.isnan(means[i - 1]):
@@ -360,16 +462,18 @@ def chart_b_mechanism(rows: List[Row], out_dir: pathlib.Path) -> pathlib.Path:
     ax.set_xticklabels([label for _, label in order])
     ax.set_ylim(0, 1.05)
     ax.set_ylabel("Decision-alignment score (FRP × RCS × CRR × EDA)")
-    ax.set_title("Chart B — Where the win comes from (mock data)" if any(r.mock for r in cell)
-                 else "Chart B — Where the win comes from")
+    title_suffix = f" — trajectory={trajectory_chars}, budget={memory_budget_chars}"
+    ax.set_title("Chart B — Where the win comes from" + title_suffix +
+                 (" (mock)" if any(r.mock for r in cell) else ""))
     fig.tight_layout()
     out = out_dir / "chart_b_mechanism.svg"
     fig.savefig(out)
     plt.close(fig)
-    return out
+    return [out]
 
 
-def chart_c_architecture(rows: List[Row], out_dir: pathlib.Path) -> pathlib.Path:
+def chart_c_architecture(rows: List[Row],
+                         out_dir: pathlib.Path) -> List[pathlib.Path]:
     """Checkpoint size by architecture, colored by replay-safety."""
     import matplotlib.pyplot as plt
     import numpy as np
@@ -392,26 +496,24 @@ def chart_c_architecture(rows: List[Row], out_dir: pathlib.Path) -> pathlib.Path
            color="#228833")
     ax.bar(xs + 0.2, int8_vals, 0.4,
            label="int8-per-token (lossy, policy-gated)", color="#dd8855")
-    # The TCP MTU reference line.
     ax.axhline(1500, color="#444", linewidth=0.8, linestyle="--",
                label="single TCP MTU (1500 B)")
     ax.set_xticks(xs)
     ax.set_xticklabels(classes_in_order, rotation=0)
     ax.set_yscale("log")
     ax.set_ylabel("KV bytes per 1024 tokens (log)")
-    ax.set_title("Chart C — Checkpoint size by architecture (mock data)"
-                 if any(r.mock for r in arch_rows)
-                 else "Chart C — Checkpoint size by architecture")
+    ax.set_title("Chart C — Checkpoint size by architecture" +
+                 (" (mock)" if any(r.mock for r in arch_rows) else ""))
     ax.legend(loc="upper right")
     fig.tight_layout()
     out = out_dir / "chart_c_architecture.svg"
     fig.savefig(out)
     plt.close(fig)
-    return out
+    return [out]
 
 
 def chart_d_adversarial(rows: List[Row],
-                        out_dir: pathlib.Path) -> pathlib.Path:
+                        out_dir: pathlib.Path) -> List[pathlib.Path]:
     """Adversarial audit — tampered manifest detected by the runtime."""
     import matplotlib.pyplot as plt
 
@@ -432,18 +534,20 @@ def chart_d_adversarial(rows: List[Row],
                     style="italic")
     ax.set_xlim(0, 1)
     ax.set_xticks([])
-    ax.set_title("Chart D — Adversarial audit (mock data)"
-                 if any(r.mock for r in tamper_rows)
-                 else "Chart D — Adversarial audit")
+    ax.set_title("Chart D — Adversarial audit" +
+                 (" (mock)" if any(r.mock for r in tamper_rows) else ""))
     fig.tight_layout()
     out = out_dir / "chart_d_adversarial.svg"
     fig.savefig(out)
     plt.close(fig)
-    return out
+    return [out]
 
 
-def chart_a_cliff(rows: List[Row], out_dir: pathlib.Path) -> pathlib.Path:
-    """The headline: the projection cliff."""
+def chart_a_cliff(rows: List[Row], out_dir: pathlib.Path,
+                  facet_by_budget: bool = True) -> List[pathlib.Path]:
+    """The headline. Faceted by memory_budget_chars so the compression
+    regimes do not blend (the paper's whole point is that the cliff
+    appears at TIGHT budget and disappears at LOOSE)."""
     import matplotlib.pyplot as plt
     import numpy as np
 
@@ -451,56 +555,71 @@ def chart_a_cliff(rows: List[Row], out_dir: pathlib.Path) -> pathlib.Path:
     if not sweep_rows:
         raise SystemExit("chart A: no rows")
 
-    fig, ax_score = plt.subplots(figsize=(10, 5))
-    ax_lat = ax_score.twinx()
-    ax_lat.set_yscale("log")
-    conditions = [
-        "summarization_baseline",
-        "dpm_projection",
-        "dpm_checkpoints",
-        "dpm_checkpoints_prefix_cached",
-    ]
     palette = {
         "summarization_baseline":           "#aa3377",
         "dpm_projection":                   "#4477aa",
         "dpm_checkpoints":                  "#228833",
         "dpm_checkpoints_prefix_cached":    "#ee7733",
     }
-    for cond in conditions:
-        cond_rows = sorted(
-            [r for r in sweep_rows if r.condition == cond],
-            key=lambda r: r.trajectory_chars)
-        if not cond_rows:
+    conditions = [
+        "summarization_baseline",
+        "dpm_projection",
+        "dpm_checkpoints",
+        "dpm_checkpoints_prefix_cached",
+    ]
+    budgets = sorted({r.memory_budget_chars for r in sweep_rows})
+    if not facet_by_budget:
+        budgets = [None]
+
+    out_paths: List[pathlib.Path] = []
+    for budget in budgets:
+        budget_rows = ([r for r in sweep_rows if r.memory_budget_chars == budget]
+                       if budget is not None else list(sweep_rows))
+        if not budget_rows:
             continue
-        # Mean across repeats, per trajectory.
-        by_traj: dict = {}
-        for r in cond_rows:
-            by_traj.setdefault(r.trajectory_chars, []).append(r)
-        xs = sorted(by_traj.keys())
-        scores = [float(np.mean([r.decision_score for r in by_traj[t]]))
-                  for t in xs]
-        latencies = [float(np.mean([r.wall_clock_decision_ms
-                                     for r in by_traj[t]])) for t in xs]
-        ax_score.plot(xs, scores, marker="o", color=palette[cond],
-                      label=f"{cond} (score)")
-        ax_lat.plot(xs, latencies, marker="x", color=palette[cond],
-                    linestyle=":", alpha=0.7,
-                    label=f"{cond} (latency)")
-    ax_score.set_xlabel("Trajectory length (characters)")
-    ax_score.set_ylabel("Decision-alignment score")
-    ax_lat.set_ylabel("Wall-clock per decision (ms, log)")
-    ax_score.set_ylim(0, 1.05)
-    ax_score.set_title("Chart A — The projection cliff (mock data)"
-                       if any(r.mock for r in sweep_rows)
-                       else "Chart A — The projection cliff")
-    h1, l1 = ax_score.get_legend_handles_labels()
-    h2, l2 = ax_lat.get_legend_handles_labels()
-    ax_score.legend(h1 + h2, l1 + l2, loc="lower left", fontsize=8)
-    fig.tight_layout()
-    out = out_dir / "chart_a_cliff.svg"
-    fig.savefig(out)
-    plt.close(fig)
-    return out
+        fig, ax_score = plt.subplots(figsize=(10, 5))
+        ax_lat = ax_score.twinx()
+        ax_lat.set_yscale("log")
+        for cond in conditions:
+            cond_rows = sorted(
+                [r for r in budget_rows if r.condition == cond],
+                key=lambda r: r.trajectory_chars)
+            if not cond_rows:
+                continue
+            by_traj: dict = {}
+            for r in cond_rows:
+                by_traj.setdefault(r.trajectory_chars, []).append(r)
+            xs = sorted(by_traj.keys())
+            scores = [float(np.mean([r.composite_score()
+                                      for r in by_traj[t]])) for t in xs]
+            latencies = [float(np.mean([r.wall_clock_decision_ms
+                                         for r in by_traj[t]])) for t in xs]
+            ax_score.plot(xs, scores, marker="o", color=palette[cond],
+                          label=f"{cond} (score)")
+            ax_lat.plot(xs, latencies, marker="x", color=palette[cond],
+                        linestyle=":", alpha=0.7,
+                        label=f"{cond} (latency)")
+        ax_score.set_xlabel("Trajectory length (characters)")
+        ax_score.set_ylabel("Decision-alignment score")
+        ax_lat.set_ylabel("Wall-clock per decision (ms, log)")
+        ax_score.set_ylim(0, 1.05)
+        budget_label = (f"budget={budget} chars" if budget is not None
+                        else "all budgets")
+        ax_score.set_title(
+            f"Chart A — The projection cliff ({budget_label})" +
+            (" (mock)" if any(r.mock for r in budget_rows) else ""))
+        h1, l1 = ax_score.get_legend_handles_labels()
+        h2, l2 = ax_lat.get_legend_handles_labels()
+        ax_score.legend(h1 + h2, l1 + l2, loc="lower left", fontsize=8)
+        fig.tight_layout()
+        if budget is None:
+            out = out_dir / "chart_a_cliff.svg"
+        else:
+            out = out_dir / f"chart_a_cliff_budget_{budget}.svg"
+        fig.savefig(out)
+        plt.close(fig)
+        out_paths.append(out)
+    return out_paths
 
 
 # ----------------------------------------------------------------------
@@ -521,9 +640,27 @@ def main(argv: Sequence[str]) -> int:
         help="Synthesize plausible JSONL rows so the charts can be "
              "rendered before the driver is wired against real hardware.")
     parser.add_argument(
+        "--allow_mock", action="store_true",
+        help="Permit input that mixes mock=true and mock=false rows. "
+             "Off by default so a stale mock row cannot silently "
+             "contaminate a production chart.")
+    parser.add_argument(
         "--charts", nargs="*", default=["E", "B", "C", "D", "A"],
         help="Subset of charts to render. Default: all five, in skeptic-"
              "resistant order.")
+    parser.add_argument("--costs_trajectory", type=int, default=27000,
+                        help="trajectory_chars cell for Chart E.")
+    parser.add_argument("--costs_budget", type=int, default=5352,
+                        help="memory_budget_chars cell for Chart E.")
+    parser.add_argument("--mechanism_trajectory", type=int, default=27000,
+                        help="trajectory_chars cell for Chart B.")
+    parser.add_argument("--mechanism_budget", type=int, default=5352,
+                        help="memory_budget_chars cell for Chart B.")
+    parser.add_argument(
+        "--no_facet_by_budget", action="store_true",
+        help="Render Chart A as a single chart that mixes all budgets. "
+             "Off by default; the paper's cliff appears only at tight "
+             "budgets so faceting is the correct presentation.")
     args = parser.parse_args(argv)
 
     out_dir = pathlib.Path(args.output_dir)
@@ -535,25 +672,29 @@ def main(argv: Sequence[str]) -> int:
         if not args.input:
             parser.error("--input is required unless --mock is set.")
         rows = load_rows(args.input)
+        reject_mixed_rows(rows, allow_mock=args.allow_mock)
 
     chart_fns = {
-        "A": chart_a_cliff,
-        "B": chart_b_mechanism,
+        "A": lambda r, d: chart_a_cliff(
+            r, d, facet_by_budget=not args.no_facet_by_budget),
+        "B": lambda r, d: chart_b_mechanism(
+            r, d, args.mechanism_trajectory, args.mechanism_budget),
         "C": chart_c_architecture,
         "D": chart_d_adversarial,
-        "E": chart_e_costs,
+        "E": lambda r, d: chart_e_costs(
+            r, d, args.costs_trajectory, args.costs_budget),
     }
     for c in args.charts:
         if c not in chart_fns:
             parser.error(f"unknown chart {c!r}; expected one of "
                          f"{list(chart_fns)}")
-    written = []
+    written: List[pathlib.Path] = []
     for c in args.charts:
         try:
-            written.append(chart_fns[c](rows, out_dir))
+            written.extend(chart_fns[c](rows, out_dir))
         except SystemExit as e:
             print(f"chart {c}: skipped ({e})", file=sys.stderr)
-    print(f"wrote {len(written)} chart(s) to {out_dir}", file=sys.stderr)
+    print(f"wrote {len(written)} chart file(s) to {out_dir}", file=sys.stderr)
     for p in written:
         print(p)
     return 0

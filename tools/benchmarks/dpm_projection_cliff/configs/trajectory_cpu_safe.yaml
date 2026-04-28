@@ -1,0 +1,18 @@
+name: trajectory_cpu_safe
+schema_version: 1
+seed: 20260420
+repeats: 1
+conditions:
+  - summarization_baseline
+  - dpm_projection
+  - dpm_checkpoints
+  - dpm_checkpoints_prefix_cached
+trajectory_chars:
+  - 4000
+  - 8000
+  - 16000
+memory_budget_chars:
+  - 5352
+model_class: gqa
+kv_dtype: fp16
+kv_dtype_policy_replay_safe: true

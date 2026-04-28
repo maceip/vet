@@ -41,7 +41,10 @@ TEST(CliffRowToJsonlTest, EmitsRequiredFieldsAndOmitsAbsentOptionals) {
   row.runtime_version = "litertlm-1.2.3";
   row.kv_dtype = "fp16";
   row.model_class = "gqa";
-  row.decision_score = 0.93;
+  row.frp = 0.93;
+  row.rcs = 0.91;
+  row.eda = 1.0;
+  row.crr = 0.95;
   row.wall_clock_decision_ms = 80.5;
   row.wall_clock_append_p50_us = 50.0;
   row.wall_clock_append_p99_us = 1000.0;
@@ -54,32 +57,95 @@ TEST(CliffRowToJsonlTest, EmitsRequiredFieldsAndOmitsAbsentOptionals) {
   EXPECT_THAT(s, HasSubstr("\"trajectory_chars\":27000"));
   EXPECT_THAT(s, HasSubstr("\"kv_dtype\":\"fp16\""));
   EXPECT_THAT(s, HasSubstr("\"kv_dtype_policy_replay_safe\":true"));
-  // Optional fields absent by default => omitted.
+  // Per-axis fields are emitted when set.
+  EXPECT_THAT(s, HasSubstr("\"frp\":0.93"));
+  EXPECT_THAT(s, HasSubstr("\"rcs\":0.91"));
+  EXPECT_THAT(s, HasSubstr("\"eda\":1"));
+  EXPECT_THAT(s, HasSubstr("\"crr\":0.95"));
+  // Composite decision_score is optional/derived; absent here.
+  EXPECT_THAT(s, Not(HasSubstr("\"decision_score\"")));
+  EXPECT_THAT(s, Not(HasSubstr("\"deterministic_score\"")));
+  // Other optional fields absent by default => omitted.
   EXPECT_THAT(s, Not(HasSubstr("wall_clock_checkpoint_put_ms")));
   EXPECT_THAT(s, Not(HasSubstr("wall_clock_thaw_ms")));
   EXPECT_THAT(s, Not(HasSubstr("kv_bytes_per_1024_tokens")));
   EXPECT_THAT(s, Not(HasSubstr("must_refill_from_log")));
   EXPECT_THAT(s, Not(HasSubstr("\"mock\"")));
+  // Empty provenance fields are omitted (caller hadn't filled them).
+  EXPECT_THAT(s, Not(HasSubstr("\"hostname\"")));
+  EXPECT_THAT(s, Not(HasSubstr("\"git_sha\"")));
+  EXPECT_THAT(s, Not(HasSubstr("\"config_hash\"")));
+}
+
+TEST(CliffRowToJsonlTest, EmitsPreJudgeCorpusScoringFields) {
+  CliffRow row;
+  row.condition = "dpm_projection";
+  row.evidence_lane = "quality";
+  row.claim_tested = "paper_dpm_projection";
+  row.frp = 1.0;
+  row.eda = 1.0;
+  row.crr = 0.0;
+  row.deterministic_score = 2.0 / 3.0;
+  row.scored_axis_count = 3;
+  row.pending_judge_axes = "rcs";
+  row.wall_clock_memory_build_ms = 123.5;
+
+  const std::string s = CliffRowToJsonl(row);
+  EXPECT_THAT(s, HasSubstr("\"deterministic_score\":0.666667"));
+  EXPECT_THAT(s, HasSubstr("\"scored_axis_count\":3"));
+  EXPECT_THAT(s, HasSubstr("\"pending_judge_axes\":\"rcs\""));
+  EXPECT_THAT(s, HasSubstr("\"evidence_lane\":\"quality\""));
+  EXPECT_THAT(s, HasSubstr("\"claim_tested\":\"paper_dpm_projection\""));
+  EXPECT_THAT(s, HasSubstr("\"wall_clock_memory_build_ms\":123.5"));
+  EXPECT_THAT(s, Not(HasSubstr("\"decision_score\"")));
 }
 
 TEST(CliffRowToJsonlTest, EmitsOptionalsWhenSet) {
   CliffRow row;
   row.condition = "dpm_checkpoints";
+  row.decision_score = 0.92;
   row.wall_clock_checkpoint_put_ms = 120.0;
   row.wall_clock_thaw_ms = 22.0;
   row.kv_bytes_per_1024_tokens = 600000;
   row.must_refill_from_log = true;
+  // Provenance.
+  row.config_hash = "cfg-hash";
+  row.git_sha = "abcdef";
+  row.dirty_tree = false;
+  row.hostname = "rig-r2";
+  row.os = "Linux 6.8.0";
+  row.cpu_model = "Snapdragon X Elite";
+  row.accelerator_id = "hexagon-v75";
   row.tamper_test_json =
       R"json({"scenario":"manifest_hash_mismatch_artifact_hash"})json";
   row.mock = true;
 
   const std::string s = CliffRowToJsonl(row);
+  EXPECT_THAT(s, HasSubstr("\"decision_score\":0.92"));
   EXPECT_THAT(s, HasSubstr("\"wall_clock_checkpoint_put_ms\":120"));
   EXPECT_THAT(s, HasSubstr("\"wall_clock_thaw_ms\":22"));
   EXPECT_THAT(s, HasSubstr("\"kv_bytes_per_1024_tokens\":600000"));
   EXPECT_THAT(s, HasSubstr("\"must_refill_from_log\":true"));
+  EXPECT_THAT(s, HasSubstr("\"config_hash\":\"cfg-hash\""));
+  EXPECT_THAT(s, HasSubstr("\"git_sha\":\"abcdef\""));
+  EXPECT_THAT(s, HasSubstr("\"dirty_tree\":false"));
+  EXPECT_THAT(s, HasSubstr("\"hostname\":\"rig-r2\""));
+  EXPECT_THAT(s, HasSubstr("\"accelerator_id\":\"hexagon-v75\""));
   EXPECT_THAT(s, HasSubstr("\"tamper_test\":{\"scenario\":"));
   EXPECT_THAT(s, HasSubstr("\"mock\":true"));
+}
+
+TEST(RunOneCellTest, RefusesEmptyModelWithoutAllowMock) {
+  // With model_path empty and allow_mock off, the driver fails closed
+  // so a stale build cannot silently produce mock rows. Real runs pass
+  // a non-empty model_path; pure-mock runs flip allow_mock=true.
+  CliffConfig cfg;
+  cfg.seed = 20260420;
+  cfg.allow_mock = false;
+  cfg.model_path.clear();
+  auto status = RunOneCell(cfg, "dpm_projection", 27000, 5352, 0);
+  EXPECT_EQ(status.status().code(),
+            absl::StatusCode::kFailedPrecondition);
 }
 
 TEST(CliffRowToJsonlTest, EscapesControlCharacters) {
@@ -167,17 +233,20 @@ TEST(RunOneCellTest, MockReturnsConsistentRowForFixedSeed) {
   cfg.kv_dtype = "fp16";
   cfg.kv_dtype_policy_replay_safe = true;
   cfg.model_class = "gqa";
+  cfg.allow_mock = true;
   auto a = RunOneCell(cfg, "dpm_projection", 27000, 5352, 0);
   auto b = RunOneCell(cfg, "dpm_projection", 27000, 5352, 0);
-  ASSERT_TRUE(a.ok());
-  ASSERT_TRUE(b.ok());
-  EXPECT_EQ(a->decision_score, b->decision_score);
+  ASSERT_TRUE(a.ok()) << a.status();
+  ASSERT_TRUE(b.ok()) << b.status();
+  EXPECT_EQ(a->frp, b->frp);
+  EXPECT_EQ(a->rcs, b->rcs);
   EXPECT_TRUE(a->mock);
 }
 
 TEST(RunOneCellTest, MockCheckpointsConditionEmitsPutTime) {
   CliffConfig cfg;
   cfg.seed = 20260420;
+  cfg.allow_mock = true;
   auto row = RunOneCell(cfg, "dpm_checkpoints", 27000, 5352, 0);
   ASSERT_TRUE(row.ok());
   EXPECT_TRUE(row->wall_clock_checkpoint_put_ms.has_value());

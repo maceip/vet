@@ -1,0 +1,24 @@
+# Single-cell repro for the LiteRT-LM segfault during decode at long
+# trajectory. Reliably crashes the engine in dmesg as
+#   engine/<pid>: segfault at <addr> ip <addr> sp <addr> error 15
+# on the second decode iteration after the engine is hot from a
+# previous shorter cell. The crash is in the Gemma4 decoder path on
+# CPU backend; happens without the engine cache too.
+
+name: repro_64k_segfault
+schema_version: 1
+seed: 20260420
+repeats: 1
+
+conditions:
+  - summarization_baseline
+
+trajectory_chars:
+  - 64000
+
+memory_budget_chars:
+  - 5352
+
+model_class: gqa
+kv_dtype: fp16
+kv_dtype_policy_replay_safe: true
