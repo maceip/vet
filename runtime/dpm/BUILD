@@ -77,6 +77,35 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "projection_prefix_cache",
+    srcs = ["projection_prefix_cache.cc"],
+    hdrs = ["projection_prefix_cache.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/hash:hasher",
+        "//runtime/util:litert_status_util",
+    ],
+)
+
+cc_test(
+    name = "projection_prefix_cache_test",
+    srcs = ["projection_prefix_cache_test.cc"],
+    deps = [
+        ":dpm",
+        ":projection_prefix_cache",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/hash:hasher",
+        "//runtime/util:test_utils",
+    ],
+)
+
 cc_test(
     name = "checkpoint_policy_test",
     srcs = ["checkpoint_policy_test.cc"],
