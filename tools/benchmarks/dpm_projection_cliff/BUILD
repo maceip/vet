@@ -148,3 +148,45 @@ cc_test(
         "@com_google_absl//absl/strings:string_view",
     ],
 )
+
+# ----- scenario / agent-session corpus loader and tests --------------
+
+cc_library(
+    name = "session_case_loader",
+    srcs = ["scenario/session_case_loader.cc"],
+    hdrs = ["scenario/session_case_loader.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@nlohmann_json//:json",
+    ],
+)
+
+cc_test(
+    name = "session_case_loader_test",
+    srcs = ["scenario/session_case_loader_test.cc"],
+    data = ["scenario/golden/seed_case.json"],
+    deps = [
+        ":session_case_loader",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "phase2_scenario_test",
+    srcs = ["scenario/phase2_scenario_test.cc"],
+    data = ["scenario/golden/seed_case.json"],
+    deps = [
+        ":session_case_loader",
+        "//runtime/dpm:projection_prompt",
+        "//runtime/platform/hash:hasher",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
