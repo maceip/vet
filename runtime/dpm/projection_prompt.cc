@@ -63,7 +63,13 @@ absl::StatusOr<std::string> CreateProjectionPrompt(
       "[SCHEMA ID]\n", schema_id, "\n\n",
       "[TASK SCHEMA]\n", schema_json, "\n\n",
       "[MEMORY BUDGET]\n", memory_budget_chars, " characters\n\n",
-      "[EVENT LOG]\n", event_log, "\n");
+      "[EVENT LOG]\n", event_log, "\n\n",
+      "[EXPECTED OUTPUT]\n",
+      "Return only a valid JSON object in this exact shape:\n",
+      "{\"Facts\":[\"... [i]\"],\"Reasoning\":[\"... [i]\"],"
+      "\"Compliance\":[\"... [i]\"]}\n",
+      "Do not wrap the JSON in markdown or code fences. The first output "
+      "byte must be '{' and the last output byte must be '}'.\n");
 }
 
 std::string CreateDeciderPrompt(absl::string_view projected_memory,

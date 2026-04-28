@@ -125,7 +125,9 @@ absl::StatusOr<std::string> DPMProjector::Project(
     return projection.dump();
   } catch (const std::exception& e) {
     return absl::InvalidArgumentError(
-        absl::StrCat("DPM projection output is not valid JSON: ", e.what()));
+        absl::StrCat("DPM projection output is not valid JSON: ", e.what(),
+                     "; raw prefix: ",
+                     raw_projection.substr(0, 512)));
   }
 }
 
