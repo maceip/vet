@@ -184,6 +184,20 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "session_case_loader",
+    testonly = True,
+    srcs = ["testing/session_case_loader.cc"],
+    hdrs = ["testing/session_case_loader.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@nlohmann_json//:json",
+    ],
+)
+
 cc_test(
     name = "phase2_substrate_property_test",
     srcs = ["phase2_substrate_property_test.cc"],
@@ -199,6 +213,29 @@ cc_test(
         "//runtime/platform/provenance:provenance_query",
         "//runtime/util:test_utils",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "phase2_session_case_property_test",
+    srcs = ["phase2_session_case_property_test.cc"],
+    data = ["testing/golden/curated_session_cases.json"],
+    deps = [
+        ":canonical_manifest",
+        ":checkpoint_store",
+        ":durable_writer",
+        ":local_filesystem_checkpoint_store",
+        ":session_case_loader",
+        "//runtime/dpm:dpm",
+        "//runtime/platform/hash:hasher",
+        "//runtime/platform/provenance:local_merkle_dag_store",
+        "//runtime/platform/provenance:merkle_dag_store",
+        "//runtime/platform/provenance:provenance_query",
+        "//runtime/util:test_utils",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
