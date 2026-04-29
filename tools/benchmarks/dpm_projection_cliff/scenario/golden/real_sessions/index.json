@@ -1,0 +1,86 @@
+{
+  "generated_at": "2026-04-29T04:29:12Z",
+  "curator_script": "tools/benchmarks/dpm_projection_cliff/scenario/curate_real_sessions.py",
+  "note": "Raw session paths are intentionally OMITTED from this index: only the post-redaction SessionCase JSONs alongside this index are committed to git.",
+  "buckets": [
+    {
+      "bucket": "correction_heavy",
+      "case_id": "codex-rollout-2026-04-14T07-23-47-019d8a72@T=8",
+      "domain": "codex",
+      "n_events_normalized": 17,
+      "n_tool_calls": 0,
+      "n_correction_signals": 7,
+      "has_compaction": false,
+      "events_after_compaction": 0,
+      "n_probes": 1,
+      "probe_kinds": [
+        "next_user_intent"
+      ],
+      "filename": "correction_heavy.session_case.json"
+    },
+    {
+      "bucket": "handoff_ish",
+      "case_id": "claude-dfadd53b-1429-49d7-a2e3-3344b330da90@T=492",
+      "domain": "claude",
+      "n_events_normalized": 4929,
+      "n_tool_calls": 1865,
+      "n_correction_signals": 7,
+      "has_compaction": true,
+      "events_after_compaction": 3488,
+      "n_probes": 2,
+      "probe_kinds": [
+        "next_user_intent",
+        "next_tool_call"
+      ],
+      "filename": "handoff_ish.session_case.json"
+    },
+    {
+      "bucket": "tool_heavy",
+      "case_id": "claude-agent-a64041527bc3316be@T=11",
+      "domain": "claude",
+      "n_events_normalized": 113,
+      "n_tool_calls": 62,
+      "n_correction_signals": 0,
+      "has_compaction": false,
+      "events_after_compaction": 0,
+      "n_probes": 2,
+      "probe_kinds": [
+        "next_user_intent",
+        "next_tool_call"
+      ],
+      "filename": "tool_heavy.session_case.json"
+    },
+    {
+      "bucket": "long",
+      "case_id": "codex-rollout-2026-04-25T00-18-54-019dc193@T=633",
+      "domain": "codex",
+      "n_events_normalized": 6335,
+      "n_tool_calls": 2420,
+      "n_correction_signals": 1,
+      "has_compaction": false,
+      "events_after_compaction": 0,
+      "n_probes": 2,
+      "probe_kinds": [
+        "next_user_intent",
+        "next_tool_call"
+      ],
+      "filename": "long.session_case.json"
+    },
+    {
+      "bucket": "short",
+      "case_id": "claude-agent-afca5e8147b007696@T=6",
+      "domain": "claude",
+      "n_events_normalized": 12,
+      "n_tool_calls": 4,
+      "n_correction_signals": 0,
+      "has_compaction": false,
+      "events_after_compaction": 0,
+      "n_probes": 2,
+      "probe_kinds": [
+        "next_user_intent",
+        "next_tool_call"
+      ],
+      "filename": "short.session_case.json"
+    }
+  ]
+}

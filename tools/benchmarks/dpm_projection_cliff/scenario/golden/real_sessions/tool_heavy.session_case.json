@@ -1,0 +1,153 @@
+{
+  "case_id": "claude-agent-a64041527bc3316be@T=11",
+  "domain": "claude",
+  "source_path": "<curated:claude:1aa2b70a>",
+  "source_sha256": "1aa2b70a1291eae42345405ac48d5b94b526b5c5b0a6e11b74e595c7b7e9c0d4",
+  "n_events": 113,
+  "probe_T": 11,
+  "events": [
+    {
+      "idx": 0,
+      "kind": "user",
+      "role": "user",
+      "text": "Research only (no writing). I need to reverse-engineer the actual browser agent tool implementation from the compiled VSIX bundle at /tmp/vsix_analysis/extension/dist/extension.js. This is a minified 6286-line JavaScript file.\n\nSearch for ALL of the following patterns and extract the surrounding code context (50+ chars each side):\n\n1. Search for \"open_simple_browser\" and extract the full class that contains it\n2. Search for \"simpleBrowser.show\" and get context\n3. Search for \"fetchWebPage\" or \"fetch_webpage\" or \"vscode_fetchWebPage\" and get the full implementation\n4. Search for any of: \"openBrowserPage\", \"navigatePage\", \"clickElement\", \"readPage\", \"screenshotPage\", \"runPlaywrightCode\", \"hoverElement\", \"dragElement\", \"typeInPage\", \"handleDialog\"\n5. Search for \"browser\" near \"sync\" (within 200 chars of each other)\n6. Search for \"accessibility\" near \"tree\" \u2014 this is how readPage serializes DOM\n7. Search for \"WebContentsView\" or \"webview\" near \"browser\" \n8. Search for \"cookie\" or \"session\" near \"browser\" or \"isolat\"\n9. Search for \"browserContext\" or \"browser_context\" or \"newContext\"\n10. Search for \"playwright\" case-insensitive\n11. Search for \"CDP\" or \"chrome devtools protocol\" or \"debugger\" near \"browser\"\n12. Search for \"dataStorage\" or \"userDataDir\" or \"userData\"\n\nFor each match, provide the line number and at least 200 characters of surrounding context. Be very thorough \u2014 I need the actual implementation details to create a faithful recreation.",
+      "timestamp": "2026-03-09T15:29:34.849Z",
+      "tool_name": "",
+      "tool_args": "",
+      "raw_uuid": "e74e31aa-0df5-4f81-95e7-efbffa9b1187"
+    },
+    {
+      "idx": 1,
+      "kind": "assistant_text",
+      "role": "assistant",
+      "text": "\n\nI'll systematically search for all these patterns in the minified JS file. Let me run all searches in parallel.",
+      "timestamp": "2026-03-09T15:29:38.067Z",
+      "tool_name": "",
+      "tool_args": "",
+      "raw_uuid": "d1ff087e-95bf-4272-ad66-6f310a4cbac6"
+    },
+    {
+      "idx": 2,
+      "kind": "tool_call",
+      "role": "assistant",
+      "text": "[tool_use Grep(/tmp/vsix_analysis/extension/dist/extension.js)]",
+      "timestamp": "2026-03-09T15:29:39.011Z",
+      "tool_name": "Grep",
+      "tool_args": "/tmp/vsix_analysis/extension/dist/extension.js",
+      "raw_uuid": "78180ef5-4147-4f5b-8d60-07b5f847df38"
+    },
+    {
+      "idx": 3,
+      "kind": "tool_call",
+      "role": "assistant",
+      "text": "[tool_use Grep(/tmp/vsix_analysis/extension/dist/extension.js)]",
+      "timestamp": "2026-03-09T15:29:39.899Z",
+      "tool_name": "Grep",
+      "tool_args": "/tmp/vsix_analysis/extension/dist/extension.js",
+      "raw_uuid": "b6dd8b1c-3ef1-4891-bddc-8bdfee4b0649"
+    },
+    {
+      "idx": 4,
+      "kind": "tool_call",
+      "role": "assistant",
+      "text": "[tool_use Grep(/tmp/vsix_analysis/extension/dist/extension.js)]",
+      "timestamp": "2026-03-09T15:29:41.273Z",
+      "tool_name": "Grep",
+      "tool_args": "/tmp/vsix_analysis/extension/dist/extension.js",
+      "raw_uuid": "1f9162b7-23ca-4ce3-9d6d-0aa58af7db2f"
+    },
+    {
+      "idx": 5,
+      "kind": "tool_call",
+      "role": "assistant",
+      "text": "[tool_use Grep(/tmp/vsix_analysis/extension/dist/extension.js)]",
+      "timestamp": "2026-03-09T15:29:42.229Z",
+      "tool_name": "Grep",
+      "tool_args": "/tmp/vsix_analysis/extension/dist/extension.js",
+      "raw_uuid": "0c96fc70-47be-4980-95d9-602577705a79"
+    },
+    {
+      "idx": 6,
+      "kind": "tool_call",
+      "role": "assistant",
+      "text": "[tool_use Grep(/tmp/vsix_analysis/extension/dist/extension.js)]",
+      "timestamp": "2026-03-09T15:29:43.118Z",
+      "tool_name": "Grep",
+      "tool_args": "/tmp/vsix_analysis/extension/dist/extension.js",
+      "raw_uuid": "632e0227-0096-4143-addd-ceac77349487"
+    },
+    {
+      "idx": 7,
+      "kind": "tool_call",
+      "role": "assistant",
+      "text": "[tool_use Grep(/tmp/vsix_analysis/extension/dist/extension.js)]",
+      "timestamp": "2026-03-09T15:29:43.570Z",
+      "tool_name": "Grep",
+      "tool_args": "/tmp/vsix_analysis/extension/dist/extension.js",
+      "raw_uuid": "c3da9572-329a-4ea1-b8c4-85dbda2a7293"
+    },
+    {
+      "idx": 8,
+      "kind": "tool_call",
+      "role": "assistant",
+      "text": "[tool_use Grep(/tmp/vsix_analysis/extension/dist/extension.js)]",
+      "timestamp": "2026-03-09T15:29:44.895Z",
+      "tool_name": "Grep",
+      "tool_args": "/tmp/vsix_analysis/extension/dist/extension.js",
+      "raw_uuid": "0b17f082-7a6d-4301-b4eb-c1cd63283e7a"
+    },
+    {
+      "idx": 9,
+      "kind": "tool_call",
+      "role": "assistant",
+      "text": "[tool_use Grep(/tmp/vsix_analysis/extension/dist/extension.js)]",
+      "timestamp": "2026-03-09T15:29:45.316Z",
+      "tool_name": "Grep",
+      "tool_args": "/tmp/vsix_analysis/extension/dist/extension.js",
+      "raw_uuid": "a2ed9fad-57c2-42b5-8fed-8b6207c0b744"
+    },
+    {
+      "idx": 10,
+      "kind": "tool_call",
+      "role": "assistant",
+      "text": "[tool_use Grep(/tmp/vsix_analysis/extension/dist/extension.js)]",
+      "timestamp": "2026-03-09T15:29:46.196Z",
+      "tool_name": "Grep",
+      "tool_args": "/tmp/vsix_analysis/extension/dist/extension.js",
+      "raw_uuid": "665d3592-8119-437d-a934-a799f8662f97"
+    }
+  ],
+  "probes": [
+    {
+      "kind": "next_user_intent",
+      "question": "Based on the projection, what is the user about to ask?",
+      "expected_match": {
+        "substring": "[Content_Types]"
+      },
+      "rationale": "next_user_at_turn_17",
+      "must_include": [],
+      "must_not_include": [],
+      "must_call_tools": [],
+      "must_not_call_tools": [],
+      "database_state_must_remain": [],
+      "judge_rubric": ""
+    },
+    {
+      "kind": "next_tool_call",
+      "question": "What tool will the agent invoke next, and what is its primary argument?",
+      "expected_match": {
+        "tool_name": "Grep",
+        "arg_substring": "/tmp/vsix_analysis/extension/dist/extension.js"
+      },
+      "rationale": "next_tool_at_turn_12",
+      "must_include": [],
+      "must_not_include": [],
+      "must_call_tools": [],
+      "must_not_call_tools": [],
+      "database_state_must_remain": [],
+      "judge_rubric": ""
+    }
+  ],
+  "paired_case_id": "",
+  "pair_role": ""
+}
