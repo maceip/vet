@@ -148,53 +148,126 @@ def _events_from_messages(messages: list[dict]) -> list[Event]:
     return events
 
 
+_NUMBERED_CLAUSE_RE = re.compile(r"\s*\d+\)\s*")
+_TOOL_TOKEN_RE = re.compile(r"`([a-z][a-z0-9_]+)`|\b([a-z][a-z0-9_]{4,40}_(?:record|address|registration|account|billing|status|date|category|residency|service|number|info|contact|document))\b")
+
+
+def _split_rubric_clauses(rubrics_text: str) -> list[str]:
+    """The real AgenticQwen-Data rubrics are single-line strings with
+    numbered clauses ("1) ... 2) ... 3) ..."). My initial line-split
+    heuristic missed almost everything. This split extracts each
+    numbered clause as a separate string."""
+    if not rubrics_text:
+        return []
+    parts = _NUMBERED_CLAUSE_RE.split(rubrics_text)
+    out = [p.strip() for p in parts if p and p.strip()]
+    if len(out) >= 2:
+        return out
+    # Fall back to lines if no numbered clauses present.
+    return [ln.strip() for ln in rubrics_text.splitlines() if ln.strip()]
+
+
+def _extract_tool_names(text: str) -> list[str]:
+    """Pull plausible tool names out of a clause. Tools in this dataset
+    follow a snake_case `verb_noun_object` pattern (`query_resident_record`,
+    `register_new_utility_account`, etc.)."""
+    out = []
+    seen = set()
+    for m in _TOOL_TOKEN_RE.finditer(text):
+        token = m.group(1) or m.group(2)
+        if token and token not in seen:
+            seen.add(token)
+            out.append(token)
+    return out
+
+
 def _rubric_from_row(row: dict, path_kind: str) -> Probe:
     """Build a rubric-shaped Probe from the AgenticQwen row.
 
     path_kind ∈ {"normal", "hack"}. The rubric carries the policy
-    constraints + must-call/must-not-call sequences derived from the
-    chosen path of tool_return_expected_json.
+    constraints + must-call/must-not-call sequences derived from BOTH
+    the chosen path of tool_return_expected_json AND the rubrics text
+    (the real dataset puts the must-call/must-not-call assertions
+    inline in the rubrics prose, not just as path step lists).
     """
     tool_returns = _coerce_tool_returns(row.get("tool_return_expected_json"))
-    path_seq = tool_returns.get(f"{path_kind}_path", []) or []
+
+    def _tools_for_path(p: str) -> list[str]:
+        out, dedup = [], set()
+        for step in tool_returns.get(f"{p}_path", []) or []:
+            if not isinstance(step, dict):
+                continue
+            name = (step.get("tool_name") or step.get("tool")
+                    or step.get("name") or "")
+            if name and name not in dedup:
+                dedup.add(name)
+                out.append(name)
+        return out
+
+    normal_tools = _tools_for_path("normal")
+    hack_tools = _tools_for_path("hack")
+    normal_set, hack_set = set(normal_tools), set(hack_tools)
+
     must_call = []
     must_not_call = []
-    for step in path_seq:
-        if not isinstance(step, dict):
-            continue
-        name = step.get("tool", "") or step.get("name", "")
-        if not name:
-            continue
-        if path_kind == "normal":
-            must_call.append(name)
-        else:
-            # In a hack_path, the tools that AGENT MUST NOT actually
-            # invoke are the ones the hack would call — the rubric
-            # field surfaces them so the test can assert non-invocation.
-            must_not_call.append(name)
+    if path_kind == "normal":
+        # Tools the policy-compliant trajectory invokes.
+        must_call = list(normal_tools)
+    else:
+        # Tools the hack invokes that the normal does NOT — i.e. the
+        # policy-violating subset. Tools shared by both paths (e.g.
+        # an initial query) are legitimate; including them as
+        # must_not_call would contradict normal_path's must_call.
+        must_not_call = [t for t in hack_tools if t not in normal_set]
+    seen = set(normal_set | hack_set)
 
     rubrics_text = row.get("rubrics", "") or ""
     test_policy = row.get("test_policy", "") or ""
+    clauses = _split_rubric_clauses(rubrics_text)
 
-    # Extract any "must remain" / "must not change" predicates from
-    # rubrics text. The dataset's rubrics are short and natural, so a
-    # light regex-based pull is sufficient and fully deterministic.
     db_must_remain = []
-    for line in rubrics_text.splitlines():
-        low = line.lower()
-        if "must remain" in low or "must not change" in low or \
-           "do not call" in low or "must not call" in low:
-            db_must_remain.append(line.strip()[:200])
+    must_include = []
+    rubric_must_call = []
+    rubric_must_not_call = []
+    for clause in clauses:
+        low = clause.lower()
+        is_must_not = ("must not call" in low or "must not invoke" in low
+                       or "do not call" in low or "must not " in low)
+        is_must_call = (("must call" in low or "must invoke" in low
+                        or "must query" in low or "must verify" in low
+                        or "must check" in low) and not is_must_not)
+        is_state_invariant = ("must remain" in low or "must not change" in low
+                              or "must stay" in low or "no new " in low)
+        is_factual = any(kw in low for kw in (
+            "must explain", "must include", "must contain",
+            "must reference", "response must"))
 
-    must_include, must_not_include = [], []
-    # If the rubric calls out specific facts the agent must validate,
-    # those should survive in the projection. Heuristic: any line
-    # containing "verify" / "validate" / "must include" / "ensure".
-    for line in rubrics_text.splitlines():
-        low = line.lower()
-        if any(kw in low for kw in ("verify", "validate", "must include",
-                                     "ensure", "preserve")):
-            must_include.append(line.strip()[:200])
+        if is_must_not:
+            for t in _extract_tool_names(clause):
+                if t not in seen:
+                    rubric_must_not_call.append(t)
+                    seen.add(t)
+        if is_must_call:
+            for t in _extract_tool_names(clause):
+                if t not in seen:
+                    rubric_must_call.append(t)
+                    seen.add(t)
+        if is_state_invariant:
+            db_must_remain.append(clause[:240])
+        if is_factual:
+            must_include.append(clause[:240])
+
+    # Merge the path-derived list with the rubric-text-derived list.
+    # path-derived takes precedence (it's structured data), rubric-text
+    # adds tools the path didn't enumerate.
+    if path_kind == "normal":
+        for t in rubric_must_call:
+            if t not in must_call:
+                must_call.append(t)
+    else:
+        for t in rubric_must_not_call:
+            if t not in must_not_call:
+                must_not_call.append(t)
 
     return Probe(
         kind="policy_preserved",
@@ -204,7 +277,10 @@ def _rubric_from_row(row: dict, path_kind: str) -> Probe:
         expected_match={"path_kind": path_kind},
         rationale=f"agentic_qwen:{path_kind}_path",
         must_include=must_include,
-        must_not_include=must_not_include,
+        must_not_include=[],  # Reserved for adapters that surface
+                              # explicit forbidden facts; AgenticQwen's
+                              # rubrics structure them as tools/state,
+                              # not as facts to omit.
         must_call_tools=must_call,
         must_not_call_tools=must_not_call,
         database_state_must_remain=db_must_remain,
