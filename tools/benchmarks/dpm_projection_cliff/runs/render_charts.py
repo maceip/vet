@@ -39,6 +39,11 @@ from score_schema import (  # noqa: E402
     TestKind,
     DPM_VS_ROLLING_SUMMARY_DIFFERENTIAL,
 )
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _chart_style import (  # noqa: E402
+    apply_style, styled_title, styled_footer,
+    COLOR_ROLLING, COLOR_REPLAYABLE, COLOR_MUTED, COLOR_GRID,
+)
 
 
 def _load_rows(runs_dir: Path) -> list[ScoreRow]:
@@ -53,7 +58,8 @@ def _load_rows(runs_dir: Path) -> list[ScoreRow]:
     return rows
 
 
-def _render_policy_retention(rows: list[ScoreRow], out: Path) -> None:
+def _render_policy_retention(rows: list[ScoreRow], out: Path,
+                              fonts: dict) -> None:
     """Agentic_qwen normal twin, must_call_recovered on the decision row."""
     target = [
         r for r in rows
@@ -67,6 +73,7 @@ def _render_policy_retention(rows: list[ScoreRow], out: Path) -> None:
         return
     by_case: dict[str, dict[str, int]] = {}
     totals: dict[str, int] = {}
+    sources: list[str] = []
     for r in target:
         c = r.case_id
         by_case.setdefault(c, {})
@@ -75,7 +82,6 @@ def _render_policy_retention(rows: list[ScoreRow], out: Path) -> None:
         totals[c] = r.scores.get("must_call_total", 0)
 
     def _short(case_id: str) -> str:
-        # Strip the ":normal"/":hack" pair-role suffix and shorten UUIDs.
         base = case_id.split(":")[0]
         if base.startswith("synth-seed"):
             return "synthetic seed"
@@ -89,33 +95,43 @@ def _render_policy_retention(rows: list[ScoreRow], out: Path) -> None:
     x = list(range(len(cases)))
     width = 0.36
 
-    fig, ax = plt.subplots(figsize=(8, 4.5))
+    fig, ax = plt.subplots(figsize=(9, 5.2))
+    fig.subplots_adjust(top=0.78, bottom=0.16, left=0.10, right=0.96)
     ax.bar([i - width/2 for i in x], rolling, width=width,
-           label="rolling_summary", color="#888")
+           label="rolling-summary", color=COLOR_ROLLING)
     ax.bar([i + width/2 for i in x], dpm, width=width,
-           label="dpm_projection", color="#1f77b4")
+           label="replayable", color=COLOR_REPLAYABLE)
     ax.set_xticks(x)
     ax.set_xticklabels([_short(c) for c in cases],
-                        rotation=0, ha="center", fontsize=10)
+                        rotation=0, ha="center", fontsize=10,
+                        fontfamily=fonts["body"])
     max_total = max(totals.values()) if totals else 1
     ax.set_ylim(0, max_total + 0.5)
     ax.set_yticks(list(range(0, max_total + 1)))
-    ax.set_ylabel("must_call_tools recovered in the agent's answer")
-    ax.set_title("Policy retention under tight memory budget\n"
-                  "(agentic_qwen, normal twin, budget=800 chars)")
+    ax.set_ylabel("must_call_tools recovered in the agent's answer",
+                   fontfamily=fonts["body"], fontsize=10)
     for i, (rv, dv, tot) in enumerate(zip(rolling, dpm, [totals[c] for c in cases])):
-        ax.text(i - width/2, rv + 0.05, f"{rv}/{tot}", ha="center", fontsize=9)
-        ax.text(i + width/2, dv + 0.05, f"{dv}/{tot}", ha="center", fontsize=9)
-    ax.legend(loc="upper left", framealpha=0.9)
-    ax.set_axisbelow(True)
-    ax.grid(axis="y", linestyle=":", color="#ccc")
-    fig.tight_layout()
-    fig.savefig(out, dpi=150)
+        ax.text(i - width/2, rv + 0.05, f"{rv}/{tot}", ha="center",
+                fontsize=10, fontfamily=fonts["body"], color=COLOR_ROLLING)
+        ax.text(i + width/2, dv + 0.05, f"{dv}/{tot}", ha="center",
+                fontsize=10, fontfamily=fonts["body"], color=COLOR_REPLAYABLE)
+    leg = ax.legend(loc="upper left", framealpha=0.95, frameon=True,
+                     edgecolor=COLOR_GRID, prop={"family": fonts["body"],
+                                                  "size": 9})
+    leg.get_frame().set_linewidth(0.5)
+    styled_title(
+        ax,
+        "policy retention under tight memory budget",
+        "agentic-qwen normal-twin · budget = 800 chars · n = 2 cases",
+        fonts)
+    styled_footer(fig, "runs/*agentic_qwen_pair.jsonl", fonts)
+    fig.savefig(out, dpi=160)
     plt.close(fig)
     print(f"  wrote {out}")
 
 
-def _render_cost_asymmetry(rows: list[ScoreRow], out: Path) -> None:
+def _render_cost_asymmetry(rows: list[ScoreRow], out: Path,
+                            fonts: dict) -> None:
     """handoff_ish: tokens_in / tokens_out / calls per substrate.
 
     The decision-row scores carry tokens_in/tokens_out/calls keys
@@ -156,34 +172,44 @@ def _render_cost_asymmetry(rows: list[ScoreRow], out: Path) -> None:
     x = list(range(len(metrics)))
     width = 0.36
 
-    fig, ax = plt.subplots(figsize=(8, 4.5))
+    fig, ax = plt.subplots(figsize=(9, 5.2))
+    fig.subplots_adjust(top=0.78, bottom=0.18, left=0.10, right=0.96)
     bar_r = ax.bar([i - width/2 for i in x], rolling, width=width,
-                    label="rolling_summary", color="#888")
+                    label="rolling-summary", color=COLOR_ROLLING)
     bar_d = ax.bar([i + width/2 for i in x], dpm, width=width,
-                    label="dpm_projection", color="#1f77b4")
+                    label="replayable", color=COLOR_REPLAYABLE)
     ax.set_xticks(x)
-    ax.set_xticklabels(metrics)
+    ax.set_xticklabels(metrics, fontfamily=fonts["body"], fontsize=10)
     ax.set_yscale("log")
-    ax.set_ylabel("count (log scale)")
-    ax.set_title(f"Cost per decision\n({case_id})")
-    for bars, vals in ((bar_r, rolling), (bar_d, dpm)):
+    ax.set_ylabel("count (log scale)", fontfamily=fonts["body"], fontsize=10)
+    for bars, vals, color in ((bar_r, rolling, COLOR_ROLLING),
+                                (bar_d, dpm, COLOR_REPLAYABLE)):
         for b, v in zip(bars, vals):
-            ax.text(b.get_x() + b.get_width()/2, v * 1.05, f"{v:,}",
-                    ha="center", fontsize=8)
-    # Caption with the asymmetry ratios so the chart reads without math.
+            ax.text(b.get_x() + b.get_width()/2, v * 1.08, f"{v:,}",
+                    ha="center", fontsize=9, color=color,
+                    fontfamily=fonts["body"])
     ratios = []
     for m, rv, dv in zip(metrics, rolling, dpm):
         if dv > 0:
-            ratios.append(f"{m}: {rv/dv:.1f}x")
+            ratios.append(f"{m} {rv/dv:.1f}×")
     if ratios:
-        fig.text(0.5, 0.01,
-                  "rolling-summary / dpm-projection — " + ", ".join(ratios),
-                  ha="center", fontsize=8, color="#444")
-    ax.legend(loc="upper right", framealpha=0.9)
-    ax.set_axisbelow(True)
-    ax.grid(axis="y", linestyle=":", color="#ccc", which="both")
-    fig.tight_layout(rect=(0, 0.03, 1, 1))
-    fig.savefig(out, dpi=150)
+        fig.text(0.5, 0.06,
+                  "rolling-summary ÷ replayable  —  " + "   ".join(ratios),
+                  ha="center", fontsize=9, color=COLOR_MUTED,
+                  fontfamily=fonts["body"])
+    leg = ax.legend(loc="upper right", framealpha=0.95, frameon=True,
+                     edgecolor=COLOR_GRID, prop={"family": fonts["body"],
+                                                  "size": 9})
+    leg.get_frame().set_linewidth(0.5)
+    ax.grid(axis="y", which="both", color=COLOR_GRID, linestyle=":",
+            linewidth=0.7)
+    styled_title(
+        ax,
+        "cost per decision",
+        "real Claude session · 492 events · 1338-char memory budget",
+        fonts)
+    styled_footer(fig, f"runs/*{case_id[:24]}*.jsonl", fonts)
+    fig.savefig(out, dpi=160)
     plt.close(fig)
     print(f"  wrote {out}")
 
@@ -206,8 +232,11 @@ def main(argv: list[str]) -> int:
     print(f"loaded {len(rows)} rows, {len(chart_rows)} after chart-spec filter")
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    _render_policy_retention(chart_rows, args.out_dir / "policy_retention.png")
-    _render_cost_asymmetry(chart_rows, args.out_dir / "cost_asymmetry.png")
+    fonts = apply_style()
+    _render_policy_retention(chart_rows,
+                              args.out_dir / "policy_retention.png", fonts)
+    _render_cost_asymmetry(chart_rows,
+                            args.out_dir / "cost_asymmetry.png", fonts)
     return 0
 
 
