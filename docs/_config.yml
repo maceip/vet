@@ -1,0 +1,11 @@
+title: Replayable agent memory
+description: A substrate where the event log never changes and the memory the agent acts on is rebuilt from it on demand.
+theme: jekyll-theme-minimal
+exclude:
+  - README.md
+  - api/
+  - getting-started/
+  - images/
+  - litert_lm_builder.md
+  - _LITERT_LM_README.md
+permalink: /:title/
