@@ -40,7 +40,11 @@ A 492-event Claude session, compressed to a 1338-character memory two ways:
 
 **8.5× fewer calls, 10.7× fewer output tokens, better answer quality.**
 
+![Cost per decision: rolling-summary 17 calls / 8,035 output tokens vs replayable 2 calls / 750 output tokens on a 492-event Claude session, 1338-character memory budget](../tools/benchmarks/dpm_projection_cliff/runs/cost_asymmetry.png)
+
 Two AgenticQwen rubric-shaped twin pairs (one synthetic seed, one real row from `alibaba-pai/AgenticQwen-Data`). On the policy-allowed twin, rolling-summary's compressed memory dropped the policy-allowed tool *names* entirely — the agent could no longer recommend them when asked what to do next. The replayable memory preserved them. Synthetic seed: 0/3 vs 3/3. Real data: 0/3 vs 1/3. The pattern holds across both; the magnitude is data-dependent.
+
+![Policy retention under tight memory budget: rolling-summary recovers 0/3 must-call tools on both cases, replayable recovers 3/3 on synthetic seed and 1/3 on real row 3488](../tools/benchmarks/dpm_projection_cliff/runs/policy_retention.png)
 
 A 17-event session with auditor-rubric content embedded in prior agent turns. After hardening the rebuild prompt against instruction injection from event content, rolling-summary's memory had drifted entirely off the original ask (0/8 keywords retained from the user's first instruction). The replayable memory led with the original ask (4/8).
 
