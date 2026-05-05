@@ -94,6 +94,110 @@ html body .main-content tt {
 .main-content strong { font-weight: bold !important; }
 .main-content em { font-style: italic !important; }
 
+/* ===== Dark/lime palette — matches the project explainer art ===== */
+
+html, body {
+  background: #0a0a0a !important;
+  color: #d6d6d6 !important;
+}
+
+.page-header {
+  background: #0a0a0a !important;
+  background-image: none !important;
+  border-bottom: 1px solid #1f1f1f;
+  color: #e0e0e0 !important;
+}
+
+.page-header .project-name,
+.project-name {
+  color: #f2f2f2 !important;
+}
+
+.page-header .project-tagline,
+.project-tagline {
+  color: #b8b8b8 !important;
+  opacity: 1 !important;
+}
+
+/* Architect's "View on GitHub" button — repaint to lime outline. */
+.page-header .btn,
+.btn {
+  background: transparent !important;
+  border: 1px solid #cddd2a !important;
+  color: #cddd2a !important;
+  background-image: none !important;
+}
+.page-header .btn:hover, .btn:hover {
+  background: #cddd2a !important;
+  color: #0a0a0a !important;
+}
+
+section.main-content,
+.main-content {
+  background: #0a0a0a !important;
+  color: #d6d6d6 !important;
+}
+
+.main-content h1,
+.main-content h2,
+.main-content h3,
+.main-content h4 {
+  color: #cddd2a !important;
+}
+
+/* Architect prefixes its headings with "/", "//" via ::before — kill it. */
+.main-content h1::before,
+.main-content h2::before,
+.main-content h3::before,
+.main-content h4::before {
+  content: none !important;
+  display: none !important;
+}
+
+.main-content a {
+  color: #cddd2a !important;
+  text-decoration: underline;
+  text-decoration-color: rgba(205, 221, 42, 0.4);
+}
+.main-content a:hover {
+  text-decoration-color: #cddd2a;
+}
+
+.main-content blockquote {
+  border-left: 3px solid #cddd2a !important;
+  background: #131313 !important;
+  color: #e8e8e8 !important;
+  padding: 1rem 1.25rem !important;
+  margin: 1.5rem 0 !important;
+}
+
+.main-content code,
+.main-content tt {
+  background: #1a1a1a !important;
+  color: #cddd2a !important;
+  padding: 0.1em 0.35em !important;
+  border-radius: 2px !important;
+}
+
+.main-content pre,
+.main-content pre code {
+  background: #131313 !important;
+  color: #d6d6d6 !important;
+  border: 1px solid #1f1f1f;
+}
+
+.main-content strong { color: #f2f2f2 !important; }
+
+.main-content hr {
+  border: none !important;
+  border-top: 1px solid #1f1f1f !important;
+}
+
+.main-content ul li::marker,
+.main-content ol li::marker {
+  color: #cddd2a !important;
+}
+
 /* Charts: full-width, centered, breathing room. */
 .main-content img {
   display: block;
@@ -102,4 +206,3 @@ html body .main-content tt {
 }
 
 .main-content { line-height: 1.6; }
-.project-tagline { opacity: 0.95; }
