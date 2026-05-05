@@ -31,15 +31,15 @@ The first two are the substrate. The third makes the memory *provably faithful* 
 
 A 492-event Claude session, compressed to a 1338-character memory two ways. Rolling-summary: 17 model calls, 8 035 output tokens. Replayable: 2 model calls, 750 output tokens. **8.5× fewer calls, 10.7× fewer output tokens.**
 
-![Cost per decision: rolling-summary 17 calls / 8035 output tokens vs replayable 2 calls / 750 output tokens on a 492-event Claude session at a 1338-character memory budget](../tools/benchmarks/dpm_projection_cliff/runs/cost_asymmetry.png)
+![Cost per decision: rolling-summary 17 calls / 8035 output tokens vs replayable 2 calls / 750 output tokens on a 492-event Claude session at a 1338-character memory budget](assets/charts/cost_asymmetry.png)
 
 Two AgenticQwen rubric pairs (one synthetic, one real row from `alibaba-pai/AgenticQwen-Data`). Rolling-summary's compressed memory dropped the policy-allowed tool *names* — the agent could no longer recommend them when asked what to do next. Replayable preserved them. Synthetic: 0/3 vs 3/3. Real data: 0/3 vs 1/3. Pattern holds; magnitude is data-dependent.
 
-![Policy retention under tight memory budget: rolling-summary recovers 0/3 must-call tools on both AgenticQwen cases; replayable recovers 3/3 on synthetic seed and 1/3 on real row 3488](../tools/benchmarks/dpm_projection_cliff/runs/policy_retention.png)
+![Policy retention under tight memory budget: rolling-summary recovers 0/3 must-call tools on both AgenticQwen cases; replayable recovers 3/3 on synthetic seed and 1/3 on real row 3488](assets/charts/policy_retention.png)
 
 A 17-event session with auditor-rubric content embedded in prior agent turns. Rolling-summary's memory drifted off the original ask entirely (0/8 keywords). Replayable led with the original ask (4/8).
 
-![First-instruction recall under instruction injection: rolling-summary recovers 0 of 8 intent keywords; replayable recovers 4 of 8](../tools/benchmarks/dpm_projection_cliff/runs/instruction_recall.png)
+![First-instruction recall under instruction injection: rolling-summary recovers 0 of 8 intent keywords; replayable recovers 4 of 8](assets/charts/instruction_recall.png)
 
 The score schema rejects rows whose `bytes_scored_from` doesn't match their `test_kind` at construction time, and the chart code refuses to render rows the schema didn't accept — a fake compression-quality comparison is structurally impossible to plot, not just unlikely.
 

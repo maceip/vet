@@ -1,0 +1,77 @@
+---
+---
+
+@import "{{ site.theme }}";
+
+@font-face {
+  font-family: "ProductDesign";
+  src: url("../fonts/ProductDesign.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "VeraMono";
+  src: url("../fonts/VeraMono.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "VeraMono";
+  src: url("../fonts/VeraMoBd.ttf") format("truetype");
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "VeraMono";
+  src: url("../fonts/VeraMoIt.ttf") format("truetype");
+  font-weight: normal;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "VeraMono";
+  src: url("../fonts/VeraMoBI.ttf") format("truetype");
+  font-weight: bold;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Title only — the architect-theme header H1. */
+.page-header .project-name,
+.project-name {
+  font-family: "ProductDesign", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  letter-spacing: 0.02em;
+}
+
+/* Everything else — body, headings, paragraphs, lists, blockquote. */
+body, .page-header .project-tagline, .main-content,
+.main-content h2, .main-content h3, .main-content h4,
+.main-content p, .main-content li, .main-content blockquote,
+.main-content code, .main-content pre, .main-content strong,
+.main-content em {
+  font-family: "VeraMono", "Bitstream Vera Sans Mono", Menlo, Consolas, monospace;
+}
+
+.main-content strong { font-weight: bold; }
+.main-content em { font-style: italic; }
+
+/* Charts: full-width, centered, breathing room. */
+.main-content img {
+  display: block;
+  max-width: 100%;
+  margin: 1.75rem auto;
+}
+
+/* Slightly tighter line-height for the mono body. */
+.main-content {
+  line-height: 1.55;
+}
+
+.project-tagline { opacity: 0.95; }
