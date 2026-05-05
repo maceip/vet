@@ -78,6 +78,23 @@ cc_library(
 )
 
 cc_library(
+    name = "checkpointed_projection",
+    srcs = ["checkpointed_projection.cc"],
+    hdrs = ["checkpointed_projection.h"],
+    deps = [
+        ":dpm",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "//runtime/platform/checkpoint:canonical_manifest",
+        "//runtime/platform/checkpoint:checkpoint_store",
+        "//runtime/platform/hash:hasher",
+        "//runtime/platform/provenance:merkle_dag_store",
+        "//runtime/util:litert_status_util",
+    ],
+)
+
+cc_library(
     name = "projection_prefix_cache",
     srcs = ["projection_prefix_cache.cc"],
     hdrs = ["projection_prefix_cache.h"],
@@ -116,6 +133,24 @@ cc_test(
         "//runtime/platform/checkpoint:kv_quantization",
         "//runtime/platform/hash:hasher",
         "//runtime/proto:checkpoint_cc_proto",
+        "//runtime/util:test_utils",
+    ],
+)
+
+cc_test(
+    name = "checkpointed_projection_test",
+    srcs = ["checkpointed_projection_test.cc"],
+    deps = [
+        ":checkpointed_projection",
+        ":dpm",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/checkpoint:checkpoint_store",
+        "//runtime/platform/checkpoint:local_filesystem_checkpoint_store",
+        "//runtime/platform/hash:hasher",
+        "//runtime/platform/provenance:local_merkle_dag_store",
+        "//runtime/platform/provenance:provenance_query",
         "//runtime/util:test_utils",
     ],
 )
