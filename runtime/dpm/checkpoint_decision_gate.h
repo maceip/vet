@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "runtime/dpm/event_sourced_log.h"
@@ -38,6 +39,17 @@ struct CheckpointDecisionGateResult {
   bool may_use = false;
   std::string reason;
 };
+
+struct CorrectionBarrierDecision {
+  bool must_interrupt_before_next_predict = false;
+  bool must_reproject = false;
+  std::string reason;
+  std::vector<CorrectionPayload> blocking_corrections;
+};
+
+CorrectionBarrierDecision EvaluateCorrectionBarrier(
+    const Hash256& active_checkpoint_manifest_hash,
+    const CorrectionIndex& corrections);
 
 absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
     const CheckpointDecisionGateRequest& request, const AuditLedger& ledger,

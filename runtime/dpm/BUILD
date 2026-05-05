@@ -127,6 +127,26 @@ cc_library(
 )
 
 cc_library(
+    name = "projection_replay_auditor",
+    srcs = ["projection_replay_auditor.cc"],
+    hdrs = ["projection_replay_auditor.h"],
+    deps = [
+        ":checkpointed_projection",
+        ":correction_protocol",
+        ":dpm",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "//runtime/platform/audit:audit_certificate",
+        "//runtime/platform/audit:audit_ledger",
+        "//runtime/platform/checkpoint:checkpoint_store",
+        "//runtime/platform/hash:hasher",
+        "//runtime/platform/provenance:merkle_dag_store",
+        "//runtime/util:litert_status_util",
+    ],
+)
+
+cc_library(
     name = "projection_prefix_cache",
     srcs = ["projection_prefix_cache.cc"],
     hdrs = ["projection_prefix_cache.h"],
@@ -203,6 +223,28 @@ cc_test(
         "//runtime/platform/checkpoint:local_filesystem_checkpoint_store",
         "//runtime/platform/hash:hasher",
         "//runtime/platform/provenance:local_merkle_dag_store",
+        "//runtime/util:test_utils",
+    ],
+)
+
+cc_test(
+    name = "projection_replay_auditor_test",
+    srcs = ["projection_replay_auditor_test.cc"],
+    deps = [
+        ":checkpoint_decision_gate",
+        ":checkpointed_projection",
+        ":correction_protocol",
+        ":dpm",
+        ":projection_replay_auditor",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/audit:audit_certificate",
+        "//runtime/platform/audit:local_filesystem_audit_ledger",
+        "//runtime/platform/checkpoint:local_filesystem_checkpoint_store",
+        "//runtime/platform/hash:hasher",
+        "//runtime/platform/provenance:local_merkle_dag_store",
+        "//runtime/platform/provenance:provenance_query",
         "//runtime/util:test_utils",
     ],
 )

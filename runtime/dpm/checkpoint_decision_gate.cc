@@ -14,6 +14,8 @@
 
 #include "runtime/dpm/checkpoint_decision_gate.h"
 
+#include <vector>
+
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "runtime/dpm/correction_protocol.h"
@@ -23,6 +25,30 @@
 #include "runtime/util/status_macros.h"
 
 namespace litert::lm {
+
+CorrectionBarrierDecision EvaluateCorrectionBarrier(
+    const Hash256& active_checkpoint_manifest_hash,
+    const CorrectionIndex& corrections) {
+  std::vector<CorrectionPayload> blocking =
+      corrections.BlockingCorrectionsFor(active_checkpoint_manifest_hash);
+  if (blocking.empty()) {
+    return CorrectionBarrierDecision{
+        .must_interrupt_before_next_predict = false,
+        .must_reproject = false,
+        .reason = "no blocking correction for active checkpoint",
+    };
+  }
+  bool interrupt = false;
+  for (const CorrectionPayload& correction : blocking) {
+    interrupt = interrupt || correction.must_interrupt_before_next_predict;
+  }
+  return CorrectionBarrierDecision{
+      .must_interrupt_before_next_predict = interrupt,
+      .must_reproject = true,
+      .reason = "blocking correction requires fresh projection",
+      .blocking_corrections = std::move(blocking),
+  };
+}
 
 absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
     const CheckpointDecisionGateRequest& request, const AuditLedger& ledger,
@@ -42,10 +68,12 @@ absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
         .reason = "checkpoint thaw verification failed",
     };
   }
-  if (corrections.HasBlockingCorrectionFor(request.checkpoint_manifest_hash)) {
+  const CorrectionBarrierDecision barrier =
+      EvaluateCorrectionBarrier(request.checkpoint_manifest_hash, corrections);
+  if (barrier.must_reproject) {
     return CheckpointDecisionGateResult{
         .may_use = false,
-        .reason = "blocking correction invalidates checkpoint",
+        .reason = barrier.reason,
     };
   }
   absl::StatusOr<AuditCertificate> certificate_or =
