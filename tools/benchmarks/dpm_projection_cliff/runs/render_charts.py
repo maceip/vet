@@ -137,8 +137,8 @@ def _render_policy_retention(rows: list[ScoreRow], out: Path,
     leg.get_frame().set_linewidth(0.5)
     styled_title(
         ax,
-        "policy retention under tight memory budget",
-        "agentic-qwen normal-twin · budget = 800 chars · n = 2 cases",
+        "Did the agent remember which tools to use?",
+        "agentic-qwen normal-twin · 800-char memory budget · n = 2 cases",
         fonts)
     styled_footer(fig, "runs/*agentic_qwen_pair.jsonl", fonts)
     fig.savefig(out, dpi=160)
@@ -221,7 +221,7 @@ def _render_cost_asymmetry(rows: list[ScoreRow], out: Path,
             linewidth=0.7)
     styled_title(
         ax,
-        "cost per decision",
+        "How much does one decision cost?",
         "real Claude session · 492 events · 1338-char memory budget",
         fonts)
     styled_footer(fig, f"runs/*{case_id[:24]}*.jsonl", fonts)
@@ -296,9 +296,9 @@ def _render_instruction_recall(rows: list[ScoreRow], out: Path,
     leg.get_frame().set_linewidth(0.5)
     styled_title(
         ax,
-        "first-instruction recall under instruction injection",
+        "Did the agent remember the user's first instruction?",
         "correction-heavy session · prior agent turns contained "
-        "auditor-rubric language",
+        "instruction-shaped content",
         fonts)
     styled_footer(fig, f"runs/*{case_id[:18]}*.jsonl", fonts)
     fig.savefig(out, dpi=160)

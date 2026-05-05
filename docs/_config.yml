@@ -1,5 +1,5 @@
-title: Replayable agent memory
-description: A substrate where the event log never changes and the memory the agent acts on is rebuilt from it on demand.
+title: Replayable Agent Memory
+description: A log-based substrate for auditable AI decisions.
 theme: jekyll-theme-architect
 exclude:
   - README.md

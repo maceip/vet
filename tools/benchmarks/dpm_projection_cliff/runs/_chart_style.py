@@ -19,18 +19,17 @@ import matplotlib.pyplot as plt
 
 # ---- palette ----------------------------------------------------------
 
-# Antagonist — muted, neutral, recedes. Rolling-summary lives here.
-COLOR_ROLLING = "#5b6770"
-# Proposition — accent. Replayable / DPM lives here. Teal reads as
-# verified/audit/certificate without mimicking any single big-tech
-# brand color.
-COLOR_REPLAYABLE = "#1f8a8a"
+# Dark/lime brand palette — matches the project explainer art.
+# Antagonist: muted olive-gray. Recedes against dark bg.
+COLOR_ROLLING = "#6a6f3d"
+# Proposition: bright lime-yellow accent.
+COLOR_REPLAYABLE = "#cddd2a"
 # Surfaces.
-COLOR_BG = "#fafafa"
-COLOR_GRID = "#dcdcdc"
-COLOR_TITLE = "#1a1a1a"
-COLOR_AXIS = "#3a3a3a"
-COLOR_MUTED = "#6a6a6a"
+COLOR_BG = "#0a0a0a"
+COLOR_GRID = "#262626"
+COLOR_TITLE = "#f2f2f2"
+COLOR_AXIS = "#8a8a8a"
+COLOR_MUTED = "#9a9a9a"
 
 
 # ---- typography -------------------------------------------------------
