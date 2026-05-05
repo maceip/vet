@@ -214,6 +214,73 @@ def _render_cost_asymmetry(rows: list[ScoreRow], out: Path,
     print(f"  wrote {out}")
 
 
+def _render_instruction_recall(rows: list[ScoreRow], out: Path,
+                                fonts: dict) -> None:
+    """correction_heavy: keyword recall of the original user instruction
+    after compression. The case had auditor-rubric content embedded in
+    prior turns; rolling-summary lost the original ask entirely (0/8);
+    DPM with the hardened rebuild prompt preserved 4/8.
+    """
+    target = [
+        r for r in rows
+        if r.case_corpus == "real_sessions"
+        and r.test_kind == TestKind.DECISION
+        and "codex-rollout" in r.case_id.lower()
+    ]
+    if not target:
+        print("instruction_recall: no correction_heavy decision rows; skipping",
+              file=sys.stderr)
+        return
+    case_id = target[0].case_id
+
+    by_substrate: dict[str, dict] = {}
+    for r in target:
+        by_substrate[r.compression_substrate.value] = {
+            "hits": r.scores.get("intent_keyword_hits_count", 0),
+            "total": r.scores.get("intent_keyword_hits_total", 0),
+            "list": r.scores.get("intent_keyword_hits_list", []),
+        }
+    rolling = by_substrate.get("rolling_summary", {})
+    dpm = by_substrate.get("dpm_projection", {})
+    total = max(rolling.get("total", 0), dpm.get("total", 0), 1)
+
+    fig, ax = plt.subplots(figsize=(9, 5.2))
+    fig.subplots_adjust(top=0.78, bottom=0.18, left=0.12, right=0.96)
+    width = 0.36
+    x = [0]
+    ax.bar([i - width/2 for i in x], [rolling.get("hits", 0)],
+            width=width, label="rolling-summary", color=COLOR_ROLLING)
+    ax.bar([i + width/2 for i in x], [dpm.get("hits", 0)],
+            width=width, label="replayable", color=COLOR_REPLAYABLE)
+    ax.set_xticks(x)
+    ax.set_xticklabels(["correction-heavy session · 17 events"],
+                        fontfamily=fonts["body"], fontsize=10)
+    ax.set_ylim(0, total + 1)
+    ax.set_yticks(list(range(0, total + 1)))
+    ax.set_ylabel("intent keywords recovered\nfrom the original instruction",
+                   fontfamily=fonts["body"], fontsize=10)
+    ax.text(-width/2, rolling.get("hits", 0) + 0.12,
+            f"{rolling.get('hits', 0)}/{total}", ha="center",
+            fontfamily=fonts["body"], fontsize=10, color=COLOR_ROLLING)
+    ax.text(width/2, dpm.get("hits", 0) + 0.12,
+            f"{dpm.get('hits', 0)}/{total}", ha="center",
+            fontfamily=fonts["body"], fontsize=10, color=COLOR_REPLAYABLE)
+    leg = ax.legend(loc="upper left", framealpha=0.95, frameon=True,
+                     edgecolor=COLOR_GRID, prop={"family": fonts["body"],
+                                                  "size": 9})
+    leg.get_frame().set_linewidth(0.5)
+    styled_title(
+        ax,
+        "first-instruction recall under instruction injection",
+        "correction-heavy session · prior agent turns contained "
+        "auditor-rubric language",
+        fonts)
+    styled_footer(fig, f"runs/*{case_id[:18]}*.jsonl", fonts)
+    fig.savefig(out, dpi=160)
+    plt.close(fig)
+    print(f"  wrote {out}")
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", type=Path,
@@ -237,6 +304,8 @@ def main(argv: list[str]) -> int:
                               args.out_dir / "policy_retention.png", fonts)
     _render_cost_asymmetry(chart_rows,
                             args.out_dir / "cost_asymmetry.png", fonts)
+    _render_instruction_recall(chart_rows,
+                                args.out_dir / "instruction_recall.png", fonts)
     return 0
 
 
