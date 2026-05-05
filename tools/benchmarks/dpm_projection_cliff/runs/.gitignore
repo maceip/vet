@@ -1,0 +1,16 @@
+# Schema-validated ScoreRow JSONL files emitted by head_to_head.py and
+# the differential runners. Raw stdout transcripts and per-run derived
+# files (charts, summaries) are ignored — only the JSONL is committed
+# when a run is part of a published headline.
+#
+# Convention:
+#   <ISO8601>_<case_id>.jsonl    — committed when part of a headline run
+#   <ISO8601>_<case_id>.stdout   — never committed
+#   *.tmp / *.partial            — never committed
+#
+# To commit a run intentionally:
+#   git add -f runs/<file>.jsonl
+*.stdout
+*.tmp
+*.partial
+.tmp_*

@@ -1,7 +1,28 @@
-"""DPM vs rolling-summary, single case, two API calls each, print both answers."""
+"""DPM vs rolling-summary, single case, two API calls each, print both answers.
+
+Emits schema-validated ScoreRow JSONL alongside the human-readable
+comparison so runs are machine-comparable. The JSONL goes to
+tools/benchmarks/dpm_projection_cliff/runs/<timestamp>_<case_id>.jsonl
+and is the only output charts read; raw stdout is for humans only.
+
+Each run emits four rows:
+  rolling_summary x memory_projection  (memory_bytes scored)
+  rolling_summary x decision           (answer_bytes scored)
+  dpm_projection  x memory_projection  (memory_bytes scored)
+  dpm_projection  x decision           (answer_bytes scored)
+
+The schema (score_schema.py) refuses to accept a memory_projection row
+backed by prompt_bytes — the trap that would make DPM look artificially
+good. Every row must declare what it scored and where the bytes came
+from.
+"""
+import hashlib
 import json, os, sys, time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from score_schema import (
+    ScoreRow, CompressionSubstrate, TestKind, BytesScoredFrom,
+)
 # Force UTF-8 stdout so the model's unicode (✓, ✗, em-dashes) doesn't
 # crash cp1252 on Windows.
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -19,6 +40,16 @@ case_path = sys.argv[1] if len(sys.argv) > 1 else \
     "tools/benchmarks/dpm_projection_cliff/scenario/golden/real_sessions/handoff_ish.session_case.json"
 case = json.load(open(case_path))
 events = case["events"]
+
+# Infer case_corpus from path; ScoreRow takes a free-form string but we
+# keep it to the four canonical buckets so charts can group cleanly.
+def _infer_corpus(p):
+    pp = str(p).replace("\\", "/").lower()
+    if "/real_sessions/" in pp: return "real_sessions"
+    if "/agentic_qwen/" in pp:  return "agentic_qwen"
+    if "/paper/" in pp:         return "paper"
+    return "synthetic"
+CASE_CORPUS = _infer_corpus(case_path)
 # Probe: early-trajectory fact-recall. The user's first real
 # instruction at event idx=3 names four specific actions and one
 # specific document (the DPM paper). DPM has a structural reason to
@@ -128,3 +159,83 @@ roll_calls = len(events) // chunk_size + 2
 print(f"\nrolling-summary cost:  in={roll_in:>6} out={roll_out:>5} tokens  "
       f"({roll_calls} calls)")
 print(f"dpm-projection cost:   in={dpm_in:>6} out={dpm_out:>5} tokens  (2 calls)")
+
+# ---- emit schema-validated ScoreRow JSONL -----------------------------
+def _sha256(s: str) -> str:
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+def _score_dict(answer: str, hits: list[str]) -> dict:
+    return {
+        "intent_keyword_hits_count": len(hits),
+        "intent_keyword_hits_total": len(expected_intent_keys),
+        "intent_keyword_hits_list": hits,
+        "answer_chars": len(answer),
+    }
+
+rows = []
+# rolling-summary substrate
+rows.append(ScoreRow(
+    case_id=case["case_id"], case_corpus=CASE_CORPUS,
+    compression_substrate=CompressionSubstrate.ROLLING_SUMMARY,
+    budget_chars=BUDGET,
+    test_kind=TestKind.MEMORY_PROJECTION,
+    bytes_scored_from=BytesScoredFrom.MEMORY_BYTES,
+    bytes_len=len(running), bytes_sha256=_sha256(running),
+    model_id=MODEL,
+    scores={
+        # memory has no answer, so only structural metrics
+        "memory_chars": len(running),
+        "summarize_calls": len(events) // chunk_size + 1,
+    },
+))
+rows.append(ScoreRow(
+    case_id=case["case_id"], case_corpus=CASE_CORPUS,
+    compression_substrate=CompressionSubstrate.ROLLING_SUMMARY,
+    budget_chars=BUDGET,
+    test_kind=TestKind.DECISION,
+    bytes_scored_from=BytesScoredFrom.ANSWER_BYTES,
+    bytes_len=len(roll_ans), bytes_sha256=_sha256(roll_ans),
+    model_id=MODEL,
+    scores={
+        **_score_dict(roll_ans, roll_hits),
+        "tokens_in": roll_in, "tokens_out": roll_out,
+        "calls": roll_calls,
+    },
+))
+# dpm substrate
+rows.append(ScoreRow(
+    case_id=case["case_id"], case_corpus=CASE_CORPUS,
+    compression_substrate=CompressionSubstrate.DPM_PROJECTION,
+    budget_chars=BUDGET,
+    test_kind=TestKind.MEMORY_PROJECTION,
+    bytes_scored_from=BytesScoredFrom.MEMORY_BYTES,
+    bytes_len=len(dpm_mem), bytes_sha256=_sha256(dpm_mem),
+    model_id=MODEL,
+    scores={
+        "memory_chars": len(dpm_mem),
+        "projection_calls": 1,
+    },
+))
+rows.append(ScoreRow(
+    case_id=case["case_id"], case_corpus=CASE_CORPUS,
+    compression_substrate=CompressionSubstrate.DPM_PROJECTION,
+    budget_chars=BUDGET,
+    test_kind=TestKind.DECISION,
+    bytes_scored_from=BytesScoredFrom.ANSWER_BYTES,
+    bytes_len=len(dpm_ans), bytes_sha256=_sha256(dpm_ans),
+    model_id=MODEL,
+    scores={
+        **_score_dict(dpm_ans, dpm_hits),
+        "tokens_in": dpm_in, "tokens_out": dpm_out,
+        "calls": 2,
+    },
+))
+
+runs_dir = Path(__file__).resolve().parents[2] / "runs"
+runs_dir.mkdir(parents=True, exist_ok=True)
+ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+out_path = runs_dir / f"{ts}_{case['case_id'].replace('/', '_').replace(':', '_')}.jsonl"
+with out_path.open("w", encoding="utf-8") as f:
+    for r in rows:
+        f.write(json.dumps(r.to_dict(), ensure_ascii=False) + "\n")
+print(f"\n=== wrote {len(rows)} ScoreRow records to {out_path}")
