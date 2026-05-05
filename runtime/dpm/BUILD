@@ -95,6 +95,38 @@ cc_library(
 )
 
 cc_library(
+    name = "correction_protocol",
+    srcs = ["correction_protocol.cc"],
+    hdrs = ["correction_protocol.h"],
+    deps = [
+        ":dpm",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@nlohmann_json//:json",
+        "//runtime/platform/hash:hasher",
+        "//runtime/util:litert_status_util",
+    ],
+)
+
+cc_library(
+    name = "checkpoint_decision_gate",
+    srcs = ["checkpoint_decision_gate.cc"],
+    hdrs = ["checkpoint_decision_gate.h"],
+    deps = [
+        ":correction_protocol",
+        ":dpm",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "//runtime/platform/audit:audit_certificate",
+        "//runtime/platform/audit:audit_ledger",
+        "//runtime/platform/hash:hasher",
+        "//runtime/util:litert_status_util",
+    ],
+)
+
+cc_library(
     name = "projection_prefix_cache",
     srcs = ["projection_prefix_cache.cc"],
     hdrs = ["projection_prefix_cache.h"],
@@ -151,6 +183,26 @@ cc_test(
         "//runtime/platform/hash:hasher",
         "//runtime/platform/provenance:local_merkle_dag_store",
         "//runtime/platform/provenance:provenance_query",
+        "//runtime/util:test_utils",
+    ],
+)
+
+cc_test(
+    name = "phase3_audit_flow_test",
+    srcs = ["phase3_audit_flow_test.cc"],
+    deps = [
+        ":checkpoint_decision_gate",
+        ":checkpointed_projection",
+        ":correction_protocol",
+        ":dpm",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/audit:audit_certificate",
+        "//runtime/platform/audit:local_filesystem_audit_ledger",
+        "//runtime/platform/checkpoint:local_filesystem_checkpoint_store",
+        "//runtime/platform/hash:hasher",
+        "//runtime/platform/provenance:local_merkle_dag_store",
         "//runtime/util:test_utils",
     ],
 )
