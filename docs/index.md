@@ -1,11 +1,11 @@
 ---
-title: Append-only agent memory
-description: A substrate where the event log never changes and the memory the agent acts on is recomputed from it on demand.
+title: Replayable agent memory
+description: A substrate where the event log never changes, and the memory the agent acts on is rebuilt from it on demand.
 ---
 
-# Append-only agent memory
+# Replayable agent memory
 
-> Today's agents rewrite their memory every few turns. By hour two of a real session the agent is acting on a copy of a copy of a copy of what you actually said. We measured a 492-event session where this approach took 17 model calls to produce a memory that had lost the user's original instruction. **No framework on the market today can tell you which events produced the agent's last decision. The memory has been edited too many times to know.** We built an alternative — append-only event log, memory recomputed at decision time, every projection cryptographically tied to the events that produced it.
+> Today's agents rewrite their memory every few turns. By hour two of a real session the agent is acting on a copy of a copy of a copy of what you actually said. We measured a 492-event session where this approach took 17 model calls to produce a memory that had lost the user's original instruction. **No framework on the market today can tell you which events produced the agent's last decision. The memory has been edited too many times to know.** We built an alternative — an append-only event log, the memory rebuilt from the log at decision time, every rebuild cryptographically tied to the events that produced it.
 
 ## A category, not a feature
 
@@ -25,32 +25,32 @@ Three primitives:
 
 **An append-only event log.** Every user turn, every tool call, every result is appended. Nothing is rewritten. The log is the source of truth for the entire session — and unlike a rolling summary, the log is the *full* truth, not a derivation of it.
 
-**A projection at decision time.** When the agent needs to act, it doesn't read a stored memory. It runs a single task-conditioned projection over the event log: a function from `(events, task) → memory`, executed once, used once, discarded. The memory the agent acts on is recomputed every time, never edited.
+**Memory rebuilt at decision time.** When the agent needs to act, it doesn't read a stored memory. It rebuilds the memory it needs from the event log: a single task-conditioned read over the log, executed once, used once, discarded. The memory the agent acts on is rebuilt every time, never edited.
 
-**A content-addressed audit certificate.** Every projection produces a checkpoint. Replaying the raw log against the projection model produces bytes that either hash-match the stored projection (verdict: pass) or don't (verdict: blocking correction emitted). The certificate is a child node of the checkpoint in a Merkle DAG. If the projection drifts from what the events actually say, the runtime gate refuses the next decision until a fresh projection is taken.
+**A content-addressed audit certificate.** Every rebuild produces a checkpoint. Replaying the raw log against the same model produces bytes that either hash-match the stored memory (verdict: pass) or don't (verdict: blocking correction emitted). The certificate is a child node of the checkpoint in a Merkle DAG. If the rebuilt memory drifts from what the events actually say, the runtime gate refuses the next decision until a fresh rebuild is taken.
 
-The first two are the recomputable-memory substrate. The third makes the memory *provably faithful* — every decision is bound to the specific events that produced it, not to a summary nobody can audit.
+The first two are the replayable-memory substrate. The third makes the memory *provably faithful* — every decision is bound to the specific events that produced it, not to a summary nobody can audit.
 
 ## What we measured
 
 A 492-event Claude session, compressed to a 1338-character memory two ways:
 
 - Rolling-summary: 17 model calls, 8 035 output tokens, original user instruction lost in the final memory.
-- Append-only with a single task-conditioned projection: 2 model calls, 750 output tokens, original instruction preserved.
+- Replayable, with a single task-conditioned rebuild: 2 model calls, 750 output tokens, original instruction preserved.
 
 **8.5× fewer calls, 10.7× fewer output tokens, better answer quality.**
 
-Two AgenticQwen rubric-shaped twin pairs (one synthetic seed, one real row from `alibaba-pai/AgenticQwen-Data`). On the policy-allowed twin, rolling-summary's compressed memory dropped the policy-allowed tool *names* entirely — the agent could no longer recommend them when asked what to do next. The projection-based memory preserved them. Synthetic seed: 0/3 vs 3/3. Real data: 0/3 vs 1/3. The pattern holds across both; the magnitude is data-dependent.
+Two AgenticQwen rubric-shaped twin pairs (one synthetic seed, one real row from `alibaba-pai/AgenticQwen-Data`). On the policy-allowed twin, rolling-summary's compressed memory dropped the policy-allowed tool *names* entirely — the agent could no longer recommend them when asked what to do next. The replayable memory preserved them. Synthetic seed: 0/3 vs 3/3. Real data: 0/3 vs 1/3. The pattern holds across both; the magnitude is data-dependent.
 
-A 17-event session with auditor-rubric content embedded in prior agent turns. After hardening the projection prompt against instruction injection from event content, rolling-summary's memory had drifted entirely off the original ask (0/8 keywords retained from the user's first instruction). The projection-based memory led with the original ask (4/8).
+A 17-event session with auditor-rubric content embedded in prior agent turns. After hardening the rebuild prompt against instruction injection from event content, rolling-summary's memory had drifted entirely off the original ask (0/8 keywords retained from the user's first instruction). The replayable memory led with the original ask (4/8).
 
 The benchmark methodology and the schema-locked JSONL are in the repo. The score schema rejects rows whose `bytes_scored_from` doesn't match their `test_kind` at construction time, and the chart code refuses to render rows the schema didn't accept — so a fake compression-quality comparison is structurally impossible to plot, not just unlikely.
 
 ## Honest limits
 
-Faithful compression cuts both ways. On the policy-violating twin of one real-data case, the projection-based memory faithfully preserved the user's request *including the forbidden operations* the user was pushing for. The agent under that memory proposed two policy-violating tool calls that the rolling-summary agent did not. Faithful compression preserves whatever is in the events; without an explicit policy constraint in the prompt, that includes the user's pressure tactic.
+Faithful compression cuts both ways. On the policy-violating twin of one real-data case, the replayable memory faithfully preserved the user's request *including the forbidden operations* the user was pushing for. The agent under that memory proposed two policy-violating tool calls that the rolling-summary agent did not. Faithful compression preserves whatever is in the events; without an explicit policy constraint in the prompt, that includes the user's pressure tactic.
 
-Long sessions beyond a single projection call. A 6 335-event case exceeds the input budget of one model call by ~6×. Hierarchical projection at the substrate layer — the same `Level0` + `DeltaAppend` codec that already exists in the C++ runtime — is what addresses this; the bench has not yet run it.
+Long sessions beyond a single rebuild call. A 6 335-event case exceeds the input budget of one model call by ~6×. Hierarchical rebuild at the substrate layer — the same `Level0` + `DeltaAppend` codec that already exists in the C++ runtime — is what addresses this; the bench has not yet run it.
 
 ## What's next
 
@@ -62,4 +62,4 @@ The full machinery is in the [LiteRT-DPM repo](https://github.com/maceip/LiteRT-
 
 ---
 
-*The project name internally is **DPM** — Deterministic Projection Memory. The page calls it "append-only agent memory" because that's the property worth caring about; the rest is implementation detail.*
+*The project name internally is **DPM** — Deterministic Projection Memory. The page calls it "replayable agent memory" because that's the property worth caring about; the rest is implementation detail.*
