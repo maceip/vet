@@ -287,7 +287,7 @@ rows.append(ScoreRow(
     },
 ))
 
-runs_dir = Path(__file__).resolve().parents[2] / "runs"
+runs_dir = Path(__file__).resolve().parents[1] / "runs"
 runs_dir.mkdir(parents=True, exist_ok=True)
 ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
 out_path = runs_dir / f"{ts}_{case['case_id'].replace('/', '_').replace(':', '_')}.jsonl"
