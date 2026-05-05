@@ -15,6 +15,7 @@
 #include "runtime/platform/checkpoint/durable_writer.h"
 
 #include <atomic>
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
@@ -53,10 +54,23 @@ std::string UniqueTempSuffix() {
 
 #ifdef _WIN32
 
+std::wstring ToWin32Path(const std::filesystem::path& path) {
+  std::wstring out = std::filesystem::absolute(path).wstring();
+  std::replace(out.begin(), out.end(), L'/', L'\\');
+  if (out.rfind(L"\\\\?\\", 0) == 0) {
+    return out;
+  }
+  if (out.rfind(L"\\\\", 0) == 0) {
+    return L"\\\\?\\UNC\\" + out.substr(2);
+  }
+  return L"\\\\?\\" + out;
+}
+
 absl::Status WriteAndSyncToTemp(const std::filesystem::path& tmp_path,
                                 absl::string_view bytes) {
+  const std::wstring tmp_win_path = ToWin32Path(tmp_path);
   HANDLE handle = CreateFileW(
-      tmp_path.wstring().c_str(), GENERIC_WRITE,
+      tmp_win_path.c_str(), GENERIC_WRITE,
       /*share=*/0, /*sa=*/nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
       /*template=*/nullptr);
   if (handle == INVALID_HANDLE_VALUE) {
@@ -87,7 +101,9 @@ absl::Status WriteAndSyncToTemp(const std::filesystem::path& tmp_path,
 absl::Status ReplaceTempWithTarget(const std::filesystem::path& tmp_path,
                                    const std::filesystem::path& target_path) {
   // MoveFileEx with MOVEFILE_REPLACE_EXISTING is atomic on the same volume.
-  if (!MoveFileExW(tmp_path.wstring().c_str(), target_path.wstring().c_str(),
+  const std::wstring tmp_win_path = ToWin32Path(tmp_path);
+  const std::wstring target_win_path = ToWin32Path(target_path);
+  if (!MoveFileExW(tmp_win_path.c_str(), target_win_path.c_str(),
                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
     return absl::InternalError(
         absl::StrCat("DurablyWriteFile: MoveFileExW failed: ",
@@ -201,7 +217,9 @@ absl::Status DurablyCreateNewFile(const std::filesystem::path& target_path,
   }
 
 #ifdef _WIN32
-  if (!MoveFileExW(tmp_path.wstring().c_str(), target_path.wstring().c_str(),
+  const std::wstring tmp_win_path = ToWin32Path(tmp_path);
+  const std::wstring target_win_path = ToWin32Path(target_path);
+  if (!MoveFileExW(tmp_win_path.c_str(), target_win_path.c_str(),
                    MOVEFILE_WRITE_THROUGH)) {
     const DWORD err = GetLastError();
     std::filesystem::remove(tmp_path, error);
