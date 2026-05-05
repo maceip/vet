@@ -5,7 +5,11 @@ description: A substrate where the event log never changes and the memory the ag
 
 # Append-only agent memory
 
-> Today's agents rewrite their memory every few turns. By hour two of a real session the agent is acting on a copy of a copy of a copy of what you actually said. We measured a 492-event session where this approach took 17 model calls to produce a memory that had lost the user's original instruction. We built an alternative — append-only event log, memory recomputed at decision time, every projection cryptographically tied to the events that produced it.
+> Today's agents rewrite their memory every few turns. By hour two of a real session the agent is acting on a copy of a copy of a copy of what you actually said. We measured a 492-event session where this approach took 17 model calls to produce a memory that had lost the user's original instruction. **No framework on the market today can tell you which events produced the agent's last decision. The memory has been edited too many times to know.** We built an alternative — append-only event log, memory recomputed at decision time, every projection cryptographically tied to the events that produced it.
+
+## A category, not a feature
+
+The pattern of "store a thing, mutate it as new things arrive, lose the history" was the dominant model in software until it wasn't. Event sourcing, CRDTs, immutable infrastructure, content-addressed storage, append-only logs in Kafka, content-addressed objects in Git — every serious system built in the last decade replaced *mutate-in-place* with *append-only-and-derive*. Agent memory is the last category that hasn't made the shift. There is no good reason for this. There are only inherited assumptions.
 
 ## Why this happens
 
@@ -50,7 +54,9 @@ Long sessions beyond a single projection call. A 6 335-event case exceeds the in
 
 ## What's next
 
-The audit substrate above — replay verifier, content-addressed certificates, fail-closed runtime gate, blocking corrections — is real code with green tests today. The bench has not yet exercised the audit pipeline end-to-end against real session data; that's the follow-on post.
+The audit substrate above — replay verifier, content-addressed certificates, fail-closed runtime gate, blocking corrections — is real code with green tests today. We will demonstrate the audit pipeline end-to-end against real session data in a follow-on post.
+
+But the more important point is that no piece of this is novel research. Append-only event logs are decades old. Content-addressed storage is decades old. Merkle DAGs are decades old. Every primitive in this substrate is something the rest of computing settled on a long time ago. The novelty here is only that nobody has yet packaged them for agent memory. **That gap will close. The only question is who closes it.**
 
 The full machinery is in the [LiteRT-DPM repo](https://github.com/maceip/LiteRT-DPM). Substrate index: [`runtime/dpm/PHASE2_STATUS.md`](https://github.com/maceip/LiteRT-DPM/blob/phase2-substrate/runtime/dpm/PHASE2_STATUS.md). Replay auditor entry point: [`runtime/dpm/projection_replay_auditor.h`](https://github.com/maceip/LiteRT-DPM/blob/phase3-substrate/runtime/dpm/projection_replay_auditor.h) at commit `51b0bcb8`. Bench JSONL + schema lock: [`tools/benchmarks/dpm_projection_cliff/runs/`](https://github.com/maceip/LiteRT-DPM/tree/phase2-bench/tools/benchmarks/dpm_projection_cliff/runs).
 
