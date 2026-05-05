@@ -5,7 +5,7 @@
 
 @font-face {
   font-family: "ProductDesign";
-  src: url("../fonts/ProductDesign.ttf") format("truetype");
+  src: url("{{ '/assets/fonts/ProductDesign.ttf' | relative_url }}") format("truetype");
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -13,7 +13,7 @@
 
 @font-face {
   font-family: "VeraMono";
-  src: url("../fonts/VeraMono.ttf") format("truetype");
+  src: url("{{ '/assets/fonts/VeraMono.ttf' | relative_url }}") format("truetype");
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -21,7 +21,7 @@
 
 @font-face {
   font-family: "VeraMono";
-  src: url("../fonts/VeraMoBd.ttf") format("truetype");
+  src: url("{{ '/assets/fonts/VeraMoBd.ttf' | relative_url }}") format("truetype");
   font-weight: bold;
   font-style: normal;
   font-display: swap;
@@ -29,7 +29,7 @@
 
 @font-face {
   font-family: "VeraMono";
-  src: url("../fonts/VeraMoIt.ttf") format("truetype");
+  src: url("{{ '/assets/fonts/VeraMoIt.ttf' | relative_url }}") format("truetype");
   font-weight: normal;
   font-style: italic;
   font-display: swap;
@@ -37,26 +37,31 @@
 
 @font-face {
   font-family: "VeraMono";
-  src: url("../fonts/VeraMoBI.ttf") format("truetype");
+  src: url("{{ '/assets/fonts/VeraMoBI.ttf' | relative_url }}") format("truetype");
   font-weight: bold;
   font-style: italic;
   font-display: swap;
 }
 
-/* Title only — the architect-theme header H1. */
+/* Title + ALL section headers use ProductDesign. */
 .page-header .project-name,
-.project-name {
-  font-family: "ProductDesign", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  letter-spacing: 0.02em;
+.project-name,
+.main-content h1,
+.main-content h2,
+.main-content h3,
+.main-content h4 {
+  font-family: "ProductDesign", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+  letter-spacing: 0.01em;
+  font-weight: normal;
 }
 
-/* Everything else — body, headings, paragraphs, lists, blockquote. */
-body, .page-header .project-tagline, .main-content,
-.main-content h2, .main-content h3, .main-content h4,
+/* Everything else: Vera (the font you uploaded). */
+body, .page-header, .page-header .project-tagline, .main-content,
 .main-content p, .main-content li, .main-content blockquote,
-.main-content code, .main-content pre, .main-content strong,
-.main-content em {
-  font-family: "VeraMono", "Bitstream Vera Sans Mono", Menlo, Consolas, monospace;
+.main-content strong, .main-content em, .main-content a,
+.main-content code, .main-content pre, .main-content tt {
+  font-family: "VeraMono", "Bitstream Vera Sans Mono", Menlo, Consolas,
+               monospace !important;
 }
 
 .main-content strong { font-weight: bold; }
@@ -69,9 +74,5 @@ body, .page-header .project-tagline, .main-content,
   margin: 1.75rem auto;
 }
 
-/* Slightly tighter line-height for the mono body. */
-.main-content {
-  line-height: 1.55;
-}
-
+.main-content { line-height: 1.6; }
 .project-tagline { opacity: 0.95; }

@@ -92,15 +92,28 @@ def _render_policy_retention(rows: list[ScoreRow], out: Path,
     cases = sorted(by_case.keys())
     rolling = [by_case[c].get("rolling_summary", 0) for c in cases]
     dpm = [by_case[c].get("dpm_projection", 0) for c in cases]
+    case_totals = [totals[c] for c in cases]
     x = list(range(len(cases)))
-    width = 0.36
+    width = 0.22
 
     fig, ax = plt.subplots(figsize=(9, 5.2))
     fig.subplots_adjust(top=0.78, bottom=0.16, left=0.10, right=0.96)
-    ax.bar([i - width/2 for i in x], rolling, width=width,
-           label="rolling-summary", color=COLOR_ROLLING)
+    # If a rolling bar is zero, render an outlined ghost-bar at the
+    # case's rubric ceiling so the antagonist has visual presence.
+    for i, (rv, tot) in enumerate(zip(rolling, case_totals)):
+        if rv == 0:
+            ax.bar([i - width/2], [tot], width=width, color="none",
+                    edgecolor=COLOR_ROLLING, linestyle=(0, (4, 3)),
+                    linewidth=1.2)
+        else:
+            ax.bar([i - width/2], [rv], width=width, color=COLOR_ROLLING)
     ax.bar([i + width/2 for i in x], dpm, width=width,
            label="replayable", color=COLOR_REPLAYABLE)
+    # legend proxy for rolling so the ghost-bar gets a label.
+    from matplotlib.patches import Patch
+    rolling_proxy = Patch(facecolor="none", edgecolor=COLOR_ROLLING,
+                           linestyle=(0, (4, 3)), linewidth=1.2,
+                           label="rolling-summary  (would-fill ceiling)")
     ax.set_xticks(x)
     ax.set_xticklabels([_short(c) for c in cases],
                         rotation=0, ha="center", fontsize=10,
@@ -115,9 +128,12 @@ def _render_policy_retention(rows: list[ScoreRow], out: Path,
                 fontsize=10, fontfamily=fonts["body"], color=COLOR_ROLLING)
         ax.text(i + width/2, dv + 0.05, f"{dv}/{tot}", ha="center",
                 fontsize=10, fontfamily=fonts["body"], color=COLOR_REPLAYABLE)
-    leg = ax.legend(loc="upper left", framealpha=0.95, frameon=True,
-                     edgecolor=COLOR_GRID, prop={"family": fonts["body"],
-                                                  "size": 9})
+    handles, labels = ax.get_legend_handles_labels()
+    handles = [rolling_proxy] + handles
+    labels = ["rolling-summary  (would-fill ceiling)"] + labels
+    leg = ax.legend(handles, labels, loc="upper left", framealpha=0.95,
+                     frameon=True, edgecolor=COLOR_GRID,
+                     prop={"family": fonts["body"], "size": 9})
     leg.get_frame().set_linewidth(0.5)
     styled_title(
         ax,
@@ -246,24 +262,33 @@ def _render_instruction_recall(rows: list[ScoreRow], out: Path,
 
     fig, ax = plt.subplots(figsize=(9, 5.2))
     fig.subplots_adjust(top=0.78, bottom=0.18, left=0.12, right=0.96)
-    width = 0.36
+    width = 0.20
     x = [0]
-    ax.bar([i - width/2 for i in x], [rolling.get("hits", 0)],
-            width=width, label="rolling-summary", color=COLOR_ROLLING)
-    ax.bar([i + width/2 for i in x], [dpm.get("hits", 0)],
-            width=width, label="replayable", color=COLOR_REPLAYABLE)
+    rh = rolling.get("hits", 0)
+    dh = dpm.get("hits", 0)
+    # Outlined zero-height ghost-bar for rolling-summary so the 0/8
+    # has visual presence next to the tall replayable bar.
+    if rh == 0:
+        ax.bar([-width/2], [total], width=width, color="none",
+                edgecolor=COLOR_ROLLING, linestyle=(0, (4, 3)),
+                linewidth=1.2, label="rolling-summary  (would-fill ceiling)")
+    else:
+        ax.bar([-width/2], [rh], width=width, color=COLOR_ROLLING,
+                label="rolling-summary")
+    ax.bar([width/2], [dh], width=width, color=COLOR_REPLAYABLE,
+            label="replayable")
     ax.set_xticks(x)
+    ax.set_xlim(-0.45, 0.45)
     ax.set_xticklabels(["correction-heavy session · 17 events"],
                         fontfamily=fonts["body"], fontsize=10)
     ax.set_ylim(0, total + 1)
     ax.set_yticks(list(range(0, total + 1)))
     ax.set_ylabel("intent keywords recovered\nfrom the original instruction",
                    fontfamily=fonts["body"], fontsize=10)
-    ax.text(-width/2, rolling.get("hits", 0) + 0.12,
-            f"{rolling.get('hits', 0)}/{total}", ha="center",
+    # rolling label sits at zero level, slightly offset so it's readable.
+    ax.text(-width/2, 0.18, f"{rh}/{total}", ha="center",
             fontfamily=fonts["body"], fontsize=10, color=COLOR_ROLLING)
-    ax.text(width/2, dpm.get("hits", 0) + 0.12,
-            f"{dpm.get('hits', 0)}/{total}", ha="center",
+    ax.text(width/2, dh + 0.18, f"{dh}/{total}", ha="center",
             fontfamily=fonts["body"], fontsize=10, color=COLOR_REPLAYABLE)
     leg = ax.legend(loc="upper left", framealpha=0.95, frameon=True,
                      edgecolor=COLOR_GRID, prop={"family": fonts["body"],
