@@ -43,29 +43,56 @@
   font-display: swap;
 }
 
-/* Title + ALL section headers use ProductDesign. */
-.page-header .project-name,
-.project-name,
-.main-content h1,
-.main-content h2,
-.main-content h3,
-.main-content h4 {
+/* PAGE TITLE ONLY — the architect-header H1 ("Replayable agent memory")
+   uses ProductDesign. Nothing else on the page uses ProductDesign. */
+html body .page-header .project-name,
+html body .project-name {
   font-family: "ProductDesign", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
-  letter-spacing: 0.01em;
-  font-weight: normal;
+  letter-spacing: 0.01em !important;
+  font-weight: normal !important;
+  font-style: normal !important;
 }
 
-/* Everything else: Vera (the font you uploaded). */
-body, .page-header, .page-header .project-tagline, .main-content,
-.main-content p, .main-content li, .main-content blockquote,
-.main-content strong, .main-content em, .main-content a,
-.main-content code, .main-content pre, .main-content tt {
-  font-family: "VeraMono", "Bitstream Vera Sans Mono", Menlo, Consolas,
-               monospace !important;
+/* Body H1/H2/H3/H4 use Vera Bold. Override architect's Manchester
+   handwriting heading font with maximum specificity. */
+html body section.main-content h1,
+html body section.main-content h2,
+html body section.main-content h3,
+html body section.main-content h4,
+html body section.main-content h5,
+html body section.main-content h6,
+html body .main-content h1,
+html body .main-content h2,
+html body .main-content h3,
+html body .main-content h4,
+html body .main-content h5,
+html body .main-content h6,
+.main-content h1, .main-content h2, .main-content h3,
+.main-content h4, .main-content h5, .main-content h6 {
+  font-family: "VeraMono", "Bitstream Vera Sans Mono", Menlo, Consolas, monospace !important;
+  font-weight: bold !important;
+  font-style: normal !important;
+  letter-spacing: 0 !important;
 }
 
-.main-content strong { font-weight: bold; }
-.main-content em { font-style: italic; }
+/* Body text + everything else: Vera Mono regular. */
+html body, html body .page-header,
+html body .page-header .project-tagline,
+html body .main-content,
+html body .main-content p,
+html body .main-content li,
+html body .main-content blockquote,
+html body .main-content strong,
+html body .main-content em,
+html body .main-content a,
+html body .main-content code,
+html body .main-content pre,
+html body .main-content tt {
+  font-family: "VeraMono", "Bitstream Vera Sans Mono", Menlo, Consolas, monospace !important;
+}
+
+.main-content strong { font-weight: bold !important; }
+.main-content em { font-style: italic !important; }
 
 /* Charts: full-width, centered, breathing room. */
 .main-content img {

@@ -40,7 +40,7 @@ _ASSETS = Path(__file__).resolve().parent / "_chart_assets"
 # ProductDesign for the title (display weight). VeraMono for everything
 # else — labels, numbers, source line, wordmark. Mono on data labels
 # makes numerics align cleanly across grouped bars.
-FONT_TITLE_PATH = _ASSETS / "ProductDesign.ttf"
+FONT_TITLE_PATH = _ASSETS / "VeraMoBd.ttf"
 FONT_BODY_PATH = _ASSETS / "VeraMono.ttf"
 FONT_BODY_BOLD_PATH = _ASSETS / "VeraMoBd.ttf"
 
