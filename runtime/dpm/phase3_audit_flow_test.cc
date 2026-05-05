@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "absl/status/statusor.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -29,6 +30,7 @@
 #include "runtime/dpm/event.h"
 #include "runtime/dpm/event_sourced_log.h"
 #include "runtime/platform/audit/audit_certificate.h"
+#include "runtime/platform/audit/audit_certificate_signer.h"
 #include "runtime/platform/audit/local_filesystem_audit_ledger.h"
 #include "runtime/platform/checkpoint/local_filesystem_checkpoint_store.h"
 #include "runtime/platform/hash/hasher.h"
@@ -39,6 +41,75 @@ namespace litert::lm {
 namespace {
 
 using ::testing::HasSubstr;
+
+std::string TestSignature(absl::string_view algorithm,
+                          absl::string_view key_id,
+                          absl::string_view secret,
+                          absl::string_view canonical) {
+  return HashBytes(HashAlgorithm::kBlake3,
+                   absl::StrCat(algorithm, "\n", key_id, "\n", secret, "\n",
+                                canonical))
+      .ToHex();
+}
+
+class TestOnlyMlDsaSigner : public AuditCertificateSigner {
+ public:
+  TestOnlyMlDsaSigner(std::string algorithm, std::string key_id,
+                      std::string secret)
+      : algorithm_(std::move(algorithm)),
+        key_id_(std::move(key_id)),
+        secret_(std::move(secret)) {}
+
+  absl::string_view Algorithm() const override { return algorithm_; }
+  absl::string_view KeyId() const override { return key_id_; }
+
+  absl::StatusOr<std::string> Sign(
+      absl::string_view canonical_certificate) const override {
+    return TestSignature(algorithm_, key_id_, secret_, canonical_certificate);
+  }
+
+ private:
+  std::string algorithm_;
+  std::string key_id_;
+  std::string secret_;
+};
+
+class TestOnlyMlDsaVerifier : public AuditCertificateVerifier {
+ public:
+  void AddKey(std::string algorithm, std::string key_id, std::string secret) {
+    keys_.push_back(Key{
+        .algorithm = std::move(algorithm),
+        .key_id = std::move(key_id),
+        .secret = std::move(secret),
+    });
+  }
+
+  absl::Status Verify(
+      const AuditCertificateSignature& signature,
+      absl::string_view canonical_certificate) const override {
+    for (const Key& key : keys_) {
+      if (key.algorithm != signature.algorithm ||
+          key.key_id != signature.key_id) {
+        continue;
+      }
+      if (signature.signature ==
+          TestSignature(key.algorithm, key.key_id, key.secret,
+                        canonical_certificate)) {
+        return absl::OkStatus();
+      }
+      return absl::UnauthenticatedError("test signature mismatch");
+    }
+    return absl::NotFoundError("test key not found");
+  }
+
+ private:
+  struct Key {
+    std::string algorithm;
+    std::string key_id;
+    std::string secret;
+  };
+  std::vector<Key> keys_;
+};
 
 std::filesystem::path TestRoot(absl::string_view name) {
   std::filesystem::path path =
@@ -270,6 +341,66 @@ TEST(Phase3AuditFlowTest, PendingAuditCertificateFailsClosed) {
                                   ledger, index));
   EXPECT_FALSE(rejected.may_use);
   EXPECT_THAT(rejected.reason, HasSubstr("pending"));
+}
+
+TEST(Phase3AuditFlowTest, SignaturePolicyRequiresAllowedPostQuantumSignature) {
+  EventSourcedLog log(TestRoot("phase3_signed_audit_log"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-1",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "signed audit event",
+      .timestamp_us = 1,
+  }));
+
+  RecordingRunner runner({
+      R"json({"Facts":["signed audit [1]"],"Reasoning":["checkpoint trusted [1]"],"Compliance":["certificate required [1]"]})json",
+  });
+  DPMProjector projector(&runner);
+  const std::filesystem::path root = TestRoot("phase3_signed_audit_store");
+  LocalFilesystemCheckpointStore checkpoint_store(root);
+  LocalMerkleDagStore dag_store(root);
+  LocalFilesystemAuditLedger ledger(root);
+
+  ProjectionCheckpointConfig config = BaseCheckpointConfig();
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionCheckpoint checkpoint,
+      CreateProjectionCheckpoint(log, &projector, config, &checkpoint_store,
+                                 &dag_store));
+  ASSERT_OK_AND_ASSIGN(
+      AuditCertificate pass_certificate,
+      AddAuditCertificateSignature(
+          BaseCertificate(checkpoint, config, AuditVerdict::kPass, 0.0,
+                          1777390000000010),
+          TestOnlyMlDsaSigner(kAuditSignatureAlgorithmMlDsa65, "audit-key-1",
+                              "secret-1")));
+  ASSERT_OK(ledger.PutCertificate(pass_certificate));
+
+  TestOnlyMlDsaVerifier verifier;
+  verifier.AddKey(kAuditSignatureAlgorithmMlDsa65, "audit-key-1", "secret-1");
+  ASSERT_OK_AND_ASSIGN(std::vector<Event> events, log.GetAllEvents());
+  ASSERT_OK_AND_ASSIGN(CorrectionIndex index, CorrectionIndex::Build(events));
+
+  CheckpointDecisionGateRequest request =
+      GateRequest(log.identity(), checkpoint);
+  request.require_valid_signature = true;
+  request.allowed_signature_algorithms = {
+      kAuditSignatureAlgorithmMlDsa65,
+      kAuditSignatureAlgorithmMlDsa87,
+  };
+  ASSERT_OK_AND_ASSIGN(
+      CheckpointDecisionGateResult accepted,
+      MayUseCheckpointForDecision(request, ledger, index, &verifier));
+  EXPECT_TRUE(accepted.may_use);
+
+  request.allowed_signature_algorithms = {kAuditSignatureAlgorithmMlDsa44};
+  ASSERT_OK_AND_ASSIGN(
+      CheckpointDecisionGateResult rejected,
+      MayUseCheckpointForDecision(request, ledger, index, &verifier));
+  EXPECT_FALSE(rejected.may_use);
+  EXPECT_THAT(rejected.reason, HasSubstr("signature policy"));
 }
 
 }  // namespace

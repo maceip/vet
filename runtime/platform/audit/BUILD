@@ -49,6 +49,38 @@ cc_library(
 )
 
 cc_library(
+    name = "audit_certificate_signer",
+    srcs = ["audit_certificate_signer.cc"],
+    hdrs = ["audit_certificate_signer.h"],
+    deps = [
+        ":audit_certificate",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/util:litert_status_util",
+    ],
+)
+
+cc_library(
+    name = "liboqs_audit_certificate_signer",
+    srcs = ["liboqs_audit_certificate_signer.cc"],
+    hdrs = ["liboqs_audit_certificate_signer.h"],
+    linkopts = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["-ldl"],
+    }),
+    deps = [
+        ":audit_certificate",
+        ":audit_certificate_signer",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/util:litert_status_util",
+    ],
+)
+
+cc_library(
     name = "audit_query",
     srcs = ["audit_query.cc"],
     hdrs = ["audit_query.h"],
@@ -77,6 +109,23 @@ cc_library(
         "//runtime/platform/checkpoint:durable_writer",
         "//runtime/platform/hash:hasher",
         "//runtime/util:litert_status_util",
+    ],
+)
+
+cc_test(
+    name = "audit_certificate_signer_test",
+    srcs = ["audit_certificate_signer_test.cc"],
+    deps = [
+        ":audit_certificate",
+        ":audit_certificate_signer",
+        ":local_filesystem_audit_ledger",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/hash:hasher",
+        "//runtime/util:test_utils",
     ],
 )
 

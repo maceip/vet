@@ -21,6 +21,7 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "runtime/dpm/correction_protocol.h"
 #include "runtime/platform/audit/audit_certificate.h"
+#include "runtime/platform/audit/audit_certificate_signer.h"
 #include "runtime/platform/audit/audit_ledger.h"
 #include "runtime/platform/hash/hasher.h"
 #include "runtime/util/status_macros.h"
@@ -54,6 +55,13 @@ CorrectionBarrierDecision EvaluateCorrectionBarrier(
 absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
     const CheckpointDecisionGateRequest& request, const AuditLedger& ledger,
     const CorrectionIndex& corrections) {
+  return MayUseCheckpointForDecision(request, ledger, corrections, nullptr);
+}
+
+absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
+    const CheckpointDecisionGateRequest& request, const AuditLedger& ledger,
+    const CorrectionIndex& corrections,
+    const AuditCertificateVerifier* signature_verifier) {
   if (request.identity.tenant_id.empty() || request.identity.session_id.empty()) {
     return absl::InvalidArgumentError("decision gate requires log identity.");
   }
@@ -62,6 +70,10 @@ absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
       request.max_allowed_drift_score > 1.0) {
     return absl::InvalidArgumentError(
         "decision gate max_allowed_drift_score must be in [0.0, 1.0].");
+  }
+  if (request.min_valid_signatures < 1) {
+    return absl::InvalidArgumentError(
+        "decision gate min_valid_signatures must be at least 1.");
   }
   if (!request.compatibility_ok) {
     return CheckpointDecisionGateResult{
@@ -123,6 +135,26 @@ absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
         .may_use = false,
         .reason = "audit certificate reports projection drift",
     };
+  }
+  if (request.require_valid_signature) {
+    if (signature_verifier == nullptr) {
+      return CheckpointDecisionGateResult{
+          .may_use = false,
+          .reason = "checkpoint audit requires a signature verifier",
+      };
+    }
+    ASSIGN_OR_RETURN(
+        int valid_signatures,
+        CountValidAuditCertificateSignatures(
+            certificate, request.allowed_signature_algorithms,
+            *signature_verifier));
+    if (valid_signatures < request.min_valid_signatures) {
+      return CheckpointDecisionGateResult{
+          .may_use = false,
+          .reason =
+              "checkpoint audit certificate does not satisfy signature policy",
+      };
+    }
   }
   return CheckpointDecisionGateResult{
       .may_use = true,

@@ -42,10 +42,14 @@ LoadAuditedProjectionCheckpointForDecision(
       .compatibility_ok = request.compatibility_ok,
       .thaw_verification_ok = request.thaw_verification_ok,
       .max_allowed_drift_score = request.max_allowed_drift_score,
+      .require_valid_signature = request.require_valid_signature,
+      .min_valid_signatures = request.min_valid_signatures,
+      .allowed_signature_algorithms = request.allowed_signature_algorithms,
   };
   ASSIGN_OR_RETURN(CheckpointDecisionGateResult gate,
-                   MayUseCheckpointForDecision(gate_request, ledger,
-                                               corrections));
+                   MayUseCheckpointForDecision(
+                       gate_request, ledger, corrections,
+                       request.signature_verifier));
   if (!gate.may_use) {
     return absl::FailedPreconditionError(
         absl::StrCat("checkpoint cannot be used for decision: ",

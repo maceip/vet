@@ -68,6 +68,9 @@ absl::StatusOr<AuditCertificate> DecodeFramed(absl::string_view data) {
     return absl::DataLossError("audit certificate missing magic header.");
   }
   data.remove_prefix(kAuditMagic.size());
+  absl::StatusOr<AuditCertificate> signed_certificate =
+      DecodeSignedAuditCertificate(data);
+  if (signed_certificate.ok()) return signed_certificate;
   return DecodeCanonicalAuditCertificate(data);
 }
 
@@ -100,12 +103,12 @@ absl::Status LocalFilesystemAuditLedger::PutCertificate(
     return absl::InvalidArgumentError(
         "audit certificate_id does not match canonical bytes.");
   }
-  ASSIGN_OR_RETURN(std::string canonical,
-                   EncodeCanonicalAuditCertificate(finalized));
+  ASSIGN_OR_RETURN(std::string encoded,
+                   EncodeSignedAuditCertificate(finalized));
   std::string framed;
-  framed.reserve(kAuditMagic.size() + canonical.size());
+  framed.reserve(kAuditMagic.size() + encoded.size());
   framed.append(kAuditMagic.data(), kAuditMagic.size());
-  framed.append(canonical);
+  framed.append(encoded);
 
   const std::filesystem::path path = CertificatePathFor(
       finalized.tenant_id, finalized.session_id, finalized.certificate_id);

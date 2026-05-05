@@ -88,6 +88,22 @@ absl::Status AppendStringVector(const std::vector<std::string>& values,
   return absl::OkStatus();
 }
 
+absl::Status AppendSignatureVector(
+    const std::vector<AuditCertificateSignature>& signatures,
+    std::string* out) {
+  if (signatures.size() > std::numeric_limits<uint32_t>::max()) {
+    return absl::ResourceExhaustedError(
+        "audit signature vector exceeds u32 size cap.");
+  }
+  AppendU32(static_cast<uint32_t>(signatures.size()), out);
+  for (const AuditCertificateSignature& signature : signatures) {
+    RETURN_IF_ERROR(AppendString(signature.algorithm, out));
+    RETURN_IF_ERROR(AppendString(signature.key_id, out));
+    RETURN_IF_ERROR(AppendString(signature.signature, out));
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<uint32_t> ReadU32(absl::string_view* view) {
   if (view->size() < 4) return absl::DataLossError("audit truncated u32.");
   const unsigned char* p =
@@ -148,6 +164,31 @@ absl::StatusOr<std::vector<std::string>> ReadStringVector(
     out.push_back(std::move(v));
   }
   return out;
+}
+
+absl::StatusOr<std::vector<AuditCertificateSignature>> ReadSignatureVector(
+    absl::string_view* view) {
+  ASSIGN_OR_RETURN(uint32_t count, ReadU32(view));
+  std::vector<AuditCertificateSignature> out;
+  out.reserve(count);
+  for (uint32_t i = 0; i < count; ++i) {
+    AuditCertificateSignature signature;
+    ASSIGN_OR_RETURN(signature.algorithm, ReadString(view));
+    ASSIGN_OR_RETURN(signature.key_id, ReadString(view));
+    ASSIGN_OR_RETURN(signature.signature, ReadString(view));
+    out.push_back(std::move(signature));
+  }
+  return out;
+}
+
+absl::Status ValidateSignatureForStorage(
+    const AuditCertificateSignature& signature) {
+  if (signature.algorithm.empty() || signature.key_id.empty() ||
+      signature.signature.empty()) {
+    return absl::InvalidArgumentError(
+        "AuditCertificate signatures require algorithm, key_id, and bytes.");
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -281,6 +322,42 @@ absl::StatusOr<AuditCertificate> DecodeCanonicalAuditCertificate(
   RETURN_IF_ERROR(ValidateAuditCertificateForHashing(certificate));
   ASSIGN_OR_RETURN(certificate.certificate_id,
                    ComputeAuditCertificateId(certificate));
+  return certificate;
+}
+
+absl::StatusOr<std::string> EncodeSignedAuditCertificate(
+    const AuditCertificate& certificate) {
+  ASSIGN_OR_RETURN(AuditCertificate finalized,
+                   FinalizeAuditCertificate(certificate));
+  ASSIGN_OR_RETURN(std::string canonical,
+                   EncodeCanonicalAuditCertificate(finalized));
+  std::string out;
+  AppendU32(kAuditCertificateVersion, &out);
+  RETURN_IF_ERROR(AppendString(canonical, &out));
+  for (const AuditCertificateSignature& signature : finalized.signatures) {
+    RETURN_IF_ERROR(ValidateSignatureForStorage(signature));
+  }
+  RETURN_IF_ERROR(AppendSignatureVector(finalized.signatures, &out));
+  return out;
+}
+
+absl::StatusOr<AuditCertificate> DecodeSignedAuditCertificate(
+    absl::string_view bytes) {
+  absl::string_view view = bytes;
+  ASSIGN_OR_RETURN(uint32_t version, ReadU32(&view));
+  if (version != kAuditCertificateVersion) {
+    return absl::DataLossError("unsupported signed audit certificate version.");
+  }
+  ASSIGN_OR_RETURN(std::string canonical, ReadString(&view));
+  ASSIGN_OR_RETURN(AuditCertificate certificate,
+                   DecodeCanonicalAuditCertificate(canonical));
+  ASSIGN_OR_RETURN(certificate.signatures, ReadSignatureVector(&view));
+  if (!view.empty()) {
+    return absl::DataLossError("signed audit certificate trailing bytes.");
+  }
+  for (const AuditCertificateSignature& signature : certificate.signatures) {
+    RETURN_IF_ERROR(ValidateSignatureForStorage(signature));
+  }
   return certificate;
 }
 

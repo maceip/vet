@@ -17,12 +17,14 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "runtime/dpm/checkpoint_decision_gate.h"
 #include "runtime/dpm/checkpointed_projection.h"
 #include "runtime/dpm/correction_protocol.h"
 #include "runtime/dpm/event_sourced_log.h"
+#include "runtime/platform/audit/audit_certificate_signer.h"
 #include "runtime/platform/audit/audit_ledger.h"
 #include "runtime/platform/checkpoint/checkpoint_store.h"
 #include "runtime/platform/hash/hasher.h"
@@ -36,6 +38,10 @@ struct AuditedProjectionCheckpointRequest {
   bool compatibility_ok = false;
   bool thaw_verification_ok = false;
   double max_allowed_drift_score = 0.0;
+  bool require_valid_signature = false;
+  int min_valid_signatures = 1;
+  std::vector<std::string> allowed_signature_algorithms;
+  const AuditCertificateVerifier* signature_verifier = nullptr;
 };
 
 struct AuditedProjectionCheckpoint {

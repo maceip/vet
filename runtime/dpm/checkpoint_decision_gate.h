@@ -22,6 +22,7 @@
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "runtime/dpm/event_sourced_log.h"
 #include "runtime/dpm/correction_protocol.h"
+#include "runtime/platform/audit/audit_certificate_signer.h"
 #include "runtime/platform/audit/audit_ledger.h"
 #include "runtime/platform/hash/hasher.h"
 
@@ -36,6 +37,9 @@ struct CheckpointDecisionGateRequest {
   // Phase 3 exact-replay defaults to zero tolerance. Semantic auditors can
   // opt into a non-zero threshold after they define their comparator.
   double max_allowed_drift_score = 0.0;
+  bool require_valid_signature = false;
+  int min_valid_signatures = 1;
+  std::vector<std::string> allowed_signature_algorithms;
 };
 
 struct CheckpointDecisionGateResult {
@@ -57,6 +61,11 @@ CorrectionBarrierDecision EvaluateCorrectionBarrier(
 absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
     const CheckpointDecisionGateRequest& request, const AuditLedger& ledger,
     const CorrectionIndex& corrections);
+
+absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
+    const CheckpointDecisionGateRequest& request, const AuditLedger& ledger,
+    const CorrectionIndex& corrections,
+    const AuditCertificateVerifier* signature_verifier);
 
 }  // namespace litert::lm
 

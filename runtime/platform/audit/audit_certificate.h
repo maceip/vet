@@ -25,11 +25,23 @@
 
 namespace litert::lm {
 
+inline constexpr char kAuditSignatureAlgorithmMlDsa44[] = "ML-DSA-44";
+inline constexpr char kAuditSignatureAlgorithmMlDsa65[] = "ML-DSA-65";
+inline constexpr char kAuditSignatureAlgorithmMlDsa87[] = "ML-DSA-87";
+
 enum class AuditVerdict {
   kPending,
   kPass,
   kCorrectionEmitted,
   kInconclusive,
+};
+
+struct AuditCertificateSignature {
+  std::string algorithm;
+  std::string key_id;
+  std::string signature;
+
+  bool operator==(const AuditCertificateSignature& other) const = default;
 };
 
 // Closed drift score contract for Phase 3:
@@ -63,7 +75,7 @@ struct AuditCertificate {
   Hash256 provenance_root_hash;
   int64_t created_unix_micros = 0;
   int64_t expires_unix_micros = 0;
-  std::string signature;
+  std::vector<AuditCertificateSignature> signatures;
 };
 
 inline constexpr uint32_t kAuditCertificateVersion = 1;
@@ -75,13 +87,22 @@ absl::StatusOr<AuditVerdict> AuditVerdictFromString(
 absl::Status ValidateAuditCertificateForHashing(
     const AuditCertificate& certificate);
 
-// Canonical bytes exclude certificate_id and signature. certificate_id is the
-// BLAKE3 digest of these bytes; signature is a deployment-layer attestation over
-// the same bytes and can be added without changing identity.
+// Canonical bytes exclude certificate_id and signatures. certificate_id is the
+// BLAKE3 digest of these bytes; signatures are appendable deployment-layer
+// attestations over the same bytes and can be added without changing identity.
 absl::StatusOr<std::string> EncodeCanonicalAuditCertificate(
     const AuditCertificate& certificate);
 absl::StatusOr<AuditCertificate> DecodeCanonicalAuditCertificate(
     absl::string_view bytes);
+
+// Stored bytes preserve signatures while keeping the canonical certificate id
+// stable. Decode accepts both signed-envelope bytes and the legacy canonical
+// bytes used before signatures existed.
+absl::StatusOr<std::string> EncodeSignedAuditCertificate(
+    const AuditCertificate& certificate);
+absl::StatusOr<AuditCertificate> DecodeSignedAuditCertificate(
+    absl::string_view bytes);
+
 absl::StatusOr<Hash256> ComputeAuditCertificateId(
     const AuditCertificate& certificate);
 absl::StatusOr<AuditCertificate> FinalizeAuditCertificate(
