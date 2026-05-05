@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -262,6 +263,61 @@ absl::Status DurablyCreateNewFile(const std::filesystem::path& target_path,
 
 absl::Status ReadEntireFileIfExists(const std::filesystem::path& path,
                                     std::string* out) {
+#ifdef _WIN32
+  out->clear();
+  const std::wstring win_path = ToWin32Path(path);
+  HANDLE handle = CreateFileW(
+      win_path.c_str(), GENERIC_READ,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+      /*sa=*/nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
+      /*template=*/nullptr);
+  if (handle == INVALID_HANDLE_VALUE) {
+    const DWORD err = GetLastError();
+    if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) {
+      return absl::OkStatus();
+    }
+    return absl::InternalError(absl::StrCat(
+        "ReadEntireFileIfExists: CreateFileW failed (err=", err,
+        ") for ", path.string()));
+  }
+
+  LARGE_INTEGER size;
+  if (!GetFileSizeEx(handle, &size)) {
+    CloseHandle(handle);
+    return absl::InternalError("ReadEntireFileIfExists: GetFileSizeEx failed.");
+  }
+  if (size.QuadPart < 0) {
+    CloseHandle(handle);
+    return absl::DataLossError("ReadEntireFileIfExists: negative file size.");
+  }
+  const uint64_t file_size = static_cast<uint64_t>(size.QuadPart);
+  if (file_size > std::numeric_limits<size_t>::max()) {
+    CloseHandle(handle);
+    return absl::ResourceExhaustedError(
+        "ReadEntireFileIfExists: file too large for memory buffer.");
+  }
+
+  out->resize(static_cast<size_t>(file_size));
+  size_t offset = 0;
+  while (offset < out->size()) {
+    const size_t remaining = out->size() - offset;
+    DWORD chunk = static_cast<DWORD>(
+        remaining < (1u << 20) ? remaining : (1u << 20));
+    DWORD read = 0;
+    if (!ReadFile(handle, out->data() + offset, chunk, &read, nullptr)) {
+      CloseHandle(handle);
+      return absl::InternalError("ReadEntireFileIfExists: ReadFile failed.");
+    }
+    if (read == 0) {
+      CloseHandle(handle);
+      return absl::DataLossError(
+          "ReadEntireFileIfExists: unexpected EOF while reading file.");
+    }
+    offset += read;
+  }
+  CloseHandle(handle);
+  return absl::OkStatus();
+#else
   if (!std::filesystem::exists(path)) {
     out->clear();
     return absl::OkStatus();
@@ -275,6 +331,7 @@ absl::Status ReadEntireFileIfExists(const std::filesystem::path& path,
   buf << in.rdbuf();
   *out = buf.str();
   return absl::OkStatus();
+#endif
 }
 
 }  // namespace litert::lm

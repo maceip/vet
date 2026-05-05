@@ -188,13 +188,17 @@ absl::StatusOr<ProjectionReplayAuditResult> VerifyProjectionCheckpointFromRaw(
   }
 
   ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
-  const uint64_t checkpoint_event_count = manifest_input.base_event_index;
-  if (checkpoint_event_count > events.size()) {
+  const uint64_t event_range_start = manifest_input.event_range_start;
+  const uint64_t event_range_end =
+      manifest_input.event_range_end == 0 ? manifest_input.base_event_index
+                                          : manifest_input.event_range_end;
+  if (event_range_end <= event_range_start || event_range_end > events.size()) {
     return absl::FailedPreconditionError(
         "audit log does not contain the checkpoint event range.");
   }
   absl::StatusOr<std::string> replayed_or =
-      projector->Project(log, config.checkpoint.projection);
+      projector->ProjectRange(log, event_range_start, event_range_end,
+                              config.checkpoint.projection);
   std::string replayed_projection;
   std::string replay_error;
   if (replayed_or.ok()) {
@@ -231,8 +235,8 @@ absl::StatusOr<ProjectionReplayAuditResult> VerifyProjectionCheckpointFromRaw(
   ASSIGN_OR_RETURN(AuditCertificate certificate,
                    FinalizeAuditCertificate(BuildCertificate(
                        log, config, checkpoint_manifest_hash,
-                       manifest.referenced_body_hash, 0,
-                       checkpoint_event_count, events.size(), verdict,
+                       manifest.referenced_body_hash, event_range_start,
+                       event_range_end, events.size(), verdict,
                        drift_score, drift_fields, correction_event_ids)));
 
   if (!matched && config.emit_correction_on_drift) {

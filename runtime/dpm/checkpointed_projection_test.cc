@@ -25,6 +25,7 @@
 #include "runtime/dpm/dpm_projector.h"
 #include "runtime/dpm/event.h"
 #include "runtime/dpm/event_sourced_log.h"
+#include "runtime/platform/checkpoint/canonical_manifest.h"
 #include "runtime/platform/checkpoint/checkpoint_store.h"
 #include "runtime/platform/checkpoint/local_filesystem_checkpoint_store.h"
 #include "runtime/platform/hash/hasher.h"
@@ -181,6 +182,79 @@ TEST(CheckpointedProjectionTest, ParentHashLinksNextCheckpoint) {
   ASSERT_EQ(chain.nodes.size(), 2);
   EXPECT_EQ(chain.nodes[0].hash, second.manifest_hash);
   EXPECT_EQ(chain.nodes[1].hash, first.manifest_hash);
+}
+
+TEST(CheckpointedProjectionTest, RollupCheckpointValidatesChildCoverage) {
+  DPMLogIdentity identity{
+      .tenant_id = "tenant-a",
+      .session_id = "session-rollup",
+  };
+  const std::filesystem::path checkpoint_root =
+      TestRoot("checkpoint_projection_rollup_store");
+  LocalFilesystemCheckpointStore store(checkpoint_root);
+  LocalMerkleDagStore dag(checkpoint_root);
+
+  ProjectionCheckpointConfig first_config = BaseConfig();
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionCheckpoint first,
+      StoreProjectedMemoryCheckpoint(identity, first_config, 0, 2,
+                                     "leaf projection 0-2", &store, &dag));
+  ProjectionCheckpointConfig second_config = BaseConfig();
+  second_config.created_unix_micros += 1;
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionCheckpoint second,
+      StoreProjectedMemoryCheckpoint(identity, second_config, 2, 4,
+                                     "leaf projection 2-4", &store, &dag));
+
+  ASSERT_OK_AND_ASSIGN(CheckpointStore::ManifestRecord first_record,
+                       store.GetManifest(identity.tenant_id,
+                                         identity.session_id,
+                                         first.manifest_hash));
+  ASSERT_OK_AND_ASSIGN(CanonicalManifestInput first_manifest,
+                       DecodeCanonicalManifest(first_record.abi_bytes));
+  ASSERT_OK_AND_ASSIGN(CheckpointStore::ManifestRecord second_record,
+                       store.GetManifest(identity.tenant_id,
+                                         identity.session_id,
+                                         second.manifest_hash));
+  ASSERT_OK_AND_ASSIGN(CanonicalManifestInput second_manifest,
+                       DecodeCanonicalManifest(second_record.abi_bytes));
+
+  RollupChildRef first_child =
+      RollupChildRefFromManifest(first.manifest_hash, first_manifest);
+  RollupChildRef second_child =
+      RollupChildRefFromManifest(second.manifest_hash, second_manifest);
+
+  ProjectionCheckpointConfig rollup_config = BaseConfig();
+  rollup_config.level = 1;
+  rollup_config.created_unix_micros += 10;
+  rollup_config.parent_manifest_hashes = {HashBytes(HashAlgorithm::kBlake3,
+                                                    "caller-supplied-noise")};
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionCheckpoint root,
+      StoreRollupProjectionCheckpoint(
+          identity, rollup_config, 0, 4, "root projection",
+          {second_child, first_child}, &store, &dag));
+
+  ASSERT_OK_AND_ASSIGN(CheckpointStore::ManifestRecord root_record,
+                       store.GetManifest(identity.tenant_id,
+                                         identity.session_id,
+                                         root.manifest_hash));
+  ASSERT_OK_AND_ASSIGN(CanonicalManifestInput root_manifest,
+                       DecodeCanonicalManifest(root_record.abi_bytes));
+  ASSERT_EQ(root_manifest.parent_hashes.size(), 2);
+  EXPECT_EQ(root_manifest.parent_hashes[0], first.manifest_hash);
+  EXPECT_EQ(root_manifest.parent_hashes[1], second.manifest_hash);
+  EXPECT_EQ(root_manifest.event_range_start, 0);
+  EXPECT_EQ(root_manifest.event_range_end, 4);
+
+  second_child.event_range_start = 3;
+  absl::StatusOr<ProjectionCheckpoint> gapped =
+      StoreRollupProjectionCheckpoint(identity, rollup_config, 0, 4,
+                                      "bad root projection",
+                                      {first_child, second_child}, &store,
+                                      &dag);
+  ASSERT_FALSE(gapped.ok());
+  EXPECT_THAT(gapped.status().message(), HasSubstr("no gaps or overlaps"));
 }
 
 }  // namespace

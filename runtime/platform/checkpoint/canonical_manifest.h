@@ -57,6 +57,8 @@ struct CanonicalManifestInput {
   // Model binding
   Hash256 model_artifact_hash;
   std::string model_id;
+  std::string schema_id;
+  Hash256 schema_hash;
   uint32_t model_class = 0;
   uint32_t num_layers = 0;
   uint32_t num_kv_heads = 0;
@@ -65,7 +67,12 @@ struct CanonicalManifestInput {
   // KV transport encoding
   uint32_t kv_dtype = 0;
 
-  // Coverage and body
+  // Coverage and body. event_range is the half-open global event range
+  // [start, end) covered by the projection. base_event_index is retained as a
+  // compatibility alias for "log generation at checkpoint creation"; for
+  // prefix checkpoints it equals event_range_end.
+  uint64_t event_range_start = 0;
+  uint64_t event_range_end = 0;
   uint64_t base_event_index = 0;
   Hash256 body_hash;
   uint32_t body_size_bytes = 0;
@@ -74,7 +81,7 @@ struct CanonicalManifestInput {
 
 // Wire-format version. Must be bumped in lockstep with any change that
 // affects the byte layout below.
-inline constexpr uint32_t kCanonicalManifestVersion = 1;
+inline constexpr uint32_t kCanonicalManifestVersion = 2;
 
 // Returns the canonical bytes that would be hashed to produce
 // manifest_hash. Emitted independently of any hash algorithm so tests can

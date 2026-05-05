@@ -97,6 +97,31 @@ cc_library(
 )
 
 cc_library(
+    name = "rollup_manifest",
+    srcs = ["rollup_manifest.cc"],
+    hdrs = ["rollup_manifest.h"],
+    deps = [
+        ":canonical_manifest",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "//runtime/platform/hash:hasher",
+    ],
+)
+
+cc_test(
+    name = "rollup_manifest_test",
+    srcs = ["rollup_manifest_test.cc"],
+    deps = [
+        ":canonical_manifest",
+        ":rollup_manifest",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/hash:hasher",
+    ],
+)
+
+cc_library(
     name = "local_filesystem_checkpoint_store",
     srcs = ["local_filesystem_checkpoint_store.cc"],
     hdrs = ["local_filesystem_checkpoint_store.h"],

@@ -18,8 +18,6 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -134,9 +132,9 @@ absl::StatusOr<Hash256> LocalFilesystemCheckpointStore::PutPayload(
 
   // Idempotent: same body_hash must mean same bytes. Mismatch is a
   // hash-collision or corruption signal.
-  if (std::filesystem::exists(path)) {
-    std::string existing;
-    RETURN_IF_ERROR(ReadEntireFileIfExists(path, &existing));
+  std::string existing;
+  RETURN_IF_ERROR(ReadEntireFileIfExists(path, &existing));
+  if (!existing.empty()) {
     if (existing == framed) {
       return body_hash;
     }
@@ -154,18 +152,12 @@ absl::StatusOr<std::string> LocalFilesystemCheckpointStore::GetPayload(
   RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
   const std::filesystem::path path =
       PayloadPathFor(tenant_id, session_id, body_hash);
-  if (!std::filesystem::exists(path)) {
+  std::string data;
+  RETURN_IF_ERROR(ReadEntireFileIfExists(path, &data));
+  if (data.empty()) {
     return absl::NotFoundError(absl::StrCat(
         "checkpoint payload not found: ", body_hash.ToHex()));
   }
-  std::ifstream in(path, std::ios::in | std::ios::binary);
-  if (!in.is_open()) {
-    return absl::InternalError(absl::StrCat(
-        "checkpoint store: failed to open ", path.string()));
-  }
-  std::stringstream buffer;
-  buffer << in.rdbuf();
-  std::string data = buffer.str();
   absl::string_view view = data;
   if (view.size() < kPayloadMagic.size() ||
       std::memcmp(view.data(), kPayloadMagic.data(),
@@ -198,8 +190,10 @@ absl::StatusOr<bool> LocalFilesystemCheckpointStore::PayloadExists(
     absl::string_view tenant_id, absl::string_view session_id,
     const Hash256& body_hash) const {
   RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
-  return std::filesystem::exists(
-      PayloadPathFor(tenant_id, session_id, body_hash));
+  std::string existing;
+  RETURN_IF_ERROR(ReadEntireFileIfExists(
+      PayloadPathFor(tenant_id, session_id, body_hash), &existing));
+  return !existing.empty();
 }
 
 // ----------------------------------------------------------------------
@@ -226,9 +220,9 @@ absl::Status LocalFilesystemCheckpointStore::PutManifest(
   framed.append(reinterpret_cast<const char*>(referenced_body_hash.bytes.data()),
                 referenced_body_hash.bytes.size());
 
-  if (std::filesystem::exists(path)) {
-    std::string existing;
-    RETURN_IF_ERROR(ReadEntireFileIfExists(path, &existing));
+  std::string existing;
+  RETURN_IF_ERROR(ReadEntireFileIfExists(path, &existing));
+  if (!existing.empty()) {
     if (existing == framed) {
       return absl::OkStatus();
     }
@@ -246,18 +240,12 @@ LocalFilesystemCheckpointStore::GetManifest(absl::string_view tenant_id,
   RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
   const std::filesystem::path path =
       ManifestPathFor(tenant_id, session_id, manifest_hash);
-  if (!std::filesystem::exists(path)) {
+  std::string data;
+  RETURN_IF_ERROR(ReadEntireFileIfExists(path, &data));
+  if (data.empty()) {
     return absl::NotFoundError(absl::StrCat(
         "manifest not found: ", manifest_hash.ToHex()));
   }
-  std::ifstream in(path, std::ios::in | std::ios::binary);
-  if (!in.is_open()) {
-    return absl::InternalError(absl::StrCat(
-        "checkpoint store: failed to open ", path.string()));
-  }
-  std::stringstream buffer;
-  buffer << in.rdbuf();
-  std::string data = buffer.str();
   absl::string_view view = data;
   if (view.size() < kManifestMagic.size() ||
       std::memcmp(view.data(), kManifestMagic.data(),
@@ -290,8 +278,10 @@ absl::StatusOr<bool> LocalFilesystemCheckpointStore::ManifestExists(
     absl::string_view tenant_id, absl::string_view session_id,
     const Hash256& manifest_hash) const {
   RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
-  return std::filesystem::exists(
-      ManifestPathFor(tenant_id, session_id, manifest_hash));
+  std::string existing;
+  RETURN_IF_ERROR(ReadEntireFileIfExists(
+      ManifestPathFor(tenant_id, session_id, manifest_hash), &existing));
+  return !existing.empty();
 }
 
 absl::StatusOr<std::vector<Hash256>>

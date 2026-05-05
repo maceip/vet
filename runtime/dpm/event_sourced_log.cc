@@ -239,6 +239,25 @@ absl::StatusOr<std::string> EventSourcedLog::GetProjectionEventLog() const {
   return cached_projection_event_log_;
 }
 
+absl::StatusOr<std::string> EventSourcedLog::GetProjectionEventLogRange(
+    uint64_t event_range_start, uint64_t event_range_end) const {
+  if (event_range_end < event_range_start) {
+    return absl::InvalidArgumentError("DPM projection event range is inverted.");
+  }
+  ASSIGN_OR_RETURN(std::vector<Event> events, GetAllEvents());
+  if (event_range_end > events.size()) {
+    return absl::InvalidArgumentError(
+        "DPM projection event range exceeds log generation.");
+  }
+  std::string event_log;
+  for (uint64_t i = event_range_start; i < event_range_end; ++i) {
+    if (!event_log.empty()) event_log.push_back('\n');
+    absl::StrAppend(&event_log, "[", i + 1, "] ",
+                    EventToJsonLine(events[static_cast<size_t>(i)]));
+  }
+  return event_log;
+}
+
 absl::StatusOr<std::vector<Event>> EventSourcedLog::GetEventsSince(
     absl::string_view checkpoint) const {
   int64_t checkpoint_index = 0;

@@ -15,6 +15,7 @@
 #include "runtime/dpm/dpm_projector.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <string>
 
@@ -131,6 +132,43 @@ absl::StatusOr<std::string> DPMProjector::Project(
   }
 }
 
+absl::StatusOr<std::string> DPMProjector::ProjectRange(
+    const EventSourcedLog& log, uint64_t event_range_start,
+    uint64_t event_range_end, const ProjectionConfig& config) {
+  if (runner_ == nullptr) {
+    return absl::FailedPreconditionError("DPM projector runner is null.");
+  }
+  if (config.model_id.empty()) {
+    return absl::InvalidArgumentError(
+        "DPM projection requires a pinned model_id.");
+  }
+  ASSIGN_OR_RETURN(std::string prompt,
+                   CreateProjectionPromptForRange(log, event_range_start,
+                                                  event_range_end, config));
+  ASSIGN_OR_RETURN(
+      std::string raw_projection,
+      runner_->Generate(prompt,
+                        DPMInferenceConfig{
+                            .max_output_tokens =
+                                static_cast<int>(config.max_tokens),
+                            .seed = config.seed,
+                            .temperature = config.temperature,
+                            .fresh_context = true,
+                            .model_id = config.model_id,
+                        }));
+  try {
+    nlohmann::ordered_json projection =
+        nlohmann::ordered_json::parse(raw_projection);
+    RETURN_IF_ERROR(ValidateProjectionCitations(projection));
+    return projection.dump();
+  } catch (const std::exception& e) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("DPM projection output is not valid JSON: ", e.what(),
+                     "; raw prefix: ",
+                     raw_projection.substr(0, 512)));
+  }
+}
+
 absl::StatusOr<std::string> DPMProjector::CreateProjectionPrompt(
     const EventSourcedLog& log, const ProjectionConfig& config) const {
   if (config.schema_id.empty()) {
@@ -148,6 +186,34 @@ absl::StatusOr<std::string> DPMProjector::CreateProjectionPrompt(
         absl::StrCat("DPM projection schema is not valid JSON: ", e.what()));
   }
   ASSIGN_OR_RETURN(std::string event_log, log.GetProjectionEventLog());
+  ASSIGN_OR_RETURN(
+      std::string prompt,
+      litert::lm::CreateProjectionPrompt(
+          event_log, config.schema_id, config.schema_json,
+          config.memory_budget_chars, config.max_event_log_chars));
+  return prompt;
+}
+
+absl::StatusOr<std::string> DPMProjector::CreateProjectionPromptForRange(
+    const EventSourcedLog& log, uint64_t event_range_start,
+    uint64_t event_range_end, const ProjectionConfig& config) const {
+  if (config.schema_id.empty()) {
+    return absl::InvalidArgumentError(
+        "DPM projection requires a non-empty schema_id.");
+  }
+  if (config.schema_json.empty()) {
+    return absl::InvalidArgumentError(
+        "DPM projection requires a non-empty task schema.");
+  }
+  try {
+    (void)nlohmann::ordered_json::parse(config.schema_json);
+  } catch (const std::exception& e) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("DPM projection schema is not valid JSON: ", e.what()));
+  }
+  ASSIGN_OR_RETURN(std::string event_log,
+                   log.GetProjectionEventLogRange(event_range_start,
+                                                  event_range_end));
   ASSIGN_OR_RETURN(
       std::string prompt,
       litert::lm::CreateProjectionPrompt(

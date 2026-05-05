@@ -94,6 +94,8 @@ CanonicalManifestInput BaselineManifestInput() {
   in.runtime_version = "test-runtime";
   in.model_artifact_hash = H("model-bytes");
   in.model_id = "pinned-local-test-model";
+  in.schema_id = std::string(kSchemaId);
+  in.schema_hash = H(kSchemaJson);
   in.model_class = 2;
   in.num_layers = 28;
   in.num_kv_heads = 8;
@@ -111,6 +113,8 @@ CanonicalManifestInput ManifestForRange(
                                                                  end);
   in.level = level;
   in.parent_hashes = parent_hashes;
+  in.event_range_start = static_cast<uint64_t>(begin);
+  in.event_range_end = static_cast<uint64_t>(end);
   in.base_event_index = static_cast<uint64_t>(end);
   in.body_hash = H(projection);
   in.body_size_bytes = static_cast<uint32_t>(projection.size());
@@ -148,8 +152,9 @@ absl::StatusOr<StoredCheckpoint> StoreCheckpoint(
                                .created_unix_micros =
                                    input.created_unix_micros,
                                .annotations = absl::StrCat(
-                                   "base_event_index=",
-                                   input.base_event_index),
+                                   "event_range=[",
+                                   input.event_range_start, ",",
+                                   input.event_range_end, ")"),
                            }));
   return stored;
 }
@@ -216,6 +221,13 @@ TEST(Phase2SubstratePropertyTest, P2ManifestAuthorityCoversHeaderFields) {
   mutations.push_back(base);
   mutations.back().kv_dtype = 2;
   mutations.push_back(base);
+  mutations.back().event_range_start = 7;
+  mutations.back().event_range_end = 42;
+  mutations.back().base_event_index = 42;
+  mutations.push_back(base);
+  mutations.back().event_range_end = 43;
+  mutations.back().base_event_index = 43;
+  mutations.push_back(base);
   mutations.back().base_event_index = 42;
   mutations.push_back(base);
   mutations.back().body_hash = H("other-body");
@@ -272,16 +284,15 @@ TEST(Phase2SubstratePropertyTest, P4CheckpointRangesHaveNoGapsOrOverlaps) {
       StoreTenCheckpointRanges(events, &store, &dag);
 
   std::vector<int> coverage(events.size(), 0);
-  uint64_t begin = 0;
   for (const StoredCheckpoint& checkpoint : checkpoints) {
-    ASSERT_GT(checkpoint.input.base_event_index, begin);
-    ASSERT_LE(checkpoint.input.base_event_index, events.size());
-    for (uint64_t i = begin; i < checkpoint.input.base_event_index; ++i) {
+    ASSERT_LT(checkpoint.input.event_range_start,
+              checkpoint.input.event_range_end);
+    ASSERT_LE(checkpoint.input.event_range_end, events.size());
+    for (uint64_t i = checkpoint.input.event_range_start;
+         i < checkpoint.input.event_range_end; ++i) {
       coverage[static_cast<size_t>(i)]++;
     }
-    begin = checkpoint.input.base_event_index;
   }
-  EXPECT_EQ(begin, events.size());
   for (int count : coverage) {
     EXPECT_EQ(count, 1);
   }
@@ -343,6 +354,8 @@ TEST(Phase2SubstratePropertyTest, P6CrossContextRollupSurvivesStoreReplication) 
   CanonicalManifestInput root_input = BaselineManifestInput();
   root_input.level = 1;
   root_input.parent_hashes = leaf_hashes;
+  root_input.event_range_start = 0;
+  root_input.event_range_end = events.size();
   root_input.base_event_index = events.size();
   root_input.body_hash = H(rollup_payload);
   root_input.body_size_bytes = static_cast<uint32_t>(rollup_payload.size());

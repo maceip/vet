@@ -121,6 +121,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//runtime/platform/checkpoint:canonical_manifest",
         "//runtime/platform/checkpoint:checkpoint_store",
+        "//runtime/platform/checkpoint:rollup_manifest",
         "//runtime/platform/hash:hasher",
         "//runtime/platform/provenance:merkle_dag_store",
         "//runtime/util:litert_status_util",

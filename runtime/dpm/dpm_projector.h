@@ -16,6 +16,7 @@
 #define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_DPM_DPM_PROJECTOR_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
 #include "absl/status/statusor.h"  // from @com_google_absl
@@ -60,8 +61,15 @@ class DPMProjector {
 
   absl::StatusOr<std::string> Project(const EventSourcedLog& log,
                                       const ProjectionConfig& config);
+  absl::StatusOr<std::string> ProjectRange(const EventSourcedLog& log,
+                                           uint64_t event_range_start,
+                                           uint64_t event_range_end,
+                                           const ProjectionConfig& config);
   absl::StatusOr<std::string> CreateProjectionPrompt(
       const EventSourcedLog& log, const ProjectionConfig& config) const;
+  absl::StatusOr<std::string> CreateProjectionPromptForRange(
+      const EventSourcedLog& log, uint64_t event_range_start,
+      uint64_t event_range_end, const ProjectionConfig& config) const;
 
  private:
   DPMInferenceRunner* runner_;

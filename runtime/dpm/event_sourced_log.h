@@ -61,6 +61,8 @@ class EventSourcedLog {
   absl::Status Append(Event event);
   absl::StatusOr<std::vector<Event>> GetAllEvents() const;
   absl::StatusOr<std::string> GetProjectionEventLog() const;
+  absl::StatusOr<std::string> GetProjectionEventLogRange(
+      uint64_t event_range_start, uint64_t event_range_end) const;
   absl::StatusOr<std::vector<Event>> GetEventsSince(
       absl::string_view checkpoint) const;
 

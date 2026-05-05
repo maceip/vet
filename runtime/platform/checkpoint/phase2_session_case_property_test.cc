@@ -103,6 +103,8 @@ CanonicalManifestInput ManifestBaseForCase(const SessionCase& c) {
   in.runtime_version = "test-runtime";
   in.model_artifact_hash = H("pinned-local-test-model-bytes");
   in.model_id = "pinned-local-test-model";
+  in.schema_id = std::string(kSchemaId);
+  in.schema_hash = H(kSchemaJson);
   in.model_class = 2;
   in.num_layers = 28;
   in.num_kv_heads = 8;
@@ -113,13 +115,16 @@ CanonicalManifestInput ManifestBaseForCase(const SessionCase& c) {
 }
 
 CanonicalManifestInput ManifestForProjection(
-    const SessionCase& c, uint64_t base_event_index,
+    const SessionCase& c, uint64_t event_range_start,
+    uint64_t event_range_end,
     const std::vector<Hash256>& parents, uint32_t level,
     absl::string_view projection) {
   CanonicalManifestInput in = ManifestBaseForCase(c);
   in.parent_hashes = parents;
   in.level = level;
-  in.base_event_index = base_event_index;
+  in.event_range_start = event_range_start;
+  in.event_range_end = event_range_end;
+  in.base_event_index = event_range_end;
   in.body_hash = H(projection);
   in.body_size_bytes = static_cast<uint32_t>(projection.size());
   return in;
@@ -159,8 +164,9 @@ absl::StatusOr<StoredCheckpoint> StoreCheckpoint(
                                    input.created_unix_micros,
                                .annotations = absl::StrCat(
                                    "case_id=", c.case_id,
-                                   ";base_event_index=",
-                                   input.base_event_index),
+                                   ";event_range=[",
+                                   input.event_range_start, ",",
+                                   input.event_range_end, ")"),
                            }));
   return stored;
 }
@@ -206,7 +212,7 @@ TEST(Phase2SessionCasePropertyTest, P2ManifestAuthorityBindsSessionFields) {
   for (const SessionCase& c : LoadCuratedCases()) {
     const std::string projection = ProjectionForEventLog(RenderEventLog(c));
     CanonicalManifestInput base = ManifestForProjection(
-        c, c.events.size(), /*parents=*/{}, /*level=*/0, projection);
+        c, 0, c.events.size(), /*parents=*/{}, /*level=*/0, projection);
     ASSERT_OK_AND_ASSIGN(Hash256 base_hash,
                          ComputeManifestHash(HashAlgorithm::kBlake3, base));
 
@@ -249,7 +255,7 @@ TEST(Phase2SessionCasePropertyTest, P3MerkleIntegrityOverSessionAncestors) {
       const std::string projection = ProjectionForEventLog(
           RenderRange(c, begin, end));
       CanonicalManifestInput input = ManifestForProjection(
-          c, end, parents, /*level=*/0, projection);
+          c, begin, end, parents, /*level=*/0, projection);
       ASSERT_OK_AND_ASSIGN(StoredCheckpoint stored,
                            StoreCheckpoint(&store, &dag, c, input,
                                            projection));
@@ -298,17 +304,21 @@ TEST(Phase2SessionCasePropertyTest, P5ReplayFromRawSessionRecomputesManifest) {
     const std::string original_projection =
         ProjectionForEventLog(RenderEventLog(c));
     const CanonicalManifestInput original_input = ManifestForProjection(
-        c, c.events.size(), /*parents=*/{}, /*level=*/0,
+        c, 0, c.events.size(), /*parents=*/{}, /*level=*/0,
         original_projection);
     ASSERT_OK_AND_ASSIGN(
         StoredCheckpoint stored,
         StoreCheckpoint(&store, &dag, c, original_input, original_projection));
 
-    ASSERT_OK_AND_ASSIGN(CheckpointStore::ManifestRecord manifest,
-                         store.GetManifest(kTenant, SafeSessionId(c),
-                                           stored.manifest_hash));
+    auto manifest_or =
+        store.GetManifest(kTenant, original_input.session_id,
+                          stored.manifest_hash);
+    ASSERT_TRUE(manifest_or.ok())
+        << c.case_id << " session=" << original_input.session_id << " status="
+        << manifest_or.status();
+    CheckpointStore::ManifestRecord manifest = *manifest_or;
     ASSERT_OK_AND_ASSIGN(std::string stored_payload,
-                         store.GetPayload(kTenant, SafeSessionId(c),
+                         store.GetPayload(kTenant, original_input.session_id,
                                           manifest.referenced_body_hash));
     EXPECT_EQ(stored_payload, original_projection) << c.case_id;
 
@@ -328,13 +338,16 @@ TEST(Phase2SessionCasePropertyTest, P5ReplayFromRawSessionRecomputesManifest) {
 }
 
 TEST(Phase2SessionCasePropertyTest, P6CrossContextRollupReplicates) {
-  for (const SessionCase& c : LoadCuratedCases()) {
+  const std::vector<SessionCase> cases = LoadCuratedCases();
+  for (size_t case_index = 0; case_index < cases.size(); ++case_index) {
+    const SessionCase& c = cases[case_index];
     const std::filesystem::path root_a =
-        TestRoot(absl::StrCat("phase2_session_p6_a_", SafeSessionId(c)));
+        TestRoot(absl::StrCat("p6a_", case_index));
     const std::filesystem::path root_b =
-        TestRoot(absl::StrCat("phase2_session_p6_b_", SafeSessionId(c)));
+        TestRoot(absl::StrCat("p6b_", case_index));
     LocalFilesystemCheckpointStore store_a(root_a);
     LocalMerkleDagStore dag_a(root_a);
+    std::filesystem::create_directories(root_a);
 
     std::vector<Hash256> leaf_hashes;
     std::string rollup_payload;
@@ -343,7 +356,7 @@ TEST(Phase2SessionCasePropertyTest, P6CrossContextRollupReplicates) {
       const std::string projection = ProjectionForEventLog(
           RenderRange(c, begin, end));
       const CanonicalManifestInput input = ManifestForProjection(
-          c, end, /*parents=*/{}, /*level=*/0, projection);
+          c, begin, end, /*parents=*/{}, /*level=*/0, projection);
       ASSERT_OK_AND_ASSIGN(StoredCheckpoint leaf,
                            StoreCheckpoint(&store_a, &dag_a, c, input,
                                            projection));
@@ -352,7 +365,7 @@ TEST(Phase2SessionCasePropertyTest, P6CrossContextRollupReplicates) {
     }
 
     const CanonicalManifestInput root_input = ManifestForProjection(
-        c, c.events.size(), leaf_hashes, /*level=*/1, rollup_payload);
+        c, 0, c.events.size(), leaf_hashes, /*level=*/1, rollup_payload);
     ASSERT_OK_AND_ASSIGN(
         StoredCheckpoint root,
         StoreCheckpoint(&store_a, &dag_a, c, root_input, rollup_payload));

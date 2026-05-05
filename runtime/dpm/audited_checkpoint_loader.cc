@@ -38,6 +38,8 @@ LoadAuditedProjectionCheckpointForDecision(
   CheckpointDecisionGateRequest gate_request{
       .identity = request.identity,
       .checkpoint_manifest_hash = request.checkpoint_manifest_hash,
+      .checkpoint_event_range_start = request.checkpoint_event_range_start,
+      .checkpoint_event_range_end = request.checkpoint_event_range_end,
       .checkpoint_event_count = request.checkpoint_event_count,
       .compatibility_ok = request.compatibility_ok,
       .thaw_verification_ok = request.thaw_verification_ok,

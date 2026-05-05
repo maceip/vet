@@ -75,6 +75,15 @@ absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
     return absl::InvalidArgumentError(
         "decision gate min_valid_signatures must be at least 1.");
   }
+  const uint64_t requested_start = request.checkpoint_event_range_start;
+  const uint64_t requested_end =
+      request.checkpoint_event_range_end != 0
+          ? request.checkpoint_event_range_end
+          : request.checkpoint_event_count;
+  if (requested_end <= requested_start) {
+    return absl::InvalidArgumentError(
+        "decision gate requires a non-empty checkpoint event range.");
+  }
   if (!request.compatibility_ok) {
     return CheckpointDecisionGateResult{
         .may_use = false,
@@ -121,13 +130,13 @@ absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
         .reason = "checkpoint audit verdict is not pass",
     };
   }
-  if (certificate.event_range_start != 0 ||
-      certificate.event_range_end < request.checkpoint_event_count) {
+  if (certificate.event_range_start > requested_start ||
+      certificate.event_range_end < requested_end) {
     return CheckpointDecisionGateResult{
         .may_use = false,
         .reason =
-            "exact-replay v1 requires a prefix audit covering events [0, "
-            "checkpoint_event_count)",
+            "checkpoint audit certificate does not cover the requested "
+            "half-open event range",
     };
   }
   if (certificate.drift_score > request.max_allowed_drift_score) {

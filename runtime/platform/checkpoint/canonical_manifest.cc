@@ -139,6 +139,8 @@ absl::StatusOr<std::string> EncodeCanonicalManifest(
   // Model binding.
   AppendHash(input.model_artifact_hash, &out);
   AppendLpStr(input.model_id, &out);
+  AppendLpStr(input.schema_id, &out);
+  AppendHash(input.schema_hash, &out);
   AppendU32(input.model_class, &out);
   AppendU32(input.num_layers, &out);
   AppendU32(input.num_kv_heads, &out);
@@ -148,6 +150,8 @@ absl::StatusOr<std::string> EncodeCanonicalManifest(
   AppendU32(input.kv_dtype, &out);
 
   // Coverage / body.
+  AppendU64(input.event_range_start, &out);
+  AppendU64(input.event_range_end, &out);
   AppendU64(input.base_event_index, &out);
   AppendHash(input.body_hash, &out);
   AppendU32(input.body_size_bytes, &out);
@@ -194,6 +198,8 @@ absl::StatusOr<CanonicalManifestInput> DecodeCanonicalManifest(
 
   ASSIGN_OR_RETURN(input.model_artifact_hash, ReadHash(&bytes));
   ASSIGN_OR_RETURN(input.model_id, ReadLpStr(&bytes));
+  ASSIGN_OR_RETURN(input.schema_id, ReadLpStr(&bytes));
+  ASSIGN_OR_RETURN(input.schema_hash, ReadHash(&bytes));
   ASSIGN_OR_RETURN(input.model_class, ReadU32(&bytes));
   ASSIGN_OR_RETURN(input.num_layers, ReadU32(&bytes));
   ASSIGN_OR_RETURN(input.num_kv_heads, ReadU32(&bytes));
@@ -201,6 +207,8 @@ absl::StatusOr<CanonicalManifestInput> DecodeCanonicalManifest(
 
   ASSIGN_OR_RETURN(input.kv_dtype, ReadU32(&bytes));
 
+  ASSIGN_OR_RETURN(input.event_range_start, ReadU64(&bytes));
+  ASSIGN_OR_RETURN(input.event_range_end, ReadU64(&bytes));
   ASSIGN_OR_RETURN(input.base_event_index, ReadU64(&bytes));
   ASSIGN_OR_RETURN(input.body_hash, ReadHash(&bytes));
   ASSIGN_OR_RETURN(input.body_size_bytes, ReadU32(&bytes));

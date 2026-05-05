@@ -31,6 +31,11 @@ namespace litert::lm {
 struct CheckpointDecisionGateRequest {
   DPMLogIdentity identity;
   Hash256 checkpoint_manifest_hash;
+  uint64_t checkpoint_event_range_start = 0;
+  uint64_t checkpoint_event_range_end = 0;
+  // Backwards-compatible prefix alias. If checkpoint_event_range_end is zero
+  // and checkpoint_event_count is non-zero, the gate treats the checkpoint as
+  // covering [0, checkpoint_event_count).
   uint64_t checkpoint_event_count = 0;
   bool compatibility_ok = false;
   bool thaw_verification_ok = false;

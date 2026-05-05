@@ -20,10 +20,12 @@
 #include <vector>
 
 #include "absl/status/statusor.h"  // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "runtime/dpm/dpm_projector.h"
 #include "runtime/dpm/event_sourced_log.h"
 #include "runtime/platform/checkpoint/canonical_manifest.h"
 #include "runtime/platform/checkpoint/checkpoint_store.h"
+#include "runtime/platform/checkpoint/rollup_manifest.h"
 #include "runtime/platform/hash/hasher.h"
 #include "runtime/platform/provenance/merkle_dag_store.h"
 
@@ -44,12 +46,16 @@ struct ProjectionCheckpointConfig {
   uint32_t num_kv_heads = 0;
   uint32_t head_dim = 0;
   uint32_t kv_dtype = 1;
+  uint64_t event_range_start = 0;
+  uint64_t event_range_end = 0;  // 0 means current log generation.
   int64_t created_unix_micros = 0;
 };
 
 struct ProjectionCheckpoint {
   Hash256 manifest_hash;
   Hash256 body_hash;
+  uint64_t event_range_start = 0;
+  uint64_t event_range_end = 0;
   uint64_t event_count = 0;
   uint32_t body_size_bytes = 0;
   std::string projected_memory;
@@ -58,6 +64,19 @@ struct ProjectionCheckpoint {
 absl::StatusOr<ProjectionCheckpoint> CreateProjectionCheckpoint(
     const EventSourcedLog& log, DPMProjector* projector,
     const ProjectionCheckpointConfig& config, CheckpointStore* store,
+    MerkleDagStore* dag);
+
+absl::StatusOr<ProjectionCheckpoint> StoreProjectedMemoryCheckpoint(
+    const DPMLogIdentity& identity, const ProjectionCheckpointConfig& config,
+    uint64_t event_range_start, uint64_t event_range_end,
+    absl::string_view projected_memory, CheckpointStore* store,
+    MerkleDagStore* dag);
+
+absl::StatusOr<ProjectionCheckpoint> StoreRollupProjectionCheckpoint(
+    const DPMLogIdentity& identity, ProjectionCheckpointConfig config,
+    uint64_t event_range_start, uint64_t event_range_end,
+    absl::string_view projected_memory,
+    const std::vector<RollupChildRef>& children, CheckpointStore* store,
     MerkleDagStore* dag);
 
 absl::StatusOr<std::string> LoadProjectionCheckpoint(
