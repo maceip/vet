@@ -1,0 +1,215 @@
+"""Render the two headline panels from the schema-validated JSONL.
+
+Reads every *.jsonl in runs/, filters through the locked
+DPM_VS_ROLLING_SUMMARY_DIFFERENTIAL chart spec (so prompt-bytes rows
+cannot leak into a memory/decision panel), and emits:
+
+  policy_retention.png
+    Grouped bar chart. x = case_id (agentic_qwen normal twin), y =
+    must_call_recovered count, two series: rolling_summary,
+    dpm_projection. The 0/3 vs 3/3 separation shows up as a flat
+    rolling bar and a full-height DPM bar.
+
+  cost_asymmetry.png
+    Grouped bar chart for the handoff_ish case (real_sessions corpus).
+    Three metric groups: tokens_in, tokens_out, calls. Two bars per
+    group: rolling_summary, dpm_projection. Logs the ratio in the
+    caption so you can read it without doing math.
+
+Usage:
+  python runs/render_charts.py [--out-dir runs]
+
+No arguments needed for the headline; the runs are already on disk.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")  # non-interactive; no display needed
+import matplotlib.pyplot as plt
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scenario"))
+from score_schema import (  # noqa: E402
+    ScoreRow,
+    CompressionSubstrate,
+    TestKind,
+    DPM_VS_ROLLING_SUMMARY_DIFFERENTIAL,
+)
+
+
+def _load_rows(runs_dir: Path) -> list[ScoreRow]:
+    rows: list[ScoreRow] = []
+    for jsonl in sorted(runs_dir.glob("*.jsonl")):
+        with jsonl.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                rows.append(ScoreRow.from_dict(json.loads(line)))
+    return rows
+
+
+def _render_policy_retention(rows: list[ScoreRow], out: Path) -> None:
+    """Agentic_qwen normal twin, must_call_recovered on the decision row."""
+    target = [
+        r for r in rows
+        if r.case_corpus == "agentic_qwen"
+        and r.pair_role == "normal"
+        and r.test_kind == TestKind.DECISION
+    ]
+    if not target:
+        print("policy_retention: no agentic_qwen normal-decision rows; skipping",
+              file=sys.stderr)
+        return
+    by_case: dict[str, dict[str, int]] = {}
+    totals: dict[str, int] = {}
+    for r in target:
+        c = r.case_id
+        by_case.setdefault(c, {})
+        by_case[c][r.compression_substrate.value] = (
+            r.scores.get("must_call_recovered_count", 0))
+        totals[c] = r.scores.get("must_call_total", 0)
+
+    def _short(case_id: str) -> str:
+        # Strip the ":normal"/":hack" pair-role suffix and shorten UUIDs.
+        base = case_id.split(":")[0]
+        if base.startswith("synth-seed"):
+            return "synthetic seed"
+        if "-" in base and len(base) > 20:
+            return f"real row {base.rsplit('-', 1)[-1]}"
+        return base
+
+    cases = sorted(by_case.keys())
+    rolling = [by_case[c].get("rolling_summary", 0) for c in cases]
+    dpm = [by_case[c].get("dpm_projection", 0) for c in cases]
+    x = list(range(len(cases)))
+    width = 0.36
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.bar([i - width/2 for i in x], rolling, width=width,
+           label="rolling_summary", color="#888")
+    ax.bar([i + width/2 for i in x], dpm, width=width,
+           label="dpm_projection", color="#1f77b4")
+    ax.set_xticks(x)
+    ax.set_xticklabels([_short(c) for c in cases],
+                        rotation=0, ha="center", fontsize=10)
+    max_total = max(totals.values()) if totals else 1
+    ax.set_ylim(0, max_total + 0.5)
+    ax.set_yticks(list(range(0, max_total + 1)))
+    ax.set_ylabel("must_call_tools recovered in the agent's answer")
+    ax.set_title("Policy retention under tight memory budget\n"
+                  "(agentic_qwen, normal twin, budget=800 chars)")
+    for i, (rv, dv, tot) in enumerate(zip(rolling, dpm, [totals[c] for c in cases])):
+        ax.text(i - width/2, rv + 0.05, f"{rv}/{tot}", ha="center", fontsize=9)
+        ax.text(i + width/2, dv + 0.05, f"{dv}/{tot}", ha="center", fontsize=9)
+    ax.legend(loc="upper left", framealpha=0.9)
+    ax.set_axisbelow(True)
+    ax.grid(axis="y", linestyle=":", color="#ccc")
+    fig.tight_layout()
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"  wrote {out}")
+
+
+def _render_cost_asymmetry(rows: list[ScoreRow], out: Path) -> None:
+    """handoff_ish: tokens_in / tokens_out / calls per substrate.
+
+    The decision-row scores carry tokens_in/tokens_out/calls keys
+    populated by head_to_head.py.
+    """
+    target = [
+        r for r in rows
+        if r.case_corpus == "real_sessions"
+        and r.test_kind == TestKind.DECISION
+        and "handoff" in r.case_id.lower()
+    ]
+    if not target:
+        # Fallback: pick the largest real_sessions decision-row case
+        # by event-count proxy (calls).
+        candidates = [r for r in rows
+                       if r.case_corpus == "real_sessions"
+                       and r.test_kind == TestKind.DECISION]
+        if not candidates:
+            print("cost_asymmetry: no real_sessions decision rows; skipping",
+                  file=sys.stderr)
+            return
+        case = max(candidates,
+                    key=lambda r: r.scores.get("calls", 0)).case_id
+        target = [r for r in candidates if r.case_id == case]
+    case_id = target[0].case_id
+
+    by_substrate: dict[str, dict[str, int]] = {}
+    for r in target:
+        by_substrate[r.compression_substrate.value] = {
+            "tokens_in": r.scores.get("tokens_in", 0),
+            "tokens_out": r.scores.get("tokens_out", 0),
+            "calls": r.scores.get("calls", 0),
+        }
+
+    metrics = ["tokens_in", "tokens_out", "calls"]
+    rolling = [by_substrate.get("rolling_summary", {}).get(m, 0) for m in metrics]
+    dpm = [by_substrate.get("dpm_projection", {}).get(m, 0) for m in metrics]
+    x = list(range(len(metrics)))
+    width = 0.36
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    bar_r = ax.bar([i - width/2 for i in x], rolling, width=width,
+                    label="rolling_summary", color="#888")
+    bar_d = ax.bar([i + width/2 for i in x], dpm, width=width,
+                    label="dpm_projection", color="#1f77b4")
+    ax.set_xticks(x)
+    ax.set_xticklabels(metrics)
+    ax.set_yscale("log")
+    ax.set_ylabel("count (log scale)")
+    ax.set_title(f"Cost per decision\n({case_id})")
+    for bars, vals in ((bar_r, rolling), (bar_d, dpm)):
+        for b, v in zip(bars, vals):
+            ax.text(b.get_x() + b.get_width()/2, v * 1.05, f"{v:,}",
+                    ha="center", fontsize=8)
+    # Caption with the asymmetry ratios so the chart reads without math.
+    ratios = []
+    for m, rv, dv in zip(metrics, rolling, dpm):
+        if dv > 0:
+            ratios.append(f"{m}: {rv/dv:.1f}x")
+    if ratios:
+        fig.text(0.5, 0.01,
+                  "rolling-summary / dpm-projection — " + ", ".join(ratios),
+                  ha="center", fontsize=8, color="#444")
+    ax.legend(loc="upper right", framealpha=0.9)
+    ax.set_axisbelow(True)
+    ax.grid(axis="y", linestyle=":", color="#ccc", which="both")
+    fig.tight_layout(rect=(0, 0.03, 1, 1))
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"  wrote {out}")
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out-dir", type=Path,
+                     default=Path(__file__).resolve().parent)
+    args = ap.parse_args(argv)
+
+    runs_dir = Path(__file__).resolve().parent
+    rows = _load_rows(runs_dir)
+    if not rows:
+        print(f"no rows under {runs_dir}", file=sys.stderr)
+        return 1
+    # Run rows through the chart spec to reject any that don't belong.
+    # filter() raises on a category error, which is the desired behavior:
+    # if a wrong-shaped row got committed, the chart code refuses to render.
+    chart_rows = DPM_VS_ROLLING_SUMMARY_DIFFERENTIAL.filter(rows)
+    print(f"loaded {len(rows)} rows, {len(chart_rows)} after chart-spec filter")
+
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    _render_policy_retention(chart_rows, args.out_dir / "policy_retention.png")
+    _render_cost_asymmetry(chart_rows, args.out_dir / "cost_asymmetry.png")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
