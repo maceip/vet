@@ -70,6 +70,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "//runtime/platform/hash:hasher",
+        "//runtime/util:litert_status_util",
     ],
 )
 

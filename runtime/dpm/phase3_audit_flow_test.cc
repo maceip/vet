@@ -230,5 +230,47 @@ TEST(Phase3AuditFlowTest,
               HasSubstr("correction invalidated prior checkpoint"));
 }
 
+TEST(Phase3AuditFlowTest, PendingAuditCertificateFailsClosed) {
+  EventSourcedLog log(TestRoot("phase3_pending_audit_log"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-1",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "audit pending event",
+      .timestamp_us = 1,
+  }));
+
+  RecordingRunner runner({
+      R"json({"Facts":["pending [1]"],"Reasoning":["await audit [1]"],"Compliance":["retained [1]"]})json",
+  });
+  DPMProjector projector(&runner);
+  const std::filesystem::path root = TestRoot("phase3_pending_audit_store");
+  LocalFilesystemCheckpointStore checkpoint_store(root);
+  LocalMerkleDagStore dag_store(root);
+  LocalFilesystemAuditLedger ledger(root);
+
+  ProjectionCheckpointConfig config = BaseCheckpointConfig();
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionCheckpoint checkpoint,
+      CreateProjectionCheckpoint(log, &projector, config, &checkpoint_store,
+                                 &dag_store));
+  ASSERT_OK_AND_ASSIGN(AuditCertificate pending_certificate,
+                       FinalizeAuditCertificate(BaseCertificate(
+                           checkpoint, config, AuditVerdict::kPending, 1.0,
+                           1777390000000010)));
+  ASSERT_OK(ledger.PutCertificate(pending_certificate));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Event> events, log.GetAllEvents());
+  ASSERT_OK_AND_ASSIGN(CorrectionIndex index, CorrectionIndex::Build(events));
+  ASSERT_OK_AND_ASSIGN(
+      CheckpointDecisionGateResult rejected,
+      MayUseCheckpointForDecision(GateRequest(log.identity(), checkpoint),
+                                  ledger, index));
+  EXPECT_FALSE(rejected.may_use);
+  EXPECT_THAT(rejected.reason, HasSubstr("pending"));
+}
+
 }  // namespace
 }  // namespace litert::lm

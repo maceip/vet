@@ -19,11 +19,13 @@
 
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/match.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "runtime/dpm/projection_prompt.h"
 #include "runtime/platform/hash/hasher.h"
+#include "runtime/util/status_macros.h"
 #include "runtime/util/test_utils.h"
 
 namespace litert::lm {
@@ -59,28 +61,42 @@ absl::StatusOr<std::string> ProjectionPromptFor(absl::string_view event_log) {
                                 kSchemaJson, 1338, 1 << 20);
 }
 
+absl::StatusOr<ProjectionPromptParts> ProjectionPromptPartsFor(
+    absl::string_view event_log) {
+  return CreateProjectionPromptParts(event_log, "insurance_liability_v2",
+                                     kSchemaJson, 1338, 1 << 20);
+}
+
+absl::StatusOr<std::string> ProjectionEventPrefixFor(
+    absl::string_view event_log) {
+  ASSIGN_OR_RETURN(ProjectionPromptParts parts,
+                   ProjectionPromptPartsFor(event_log));
+  return absl::StrCat(parts.cacheable_prefix, "[EVENT LOG]\n", event_log);
+}
+
 TEST(ProjectionPrefixCacheTest, HitReturnsOnlyNewEventSuffix) {
   ASSERT_OK_AND_ASSIGN(
-      std::string prompt_one,
-      ProjectionPromptFor(R"json([1] {"type":"user","payload":"first"})json"));
+      std::string prefix_one,
+      ProjectionEventPrefixFor(
+          R"json([1] {"type":"user","payload":"first"})json"));
   ASSERT_OK_AND_ASSIGN(
       std::string prompt_two,
       ProjectionPromptFor(
           R"json([1] {"type":"user","payload":"first"}
 [2] {"type":"tool","payload":"second"})json"));
-  ASSERT_TRUE(absl::StartsWith(prompt_two, prompt_one));
+  ASSERT_TRUE(absl::StartsWith(prompt_two, prefix_one));
 
   ASSERT_OK_AND_ASSIGN(
       ProjectionPrefixCacheEntry entry,
-      CreateProjectionPrefixCacheEntry(Identity(), kSchemaJson, prompt_one,
+      CreateProjectionPrefixCacheEntry(Identity(), kSchemaJson, prefix_one,
                                        /*event_count=*/1, FilledHash(0x22)));
 
   ProjectionPrefixCacheHit hit =
       EvaluateProjectionPrefixCacheHit(entry, Identity(), kSchemaJson,
                                        prompt_two);
   EXPECT_TRUE(hit.hit) << hit.reason;
-  EXPECT_EQ(hit.suffix, prompt_two.substr(prompt_one.size()));
-  EXPECT_EQ(prompt_one + hit.suffix, prompt_two);
+  EXPECT_EQ(hit.suffix, prompt_two.substr(prefix_one.size()));
+  EXPECT_EQ(prefix_one + hit.suffix, prompt_two);
 }
 
 TEST(ProjectionPrefixCacheTest, SchemaByteChangeMisses) {
@@ -140,11 +156,11 @@ TEST(ProjectionPrefixCacheTest, RejectsUnboundEntry) {
 
 TEST(ProjectionPrefixCacheTest, InMemoryCacheReturnsLongestExactPrefix) {
   ASSERT_OK_AND_ASSIGN(
-      std::string prompt_one,
-      ProjectionPromptFor(R"json([1] {"payload":"first"})json"));
+      std::string prefix_one,
+      ProjectionEventPrefixFor(R"json([1] {"payload":"first"})json"));
   ASSERT_OK_AND_ASSIGN(
-      std::string prompt_two,
-      ProjectionPromptFor(R"json([1] {"payload":"first"}
+      std::string prefix_two,
+      ProjectionEventPrefixFor(R"json([1] {"payload":"first"}
 [2] {"payload":"second"})json"));
   ASSERT_OK_AND_ASSIGN(
       std::string prompt_three,
@@ -155,11 +171,11 @@ TEST(ProjectionPrefixCacheTest, InMemoryCacheReturnsLongestExactPrefix) {
   InMemoryProjectionPrefixCache cache;
   ASSERT_OK_AND_ASSIGN(
       ProjectionPrefixCacheEntry short_entry,
-      CreateProjectionPrefixCacheEntry(Identity(), kSchemaJson, prompt_one,
+      CreateProjectionPrefixCacheEntry(Identity(), kSchemaJson, prefix_one,
                                        /*event_count=*/1, FilledHash(0x31)));
   ASSERT_OK_AND_ASSIGN(
       ProjectionPrefixCacheEntry long_entry,
-      CreateProjectionPrefixCacheEntry(Identity(), kSchemaJson, prompt_two,
+      CreateProjectionPrefixCacheEntry(Identity(), kSchemaJson, prefix_two,
                                        /*event_count=*/2, FilledHash(0x32)));
   ASSERT_OK(cache.Store(short_entry));
   ASSERT_OK(cache.Store(long_entry));
@@ -169,7 +185,7 @@ TEST(ProjectionPrefixCacheTest, InMemoryCacheReturnsLongestExactPrefix) {
       cache.FindLongestPrefixHit(Identity(), kSchemaJson, prompt_three));
   EXPECT_EQ(lookup.entry.event_count, 2);
   EXPECT_EQ(lookup.entry.checkpoint_manifest_hash, FilledHash(0x32));
-  EXPECT_EQ(lookup.hit.suffix, prompt_three.substr(prompt_two.size()));
+  EXPECT_EQ(lookup.hit.suffix, prompt_three.substr(prefix_two.size()));
 }
 
 }  // namespace

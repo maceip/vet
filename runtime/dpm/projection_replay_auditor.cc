@@ -30,6 +30,7 @@
 #include "runtime/dpm/event_sourced_log.h"
 #include "runtime/platform/audit/audit_certificate.h"
 #include "runtime/platform/audit/audit_ledger.h"
+#include "runtime/platform/checkpoint/canonical_manifest.h"
 #include "runtime/platform/checkpoint/checkpoint_store.h"
 #include "runtime/platform/hash/hasher.h"
 #include "runtime/platform/provenance/merkle_dag_store.h"
@@ -86,7 +87,9 @@ AuditCertificate BuildCertificate(
     const ProjectionReplayAuditConfig& config,
     const Hash256& checkpoint_manifest_hash,
     const Hash256& checkpoint_body_hash,
-    uint64_t event_count,
+    uint64_t event_range_start,
+    uint64_t event_range_end,
+    uint64_t log_generation,
     AuditVerdict verdict,
     double drift_score,
     std::vector<std::string> drift_fields,
@@ -97,9 +100,9 @@ AuditCertificate BuildCertificate(
   certificate.tenant_id = log.identity().tenant_id;
   certificate.session_id = log.identity().session_id;
   certificate.branch_id = config.checkpoint.branch_id;
-  certificate.event_range_start = 0;
-  certificate.event_range_end = event_count;
-  certificate.log_generation = event_count;
+  certificate.event_range_start = event_range_start;
+  certificate.event_range_end = event_range_end;
+  certificate.log_generation = log_generation;
   certificate.schema_id = config.checkpoint.projection.schema_id;
   certificate.model_artifact_hash = config.checkpoint.model_artifact_hash;
   certificate.projection_model_id = config.checkpoint.projection.model_id;
@@ -160,6 +163,19 @@ absl::StatusOr<ProjectionReplayAuditResult> VerifyProjectionCheckpointFromRaw(
                    store->GetManifest(log.identity().tenant_id,
                                       log.identity().session_id,
                                       checkpoint_manifest_hash));
+  ASSIGN_OR_RETURN(CanonicalManifestInput manifest_input,
+                   DecodeCanonicalManifest(manifest.abi_bytes));
+  if (manifest_input.body_hash != manifest.referenced_body_hash) {
+    return absl::DataLossError(
+        "checkpoint manifest ABI body hash does not match store record.");
+  }
+  ASSIGN_OR_RETURN(Hash256 recomputed_manifest_hash,
+                   ComputeManifestHash(HashAlgorithm::kBlake3,
+                                       manifest_input));
+  if (recomputed_manifest_hash != checkpoint_manifest_hash) {
+    return absl::DataLossError(
+        "checkpoint manifest hash does not match canonical ABI bytes.");
+  }
   ASSIGN_OR_RETURN(std::string stored_projection,
                    store->GetPayload(log.identity().tenant_id,
                                      log.identity().session_id,
@@ -172,11 +188,27 @@ absl::StatusOr<ProjectionReplayAuditResult> VerifyProjectionCheckpointFromRaw(
   }
 
   ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
-  ASSIGN_OR_RETURN(std::string replayed_projection,
-                   projector->Project(log, config.checkpoint.projection));
-  const Hash256 replayed_body_hash =
-      HashBytes(HashAlgorithm::kBlake3, replayed_projection);
-  const bool matched = replayed_body_hash == manifest.referenced_body_hash;
+  const uint64_t checkpoint_event_count = manifest_input.base_event_index;
+  if (checkpoint_event_count > events.size()) {
+    return absl::FailedPreconditionError(
+        "audit log does not contain the checkpoint event range.");
+  }
+  absl::StatusOr<std::string> replayed_or =
+      projector->Project(log, config.checkpoint.projection);
+  std::string replayed_projection;
+  std::string replay_error;
+  if (replayed_or.ok()) {
+    replayed_projection = std::move(*replayed_or);
+  } else {
+    replay_error = absl::StrCat("projection replay failed: ",
+                                replayed_or.status().message());
+  }
+  const Hash256 replayed_body_hash = HashBytes(
+      HashAlgorithm::kBlake3,
+      replay_error.empty() ? replayed_projection : replay_error);
+  const bool matched =
+      replay_error.empty() &&
+      replayed_body_hash == manifest.referenced_body_hash;
 
   std::optional<CorrectionPayload> correction;
   std::vector<std::string> correction_event_ids;
@@ -186,7 +218,8 @@ absl::StatusOr<ProjectionReplayAuditResult> VerifyProjectionCheckpointFromRaw(
   if (!matched) {
     verdict = AuditVerdict::kCorrectionEmitted;
     drift_score = 1.0;
-    drift_fields = {"projected_memory_hash"};
+    drift_fields = {replay_error.empty() ? "projected_memory_hash"
+                                         : "projection_replay_error"};
     if (config.emit_correction_on_drift) {
       correction_event_ids.push_back(
           CorrectionIdFor(checkpoint_manifest_hash,
@@ -198,7 +231,8 @@ absl::StatusOr<ProjectionReplayAuditResult> VerifyProjectionCheckpointFromRaw(
   ASSIGN_OR_RETURN(AuditCertificate certificate,
                    FinalizeAuditCertificate(BuildCertificate(
                        log, config, checkpoint_manifest_hash,
-                       manifest.referenced_body_hash, events.size(), verdict,
+                       manifest.referenced_body_hash, 0,
+                       checkpoint_event_count, events.size(), verdict,
                        drift_score, drift_fields, correction_event_ids)));
 
   if (!matched && config.emit_correction_on_drift) {
@@ -212,7 +246,8 @@ absl::StatusOr<ProjectionReplayAuditResult> VerifyProjectionCheckpointFromRaw(
     payload.severity = CorrectionSeverity::kBlocking;
     payload.drift_fields = certificate.drift_fields;
     payload.invalidates_checkpoints = {checkpoint_manifest_hash};
-    payload.replacement_projection = replayed_projection;
+    payload.replacement_projection =
+        replay_error.empty() ? replayed_projection : replay_error;
     payload.must_interrupt_before_next_predict = true;
     payload.created_unix_micros = config.created_unix_micros;
     correction = std::move(payload);

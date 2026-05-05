@@ -14,6 +14,7 @@
 
 #include "runtime/platform/audit/audit_certificate.h"
 
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -153,6 +154,8 @@ absl::StatusOr<std::vector<std::string>> ReadStringVector(
 
 absl::string_view AuditVerdictToString(AuditVerdict verdict) {
   switch (verdict) {
+    case AuditVerdict::kPending:
+      return "pending";
     case AuditVerdict::kPass:
       return "pass";
     case AuditVerdict::kCorrectionEmitted:
@@ -165,6 +168,7 @@ absl::string_view AuditVerdictToString(AuditVerdict verdict) {
 
 absl::StatusOr<AuditVerdict> AuditVerdictFromString(
     absl::string_view verdict) {
+  if (verdict == "pending") return AuditVerdict::kPending;
   if (verdict == "pass") return AuditVerdict::kPass;
   if (verdict == "correction_emitted") {
     return AuditVerdict::kCorrectionEmitted;
@@ -201,7 +205,8 @@ absl::Status ValidateAuditCertificateForHashing(
     return absl::InvalidArgumentError(
         "AuditCertificate requires schema/model/auditor/policy binding.");
   }
-  if (certificate.drift_score < 0.0 || certificate.drift_score > 1.0) {
+  if (std::isnan(certificate.drift_score) ||
+      certificate.drift_score < 0.0 || certificate.drift_score > 1.0) {
     return absl::InvalidArgumentError(
         "AuditCertificate drift_score must be in [0.0, 1.0].");
   }

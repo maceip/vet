@@ -14,6 +14,7 @@
 
 #include "runtime/dpm/checkpoint_decision_gate.h"
 
+#include <cmath>
 #include <vector>
 
 #include "absl/status/status.h"  // from @com_google_absl
@@ -56,6 +57,12 @@ absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
   if (request.identity.tenant_id.empty() || request.identity.session_id.empty()) {
     return absl::InvalidArgumentError("decision gate requires log identity.");
   }
+  if (std::isnan(request.max_allowed_drift_score) ||
+      request.max_allowed_drift_score < 0.0 ||
+      request.max_allowed_drift_score > 1.0) {
+    return absl::InvalidArgumentError(
+        "decision gate max_allowed_drift_score must be in [0.0, 1.0].");
+  }
   if (!request.compatibility_ok) {
     return CheckpointDecisionGateResult{
         .may_use = false,
@@ -90,6 +97,12 @@ absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
     return certificate_or.status();
   }
   const AuditCertificate& certificate = *certificate_or;
+  if (certificate.verdict == AuditVerdict::kPending) {
+    return CheckpointDecisionGateResult{
+        .may_use = false,
+        .reason = "checkpoint audit is pending",
+    };
+  }
   if (certificate.verdict != AuditVerdict::kPass) {
     return CheckpointDecisionGateResult{
         .may_use = false,
@@ -105,7 +118,7 @@ absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
             "checkpoint_event_count)",
     };
   }
-  if (certificate.drift_score != 0.0) {
+  if (certificate.drift_score > request.max_allowed_drift_score) {
     return CheckpointDecisionGateResult{
         .may_use = false,
         .reason = "audit certificate reports projection drift",

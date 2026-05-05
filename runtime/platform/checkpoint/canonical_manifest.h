@@ -82,6 +82,12 @@ inline constexpr uint32_t kCanonicalManifestVersion = 1;
 absl::StatusOr<std::string> EncodeCanonicalManifest(
     const CanonicalManifestInput& input);
 
+// Parses bytes emitted by EncodeCanonicalManifest. This is intentionally kept
+// next to the encoder so audit/replay paths can recover manifest-bound coverage
+// fields (for example base_event_index) without linking proto generated code.
+absl::StatusOr<CanonicalManifestInput> DecodeCanonicalManifest(
+    absl::string_view bytes);
+
 // Computes manifest_hash by hashing the canonical encoding with the given
 // algorithm.
 absl::StatusOr<Hash256> ComputeManifestHash(

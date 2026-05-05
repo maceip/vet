@@ -40,6 +40,9 @@ class AuditLedger {
       absl::string_view tenant_id, absl::string_view session_id,
       const Hash256& checkpoint_manifest_hash) const = 0;
 
+  virtual absl::StatusOr<std::vector<AuditCertificate>> ListForSession(
+      absl::string_view tenant_id, absl::string_view session_id) const = 0;
+
   virtual absl::StatusOr<AuditCertificate> LatestForCheckpoint(
       absl::string_view tenant_id, absl::string_view session_id,
       const Hash256& checkpoint_manifest_hash) const = 0;

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 # [Google-internal load of `cc_library`]
+# [Google-internal load of `cc_test`]
 
 package(
     default_hdrs_check = "strict",
@@ -48,6 +49,21 @@ cc_library(
 )
 
 cc_library(
+    name = "audit_query",
+    srcs = ["audit_query.cc"],
+    hdrs = ["audit_query.h"],
+    deps = [
+        ":audit_certificate",
+        ":audit_ledger",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/hash:hasher",
+        "//runtime/util:litert_status_util",
+    ],
+)
+
+cc_library(
     name = "local_filesystem_audit_ledger",
     srcs = ["local_filesystem_audit_ledger.cc"],
     hdrs = ["local_filesystem_audit_ledger.h"],
@@ -61,5 +77,21 @@ cc_library(
         "//runtime/platform/checkpoint:durable_writer",
         "//runtime/platform/hash:hasher",
         "//runtime/util:litert_status_util",
+    ],
+)
+
+cc_test(
+    name = "audit_query_test",
+    srcs = ["audit_query_test.cc"],
+    deps = [
+        ":audit_certificate",
+        ":audit_query",
+        ":local_filesystem_audit_ledger",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/hash:hasher",
+        "//runtime/util:test_utils",
     ],
 )

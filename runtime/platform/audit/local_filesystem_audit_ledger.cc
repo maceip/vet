@@ -139,9 +139,8 @@ absl::StatusOr<AuditCertificate> LocalFilesystemAuditLedger::GetCertificate(
 }
 
 absl::StatusOr<std::vector<AuditCertificate>>
-LocalFilesystemAuditLedger::ListForCheckpoint(
-    absl::string_view tenant_id, absl::string_view session_id,
-    const Hash256& checkpoint_manifest_hash) const {
+LocalFilesystemAuditLedger::ListForSession(
+    absl::string_view tenant_id, absl::string_view session_id) const {
   RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
   const std::filesystem::path dir =
       root_path_ / std::string(tenant_id) / std::string(session_id) /
@@ -152,6 +151,19 @@ LocalFilesystemAuditLedger::ListForCheckpoint(
     if (!entry.is_regular_file()) continue;
     ASSIGN_OR_RETURN(std::string data, ReadFile(entry.path()));
     ASSIGN_OR_RETURN(AuditCertificate certificate, DecodeFramed(data));
+    out.push_back(std::move(certificate));
+  }
+  return out;
+}
+
+absl::StatusOr<std::vector<AuditCertificate>>
+LocalFilesystemAuditLedger::ListForCheckpoint(
+    absl::string_view tenant_id, absl::string_view session_id,
+    const Hash256& checkpoint_manifest_hash) const {
+  ASSIGN_OR_RETURN(std::vector<AuditCertificate> certificates,
+                   ListForSession(tenant_id, session_id));
+  std::vector<AuditCertificate> out;
+  for (AuditCertificate& certificate : certificates) {
     if (certificate.checkpoint_manifest_hash == checkpoint_manifest_hash) {
       out.push_back(std::move(certificate));
     }

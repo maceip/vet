@@ -26,6 +26,7 @@
 namespace litert::lm {
 
 enum class AuditVerdict {
+  kPending,
   kPass,
   kCorrectionEmitted,
   kInconclusive,

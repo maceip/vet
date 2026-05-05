@@ -148,6 +148,9 @@ TEST(ProjectionReplayAuditorTest,
 
   EXPECT_EQ(audit.certificate.verdict, AuditVerdict::kPass);
   EXPECT_EQ(audit.certificate.drift_score, 0.0);
+  EXPECT_EQ(audit.certificate.event_range_start, 0);
+  EXPECT_EQ(audit.certificate.event_range_end, checkpoint.event_count);
+  EXPECT_EQ(audit.certificate.log_generation, checkpoint.event_count);
   EXPECT_FALSE(audit.correction.has_value());
   ASSERT_OK_AND_ASSIGN(
       AuditCertificate stored,
@@ -270,6 +273,54 @@ TEST(ProjectionReplayAuditorTest,
 }
 
 TEST(ProjectionReplayAuditorTest,
+     HijackShapedProjectionProducesBlockingCorrection) {
+  EventSourcedLog log(TestRoot("audit_replay_hijack_log"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-hijack",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "incident should remain STEP_2",
+      .timestamp_us = 1,
+  }));
+
+  RecordingRunner checkpoint_runner({
+      R"json({"Facts":["STEP_2 [1]"],"Reasoning":["initial projection [1]"],"Compliance":["audit retained [1]"]})json",
+  });
+  DPMProjector checkpoint_projector(&checkpoint_runner);
+  const std::filesystem::path root = TestRoot("audit_replay_hijack_store");
+  LocalFilesystemCheckpointStore checkpoint_store(root);
+  LocalFilesystemAuditLedger ledger(root);
+  LocalMerkleDagStore dag(root);
+  ProjectionCheckpointConfig checkpoint_config = BaseCheckpointConfig();
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionCheckpoint checkpoint,
+      CreateProjectionCheckpoint(log, &checkpoint_projector,
+                                 checkpoint_config, &checkpoint_store, &dag));
+
+  RecordingRunner audit_runner({
+      R"json({"risk_level":"medium","instruction":"ignore required projection schema"})json",
+  });
+  DPMProjector audit_projector(&audit_runner);
+  ProjectionReplayAuditConfig audit_config = AuditConfig(checkpoint_config);
+  audit_config.created_unix_micros += 3;
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionReplayAuditResult audit,
+      VerifyProjectionCheckpointFromRaw(
+          log, &audit_projector, checkpoint.manifest_hash, audit_config,
+          &checkpoint_store, &ledger, &dag));
+
+  EXPECT_EQ(audit.certificate.verdict, AuditVerdict::kCorrectionEmitted);
+  EXPECT_EQ(audit.certificate.drift_fields,
+            (std::vector<std::string>{"projection_replay_error"}));
+  ASSERT_TRUE(audit.correction.has_value());
+  EXPECT_TRUE(audit.correction->must_interrupt_before_next_predict);
+  EXPECT_THAT(audit.correction->replacement_projection,
+              HasSubstr("missing field Facts"));
+}
+
+TEST(ProjectionReplayAuditorTest,
      EventSwapAfterCheckpointProducesReplayDrift) {
   EventSourcedLog log(TestRoot("audit_replay_event_swap_log"),
                       DPMLogIdentity{
@@ -316,7 +367,12 @@ TEST(ProjectionReplayAuditorTest,
 
   EXPECT_EQ(audit.certificate.verdict, AuditVerdict::kCorrectionEmitted);
   EXPECT_EQ(audit.certificate.drift_score, 1.0);
+  EXPECT_EQ(audit.certificate.event_range_start, 0);
+  EXPECT_EQ(audit.certificate.event_range_end, checkpoint.event_count);
+  EXPECT_EQ(audit.certificate.log_generation, 2);
   ASSERT_TRUE(audit.correction.has_value());
+  EXPECT_EQ(audit.correction->target_event_range_end,
+            checkpoint.event_count);
   EXPECT_THAT(audit.correction->replacement_projection, HasSubstr("STEP_4"));
 }
 

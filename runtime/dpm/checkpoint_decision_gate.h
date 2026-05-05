@@ -33,6 +33,9 @@ struct CheckpointDecisionGateRequest {
   uint64_t checkpoint_event_count = 0;
   bool compatibility_ok = false;
   bool thaw_verification_ok = false;
+  // Phase 3 exact-replay defaults to zero tolerance. Semantic auditors can
+  // opt into a non-zero threshold after they define their comparator.
+  double max_allowed_drift_score = 0.0;
 };
 
 struct CheckpointDecisionGateResult {

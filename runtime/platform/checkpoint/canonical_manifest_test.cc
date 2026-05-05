@@ -55,6 +55,31 @@ TEST(CanonicalManifestTest, EncodingIsByteDeterministic) {
   EXPECT_EQ(a, b);
 }
 
+TEST(CanonicalManifestTest, DecodeRoundTripsCoverageAndHashInputs) {
+  CanonicalManifestInput input = Baseline();
+  input.parent_hashes = {
+      HashBytes(HashAlgorithm::kBlake3, "parent-1"),
+      HashBytes(HashAlgorithm::kBlake3, "parent-2"),
+  };
+  ASSERT_OK_AND_ASSIGN(std::string bytes, EncodeCanonicalManifest(input));
+  ASSERT_OK_AND_ASSIGN(CanonicalManifestInput decoded,
+                       DecodeCanonicalManifest(bytes));
+
+  EXPECT_EQ(decoded.tenant_id, input.tenant_id);
+  EXPECT_EQ(decoded.session_id, input.session_id);
+  EXPECT_EQ(decoded.branch_id, input.branch_id);
+  EXPECT_EQ(decoded.parent_hashes, input.parent_hashes);
+  EXPECT_EQ(decoded.base_event_index, input.base_event_index);
+  EXPECT_EQ(decoded.body_hash, input.body_hash);
+  EXPECT_EQ(decoded.body_size_bytes, input.body_size_bytes);
+  EXPECT_EQ(decoded.created_unix_micros, input.created_unix_micros);
+  ASSERT_OK_AND_ASSIGN(Hash256 original_hash,
+                       ComputeManifestHash(HashAlgorithm::kBlake3, input));
+  ASSERT_OK_AND_ASSIGN(Hash256 decoded_hash,
+                       ComputeManifestHash(HashAlgorithm::kBlake3, decoded));
+  EXPECT_EQ(decoded_hash, original_hash);
+}
+
 TEST(CanonicalManifestTest, ManifestHashCoversIdentityFields) {
   ASSERT_OK_AND_ASSIGN(Hash256 base,
                        ComputeManifestHash(HashAlgorithm::kBlake3, Baseline()));

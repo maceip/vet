@@ -39,6 +39,9 @@ class LocalFilesystemAuditLedger : public AuditLedger {
   absl::StatusOr<std::vector<AuditCertificate>> ListForCheckpoint(
       absl::string_view tenant_id, absl::string_view session_id,
       const Hash256& checkpoint_manifest_hash) const override;
+  absl::StatusOr<std::vector<AuditCertificate>> ListForSession(
+      absl::string_view tenant_id,
+      absl::string_view session_id) const override;
   absl::StatusOr<AuditCertificate> LatestForCheckpoint(
       absl::string_view tenant_id, absl::string_view session_id,
       const Hash256& checkpoint_manifest_hash) const override;
