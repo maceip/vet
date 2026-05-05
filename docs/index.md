@@ -52,6 +52,20 @@ Faithful compression cuts both ways. On the policy-violating twin of one real-da
 
 Long sessions beyond a single rebuild call. A 6 335-event case exceeds the input budget of one model call by ~6×. Hierarchical rebuild at the substrate layer — the same `Level0` + `DeltaAppend` codec that already exists in the C++ runtime — is what addresses this; the bench has not yet run it.
 
+## FAQ
+
+**Do I have to change my agent code?** Yes, but the shape of the change is small. Replace your memory-update calls with event appends, and your memory reads with rebuild calls. The agent loop's overall shape — read memory, decide, act, observe — is unchanged.
+
+**What's the latency cost of rebuilding instead of caching?** One extra model call per decision point. On a long session you save many more calls than you spend, because you no longer pay the rolling-summary tax on every turn.
+
+**Does this need a new model?** No. It works with whatever model you're already using. The substrate is model-agnostic — it cares about the bytes that come back, not the family that produced them.
+
+**Is there a Python SDK?** Not yet. The substrate is C++ today, behind a bazel build. A Python binding is the next investment once the audit pipeline lands end-to-end against real bench data.
+
+**Does the audit certificate slow down decisions?** No. Verification runs asynchronously after a checkpoint is written; the runtime gate at decision time just reads the latest certificate state and the correction index. Both are cheap lookups.
+
+**What counts as a "decision point" in my agent?** Most easily: any tool call. Each tool invocation is a moment where the agent commits to an action based on what it remembers — that's the natural edge for a memory rebuild and an audit certificate. If your agent makes tool calls, you already have decision points; you just haven't been treating them that way.
+
 ## What's next
 
 The audit substrate above — replay verifier, content-addressed certificates, fail-closed runtime gate, blocking corrections — is real code with green tests today. We will demonstrate the audit pipeline end-to-end against real session data in a follow-on post.
