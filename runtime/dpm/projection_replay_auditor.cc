@@ -71,10 +71,12 @@ absl::Status ValidateConfig(const ProjectionReplayAuditConfig& config) {
 }
 
 std::string CorrectionIdFor(const Hash256& checkpoint_manifest_hash,
+                            const Hash256& replayed_body_hash,
                             int64_t created_unix_micros) {
   const Hash256 hash = HashBytes(
       HashAlgorithm::kBlake3,
       absl::StrCat("correction:", checkpoint_manifest_hash.ToHex(), ":",
+                   replayed_body_hash.ToHex(), ":",
                    created_unix_micros));
   return absl::StrCat("corr-", hash.ToHex().substr(0, 32));
 }
@@ -188,6 +190,7 @@ absl::StatusOr<ProjectionReplayAuditResult> VerifyProjectionCheckpointFromRaw(
     if (config.emit_correction_on_drift) {
       correction_event_ids.push_back(
           CorrectionIdFor(checkpoint_manifest_hash,
+                          replayed_body_hash,
                           config.created_unix_micros));
     }
   }

@@ -49,7 +49,9 @@ struct ProjectionReplayAuditResult {
 // Replays the raw event log through the configured DPM projector, compares the
 // replayed projection's BLAKE3 body hash with the checkpoint manifest's body
 // hash, writes an AuditCertificate to the ledger, and records the certificate
-// as a child node of the checkpoint in the Merkle DAG.
+// as a child node of the checkpoint in the Merkle DAG. The exact-replay v1
+// policy is intentionally binary: drift_score is 0.0 iff bytes match, 1.0 iff
+// the replayed projection body hash differs.
 //
 // This is the deterministic Phase 3 verifier. Semantic/LLM auditors can emit
 // the same AuditCertificate shape later, but the trust loop starts here.

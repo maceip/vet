@@ -100,7 +100,9 @@ absl::StatusOr<CheckpointDecisionGateResult> MayUseCheckpointForDecision(
       certificate.event_range_end < request.checkpoint_event_count) {
     return CheckpointDecisionGateResult{
         .may_use = false,
-        .reason = "audit certificate does not cover checkpoint event range",
+        .reason =
+            "exact-replay v1 requires a prefix audit covering events [0, "
+            "checkpoint_event_count)",
     };
   }
   if (certificate.drift_score != 0.0) {

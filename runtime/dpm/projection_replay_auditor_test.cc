@@ -14,6 +14,7 @@
 
 #include "runtime/dpm/projection_replay_auditor.h"
 
+#include <fstream>
 #include <filesystem>
 #include <string>
 #include <utility>
@@ -94,6 +95,22 @@ ProjectionReplayAuditConfig AuditConfig(ProjectionCheckpointConfig checkpoint) {
   return config;
 }
 
+CorrectionPayload BlockingCorrectionFor(const Hash256& target,
+                                        const Hash256& certificate_id) {
+  CorrectionPayload correction;
+  correction.correction_id = "corr-other";
+  correction.target_checkpoint_manifest_hash = target;
+  correction.target_event_range_start = 0;
+  correction.target_event_range_end = 1;
+  correction.audit_certificate_id = certificate_id;
+  correction.reason_code = "projection_replay_mismatch";
+  correction.severity = CorrectionSeverity::kBlocking;
+  correction.invalidates_checkpoints = {target};
+  correction.must_interrupt_before_next_predict = true;
+  correction.created_unix_micros = 1777390000000999;
+  return correction;
+}
+
 TEST(ProjectionReplayAuditorTest,
      MatchingReplayWritesPassCertificateAndDagLink) {
   EventSourcedLog log(TestRoot("audit_replay_pass_log"),
@@ -146,6 +163,53 @@ TEST(ProjectionReplayAuditorTest,
   EXPECT_EQ(chain.nodes[0].hash, audit.certificate.certificate_id);
   EXPECT_EQ(chain.nodes[1].hash, checkpoint.manifest_hash);
   EXPECT_THAT(chain.nodes[0].annotations, HasSubstr("audit_certificate"));
+}
+
+TEST(ProjectionReplayAuditorTest, BodyTamperFailsBeforeReplayCertificate) {
+  EventSourcedLog log(TestRoot("audit_replay_tamper_log"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-tamper",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "auditd shows T1021 lateral movement",
+      .timestamp_us = 1,
+  }));
+
+  const std::string projection =
+      R"json({"Facts":["T1021 lateral movement [1]"],"Reasoning":["stage escalated [1]"],"Compliance":["audit trail retained [1]"]})json";
+  RecordingRunner checkpoint_runner({projection});
+  DPMProjector checkpoint_projector(&checkpoint_runner);
+  const std::filesystem::path root = TestRoot("audit_replay_tamper_store");
+  LocalFilesystemCheckpointStore checkpoint_store(root);
+  LocalFilesystemAuditLedger ledger(root);
+  LocalMerkleDagStore dag(root);
+  ProjectionCheckpointConfig checkpoint_config = BaseCheckpointConfig();
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionCheckpoint checkpoint,
+      CreateProjectionCheckpoint(log, &checkpoint_projector,
+                                 checkpoint_config, &checkpoint_store, &dag));
+
+  std::fstream payload(
+      checkpoint_store.PayloadPathFor("tenant-a", "session-tamper",
+                                      checkpoint.body_hash),
+      std::ios::in | std::ios::out | std::ios::binary);
+  ASSERT_TRUE(payload.is_open());
+  payload.seekp(-1, std::ios::end);
+  payload.put('X');
+  payload.close();
+
+  RecordingRunner audit_runner({projection});
+  DPMProjector audit_projector(&audit_runner);
+  absl::StatusOr<ProjectionReplayAuditResult> audit =
+      VerifyProjectionCheckpointFromRaw(
+          log, &audit_projector, checkpoint.manifest_hash,
+          AuditConfig(checkpoint_config), &checkpoint_store, &ledger, &dag);
+  ASSERT_FALSE(audit.ok());
+  EXPECT_EQ(audit.status().code(), absl::StatusCode::kDataLoss);
+  EXPECT_THAT(std::string(audit.status().message()),
+              HasSubstr("payload hash mismatch"));
 }
 
 TEST(ProjectionReplayAuditorTest,
@@ -203,6 +267,84 @@ TEST(ProjectionReplayAuditorTest,
       EvaluateCorrectionBarrier(checkpoint.manifest_hash, index);
   EXPECT_TRUE(barrier.must_reproject);
   EXPECT_TRUE(barrier.must_interrupt_before_next_predict);
+}
+
+TEST(ProjectionReplayAuditorTest,
+     EventSwapAfterCheckpointProducesReplayDrift) {
+  EventSourcedLog log(TestRoot("audit_replay_event_swap_log"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-event-swap",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "auditd initially classified as STEP_2",
+      .timestamp_us = 1,
+  }));
+
+  RecordingRunner checkpoint_runner({
+      R"json({"Facts":["STEP_2 [1]"],"Reasoning":["initial projection [1]"],"Compliance":["audit retained [1]"]})json",
+  });
+  DPMProjector checkpoint_projector(&checkpoint_runner);
+  const std::filesystem::path root = TestRoot("audit_replay_event_swap_store");
+  LocalFilesystemCheckpointStore checkpoint_store(root);
+  LocalFilesystemAuditLedger ledger(root);
+  LocalMerkleDagStore dag(root);
+  ProjectionCheckpointConfig checkpoint_config = BaseCheckpointConfig();
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionCheckpoint checkpoint,
+      CreateProjectionCheckpoint(log, &checkpoint_projector,
+                                 checkpoint_config, &checkpoint_store, &dag));
+
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "later raw event changes the replay to STEP_4",
+      .timestamp_us = 2,
+  }));
+
+  RecordingRunner audit_runner({
+      R"json({"Facts":["STEP_4 [2]"],"Reasoning":["event-swap replay [2]"],"Compliance":["audit retained [1]"]})json",
+  });
+  DPMProjector audit_projector(&audit_runner);
+  ProjectionReplayAuditConfig audit_config = AuditConfig(checkpoint_config);
+  audit_config.created_unix_micros += 2;
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionReplayAuditResult audit,
+      VerifyProjectionCheckpointFromRaw(
+          log, &audit_projector, checkpoint.manifest_hash, audit_config,
+          &checkpoint_store, &ledger, &dag));
+
+  EXPECT_EQ(audit.certificate.verdict, AuditVerdict::kCorrectionEmitted);
+  EXPECT_EQ(audit.certificate.drift_score, 1.0);
+  ASSERT_TRUE(audit.correction.has_value());
+  EXPECT_THAT(audit.correction->replacement_projection, HasSubstr("STEP_4"));
+}
+
+TEST(ProjectionReplayAuditorTest,
+     BlockingCorrectionForDifferentCheckpointDoesNotTripBarrier) {
+  const Hash256 active = HashBytes(HashAlgorithm::kBlake3, "active");
+  const Hash256 other = HashBytes(HashAlgorithm::kBlake3, "other");
+  const Hash256 certificate = HashBytes(HashAlgorithm::kBlake3, "cert");
+
+  EventSourcedLog log(TestRoot("audit_replay_scoped_correction_log"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-scope",
+                      });
+  ASSERT_OK(AppendCorrectionEvent(
+      &log, BlockingCorrectionFor(other, certificate)));
+  ASSERT_OK_AND_ASSIGN(std::vector<Event> events, log.GetAllEvents());
+  ASSERT_OK_AND_ASSIGN(CorrectionIndex index, CorrectionIndex::Build(events));
+
+  const CorrectionBarrierDecision active_barrier =
+      EvaluateCorrectionBarrier(active, index);
+  EXPECT_FALSE(active_barrier.must_reproject);
+  EXPECT_FALSE(active_barrier.must_interrupt_before_next_predict);
+
+  const CorrectionBarrierDecision other_barrier =
+      EvaluateCorrectionBarrier(other, index);
+  EXPECT_TRUE(other_barrier.must_reproject);
+  EXPECT_TRUE(other_barrier.must_interrupt_before_next_predict);
 }
 
 }  // namespace
