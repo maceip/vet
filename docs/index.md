@@ -21,11 +21,11 @@ The failure mode is recognizable: the agent forgets the original ask, fixates on
 
 Three primitives:
 
-- **An append-only event log.** Every user turn, every tool call, every result is appended. Nothing is rewritten.
-- **Memory rebuilt at decision time.** A single task-conditioned read over the log, executed once, used once, discarded.
-- **A content-addressed audit certificate.** Every rebuild produces a checkpoint. Replay the raw log against the same model — bytes either hash-match the stored memory or don't. Drift fails the runtime gate closed and emits a blocking correction. The certificate is a child node of the checkpoint in a Merkle DAG.
+- **An append-only event log.** Every prompt, every tool call, every result is appended. Nothing is rewritten.
+- **Memory rebuilt at decision time.** The agent reads the log, builds the memory it needs for the next decision, uses it once, and throws it away.
+- **A content-addressed audit certificate.** The substrate replays the log to verify every memory the agent uses. If the replay doesn't match, the agent stops and a correction is emitted. The certificate is a child node of the checkpoint in a Merkle DAG.
 
-The first two are the substrate. The third makes the memory *provably faithful* — every decision is bound to the specific events that produced it, not to a summary nobody can audit.
+The first two are the substrate. The third gives every decision a receipt — the exact events that produced it. Not a paraphrase. Not a summary. The events themselves.
 
 ## What we measured
 
