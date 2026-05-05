@@ -35,7 +35,7 @@
 
 #include "runtime/dpm/projection_prompt.h"
 #include "runtime/platform/hash/hasher.h"
-#include "tools/benchmarks/dpm_projection_cliff/scenario/session_case_loader.h"
+#include "runtime/platform/checkpoint/testing/session_case_loader.h"
 
 namespace litert::lm::bench {
 namespace {
