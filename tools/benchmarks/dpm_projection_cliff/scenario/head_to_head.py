@@ -38,7 +38,7 @@ client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 case_path = sys.argv[1] if len(sys.argv) > 1 else \
     "tools/benchmarks/dpm_projection_cliff/scenario/golden/real_sessions/handoff_ish.session_case.json"
-case = json.load(open(case_path))
+case = json.load(open(case_path, encoding="utf-8"))
 events = case["events"]
 
 # Infer case_corpus from path; ScoreRow takes a free-form string but we
@@ -50,6 +50,70 @@ def _infer_corpus(p):
     if "/paper/" in pp:         return "paper"
     return "synthetic"
 CASE_CORPUS = _infer_corpus(case_path)
+
+# Per-case ground truth for the early-instruction-recall probe. Each
+# entry was extracted by reading the actual first user instruction from
+# the source session, NOT by auto-derivation. Keywords are intent-
+# bearing nouns/identifiers whose presence in the answer indicates the
+# substrate retained the original framing rather than drifting to
+# recency.
+PROBES = {
+    "handoff_ish": {
+        "ground_truth": ("review sitemap.xml; read _2_structure; "
+                          "investigate phase 1 implementation; compare "
+                          "against the DPM paper by Srinivasan; list "
+                          "fixes / changes"),
+        "keywords": ["sitemap", "_2_structure", "phase 1", "phase1",
+                      "DPM paper", "Srinivasan", "fixes", "implementation"],
+    },
+    "short": {
+        "ground_truth": ("rewrite the page-agent website's CSS and "
+                          "router; remove all gradient purples/blues/"
+                          "rainbows; go monochrome (warm grays, "
+                          "off-white, near-black); rewrite index.css; "
+                          "change theme-color-1 and theme-color-2 to "
+                          "warm neutrals; keep shadcn structure"),
+        "keywords": ["page-agent", "CSS", "monochrome", "warm",
+                      "off-white", "gradient", "theme-color", "shadcn",
+                      "index.css", "router"],
+    },
+    "long": {
+        "ground_truth": ("use repomix-output.xml as primary source; "
+                          "follow _2_structure.md; use _3_source.md "
+                          "and _1_story.md as backup; goal is to "
+                          "create a plan to complete phase 1"),
+        "keywords": ["repomix", "_2_structure", "_3_source", "_1_story",
+                      "phase 1", "phase1", "plan"],
+    },
+    "correction_heavy": {
+        "ground_truth": ("review the plan for an agentic network where "
+                          "github repo owners add their repos to have "
+                          "fixes applied by AI agents; identify where "
+                          "it is broken; suggest how it could be "
+                          "simplified; ideally neither participant "
+                          "needs to know it uses a blockchain"),
+        "keywords": ["agentic", "github", "repo owners", "fixes",
+                      "AI agents", "simplified", "broken", "blockchain"],
+    },
+    "tool_heavy": {
+        "ground_truth": ("research only (no writing); reverse-engineer "
+                          "the browser agent tool implementation from "
+                          "the compiled VSIX bundle at extension.js; "
+                          "search for open_simple_browser, "
+                          "simpleBrowser.show, fetchWebPage, and "
+                          "related browser tool patterns"),
+        "keywords": ["VSIX", "extension.js", "open_simple_browser",
+                      "simpleBrowser", "fetchWebPage", "browser",
+                      "reverse-engineer", "research"],
+    },
+}
+
+# Bucket name = filename stem before .session_case.json. Falls through
+# to handoff_ish ground truth for back-compat with the original run.
+_bucket = Path(case_path).name.replace(".session_case.json", "")
+_probe = PROBES.get(_bucket, PROBES["handoff_ish"])
+expected_answer = _probe["ground_truth"]
+expected_intent_keys = _probe["keywords"]
 # Probe: early-trajectory fact-recall. The user's first real
 # instruction at event idx=3 names four specific actions and one
 # specific document (the DPM paper). DPM has a structural reason to
@@ -59,14 +123,6 @@ CASE_CORPUS = _infer_corpus(case_path)
 TEST_QUESTION = ("What was the user's very first instruction in this "
                  "session? List the specific actions they asked for "
                  "and any specific documents they referenced.")
-expected_answer = (
-    "review sitemap.xml; read _2_structure; investigate phase 1 "
-    "implementation; compare against the DPM paper by Srinivasan; "
-    "list fixes / changes"
-)
-expected_intent_keys = ["sitemap", "_2_structure", "phase 1", "phase1",
-                         "DPM paper", "Srinivasan", "fixes",
-                         "implementation"]
 
 def render(evs):
     return "\n".join(f"[{e['idx']+1}] {e['kind']}({e['role']}): {e['text']}" for e in evs)
