@@ -329,15 +329,35 @@ function GraphsFace() {
 }
 
 function FeatureGlyph({ icon }: { icon: FeatureIcon }) {
+  // Sprite from public/art/cubeart.png — a vertical strip of 4 glyphs.
+  // Each glyph occupies ~25% of the image height (4 panels stacked).
+  const SPRITE_INDEX: Record<FeatureIcon, number> = {
+    log: 0,
+    refresh: 1,
+    certificate: 2,
+    receipt: 3,
+  };
+  const idx = SPRITE_INDEX[icon];
+  const positionY = idx * (100 / 3); // 0%, 33.33%, 66.66%, 100%
+
+  return (
+    <div
+      className="glyphSprite"
+      role="img"
+      aria-label={icon}
+      style={{
+        backgroundImage: "url(/LiteRT-DPM/art/cubeart.png)",
+        backgroundPositionY: `${positionY}%`,
+      }}
+    />
+  );
+}
+
+function _LegacyFeatureGlyph({ icon }: { icon: FeatureIcon }) {
+  // Kept only for type-export consistency; the live glyph is FeatureGlyph
+  // above which uses cubeart.png as a sprite. Safe to delete on next pass.
   if (icon === "log") {
-    return (
-      <div className="glyph glyphLog" aria-hidden="true">
-        {[0, 1, 2, 3, 4].map((item) => (
-          <span key={item} />
-        ))}
-        <em>•••</em>
-      </div>
-    );
+    return null;
   }
 
   if (icon === "refresh") {
