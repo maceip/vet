@@ -1,5 +1,14 @@
 /* Bundled fonts. */
 @font-face {
+  font-family: "Foldit";
+  src: url("/LiteRT-DPM/fonts/Foldit.ttf") format("truetype-variations"),
+       url("/LiteRT-DPM/fonts/Foldit.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
   font-family: "ProductDesign";
   src: url("/LiteRT-DPM/fonts/ProductDesign.ttf") format("truetype");
   font-weight: normal;
@@ -91,7 +100,9 @@ a {
 
 .heroTitle h1 {
   margin: 0;
-  font-family: "ProductDesign", "VeraMono", monospace;
+  font-family: "Foldit", "VeraMono", monospace;
+  font-variation-settings: "wght" 700;
+  font-weight: 700;
   font-size: clamp(54px, 9vw, 128px);
   letter-spacing: 0.04em;
   color: #f4f4ec;

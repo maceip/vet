@@ -81,11 +81,11 @@ export default function ReplayableSpinBlock() {
     goTo(previousIndex);
   }, [currentIndex, goTo]);
 
-  function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+  function onPointerDown(event: React.PointerEvent<HTMLElement>) {
     dragStartX.current = event.clientX;
   }
 
-  function onPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+  function onPointerUp(event: React.PointerEvent<HTMLElement>) {
     if (dragStartX.current === null) return;
 
     const deltaX = event.clientX - dragStartX.current;
@@ -116,7 +116,7 @@ export default function ReplayableSpinBlock() {
         />
         <pointLight position={[-4, -2, 4]} intensity={0.9} color="#dce35a" />
 
-        <SpinBlock feature={FEATURES[featureIndex]} showGraphs={showGraphs} />
+        <SpinBlock featureIndex={featureIndex} showGraphs={showGraphs} />
       </Canvas>
 
       <button
@@ -160,10 +160,10 @@ export default function ReplayableSpinBlock() {
 }
 
 function SpinBlock({
-  feature,
+  featureIndex,
   showGraphs,
 }: {
-  feature: Feature;
+  featureIndex: number;
   showGraphs: boolean;
 }) {
   const groupRef = useRef<THREE.Group | null>(null);
@@ -171,11 +171,20 @@ function SpinBlock({
   useFrame((_, delta) => {
     if (!groupRef.current) return;
 
-    const targetRotation = showGraphs ? -Math.PI / 2 : 0;
+    // Each of the 4 features lives on a distinct face of the cube,
+    // rotated -π/2 apart on Y. Graphs lives on top (X-axis tilt).
+    const targetY = showGraphs ? 0 : -featureIndex * (Math.PI / 2);
+    const targetX = showGraphs ? Math.PI / 2 : 0;
 
     groupRef.current.rotation.y = THREE.MathUtils.damp(
       groupRef.current.rotation.y,
-      targetRotation,
+      targetY,
+      7,
+      delta,
+    );
+    groupRef.current.rotation.x = THREE.MathUtils.damp(
+      groupRef.current.rotation.x,
+      targetX,
       7,
       delta,
     );
@@ -196,13 +205,39 @@ function SpinBlock({
         <Edges scale={1.002} color="#d9df4f" threshold={15} linewidth={1} />
       </mesh>
 
+      {/* Front: feature 1 */}
       <HtmlFace position={[0, 0, DEPTH / 2 + 0.01]} rotation={[0, 0, 0]}>
-        <FeatureFace feature={feature} />
+        <FeatureFace feature={FEATURES[0]} />
       </HtmlFace>
 
+      {/* Right: feature 2 */}
       <HtmlFace
         position={[FACE_W / 2 + 0.01, 0, 0]}
         rotation={[0, Math.PI / 2, 0]}
+      >
+        <FeatureFace feature={FEATURES[1]} />
+      </HtmlFace>
+
+      {/* Back: feature 3 */}
+      <HtmlFace
+        position={[0, 0, -DEPTH / 2 - 0.01]}
+        rotation={[0, Math.PI, 0]}
+      >
+        <FeatureFace feature={FEATURES[2]} />
+      </HtmlFace>
+
+      {/* Left: feature 4 */}
+      <HtmlFace
+        position={[-FACE_W / 2 - 0.01, 0, 0]}
+        rotation={[0, -Math.PI / 2, 0]}
+      >
+        <FeatureFace feature={FEATURES[3]} />
+      </HtmlFace>
+
+      {/* Top: graphs deck */}
+      <HtmlFace
+        position={[0, FACE_H / 2 + 0.01, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
       >
         <GraphsFace />
       </HtmlFace>
