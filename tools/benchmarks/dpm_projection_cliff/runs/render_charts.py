@@ -341,7 +341,7 @@ def _render_twitter_combined(rows: list[ScoreRow], out: Path,
     x = list(range(len(metrics)))
     width = 0.36
     barRL = axL.bar([i - width/2 for i in x], rolling_costs, width=width,
-                     label="rolling-summary", color=COLOR_ROLLING)
+                     label="codex / claude", color=COLOR_ROLLING)
     barDL = axL.bar([i + width/2 for i in x], dpm_costs, width=width,
                      label="replayable", color=COLOR_REPLAYABLE)
     axL.set_xticks(x)
@@ -361,13 +361,16 @@ def _render_twitter_combined(rows: list[ScoreRow], out: Path,
     ]
     if ratios:
         axL.text(0.5, -0.18,
-                  "rolling ÷ replayable  —  " + "   ".join(ratios),
+                  "codex/claude ÷ replayable  —  " + "   ".join(ratios),
                   ha="center", fontsize=11, color=COLOR_MUTED,
                   transform=axL.transAxes, fontfamily=fonts["body"])
-    legL = axL.legend(loc="upper right", framealpha=0.95, frameon=True,
-                       edgecolor=COLOR_GRID,
-                       prop={"family": fonts["body"], "size": 11})
-    legL.get_frame().set_linewidth(0.5)
+    legL = axL.legend(loc="upper right", framealpha=1.0, frameon=True,
+                       edgecolor=COLOR_REPLAYABLE,
+                       facecolor="#0a0a0a",
+                       labelcolor=COLOR_TITLE,
+                       prop={"family": fonts["body"], "size": 13,
+                             "weight": "bold"})
+    legL.get_frame().set_linewidth(1.4)
     axL.grid(axis="y", which="both", color=COLOR_GRID, linestyle=":",
               linewidth=0.7)
 
@@ -391,8 +394,8 @@ def _render_twitter_combined(rows: list[ScoreRow], out: Path,
               transform=axR.transAxes, va="top")
 
     # Two-column data restatement
-    axR.text(0.04, 0.70, "rolling-summary",
-              fontsize=12, color=COLOR_ROLLING,
+    axR.text(0.04, 0.70, "codex / claude",
+              fontsize=13, color=COLOR_ROLLING,
               fontfamily=fonts["body"], fontweight="bold",
               transform=axR.transAxes, va="top")
     axR.text(0.04, 0.64,
