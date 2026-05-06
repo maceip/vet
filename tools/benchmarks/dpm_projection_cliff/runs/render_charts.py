@@ -42,7 +42,7 @@ from score_schema import (  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _chart_style import (  # noqa: E402
     apply_style, styled_title, styled_footer,
-    COLOR_ROLLING, COLOR_REPLAYABLE, COLOR_MUTED, COLOR_GRID,
+    COLOR_ROLLING, COLOR_REPLAYABLE, COLOR_MUTED, COLOR_GRID, COLOR_TITLE,
 )
 
 
@@ -306,6 +306,140 @@ def _render_instruction_recall(rows: list[ScoreRow], out: Path,
     print(f"  wrote {out}")
 
 
+def _render_twitter_combined(rows: list[ScoreRow], out: Path,
+                              fonts: dict) -> None:
+    """Single Twitter-shaped image (1600x900). Left = cost asymmetry chart.
+    Right = text panel with the headline claim + Phase 3 hint.
+    """
+    cost_target = [
+        r for r in rows
+        if r.case_corpus == "real_sessions"
+        and r.test_kind == TestKind.DECISION
+        and "handoff" in r.case_id.lower()
+    ]
+    if not cost_target:
+        cands = [r for r in rows if r.case_corpus == "real_sessions"
+                  and r.test_kind == TestKind.DECISION]
+        if cands:
+            cid = max(cands, key=lambda r: r.scores.get("calls", 0)).case_id
+            cost_target = [r for r in cands if r.case_id == cid]
+    if not cost_target:
+        print("twitter_combined: missing cost data; skipping",
+              file=sys.stderr)
+        return
+    cost_by = {r.compression_substrate.value: r.scores for r in cost_target}
+
+    fig, (axL, axR) = plt.subplots(1, 2, figsize=(16, 9),
+                                    gridspec_kw={"width_ratios": [1.05, 1]})
+    fig.subplots_adjust(top=0.74, bottom=0.16, left=0.06, right=0.97,
+                        wspace=0.06)
+
+    # ---- left panel: cost asymmetry ----
+    metrics = ["tokens_in", "tokens_out", "calls"]
+    rolling_costs = [cost_by.get("rolling_summary", {}).get(m, 0) for m in metrics]
+    dpm_costs = [cost_by.get("dpm_projection", {}).get(m, 0) for m in metrics]
+    x = list(range(len(metrics)))
+    width = 0.36
+    barRL = axL.bar([i - width/2 for i in x], rolling_costs, width=width,
+                     label="rolling-summary", color=COLOR_ROLLING)
+    barDL = axL.bar([i + width/2 for i in x], dpm_costs, width=width,
+                     label="replayable", color=COLOR_REPLAYABLE)
+    axL.set_xticks(x)
+    axL.set_xticklabels(metrics, fontfamily=fonts["body"], fontsize=14)
+    axL.set_yscale("log")
+    axL.set_ylabel("count (log scale)", fontfamily=fonts["body"], fontsize=13)
+    for bars, vals, color in ((barRL, rolling_costs, COLOR_ROLLING),
+                                (barDL, dpm_costs, COLOR_REPLAYABLE)):
+        for b, v in zip(bars, vals):
+            axL.text(b.get_x() + b.get_width()/2, v * 1.10, f"{v:,}",
+                     ha="center", fontsize=13, color=color,
+                     fontfamily=fonts["body"])
+    ratios = [
+        f"{m} {(rv/dv):.1f}×"
+        for m, rv, dv in zip(metrics, rolling_costs, dpm_costs)
+        if dv > 0
+    ]
+    if ratios:
+        axL.text(0.5, -0.18,
+                  "rolling ÷ replayable  —  " + "   ".join(ratios),
+                  ha="center", fontsize=11, color=COLOR_MUTED,
+                  transform=axL.transAxes, fontfamily=fonts["body"])
+    legL = axL.legend(loc="upper right", framealpha=0.95, frameon=True,
+                       edgecolor=COLOR_GRID,
+                       prop={"family": fonts["body"], "size": 11})
+    legL.get_frame().set_linewidth(0.5)
+    axL.grid(axis="y", which="both", color=COLOR_GRID, linestyle=":",
+              linewidth=0.7)
+
+    # ---- right panel: text claim + Phase 3 hint ----
+    axR.set_xticks([])
+    axR.set_yticks([])
+    for spine in axR.spines.values():
+        spine.set_visible(False)
+    axR.set_xlim(0, 1)
+    axR.set_ylim(0, 1)
+
+    # Headline (lime, big)
+    axR.text(0.04, 0.92, "Replayable agent memory",
+              fontsize=22, color=COLOR_REPLAYABLE,
+              fontfamily=fonts["body"], fontweight="bold",
+              transform=axR.transAxes, va="top")
+    axR.text(0.04, 0.84,
+              "Same task. Same model. Same memory budget.",
+              fontsize=14, color=COLOR_TITLE,
+              fontfamily=fonts["body"],
+              transform=axR.transAxes, va="top")
+
+    # Two-column data restatement
+    axR.text(0.04, 0.70, "rolling-summary",
+              fontsize=12, color=COLOR_ROLLING,
+              fontfamily=fonts["body"], fontweight="bold",
+              transform=axR.transAxes, va="top")
+    axR.text(0.04, 0.64,
+              "17 model calls\n8,035 output tokens\nuser's first instruction lost",
+              fontsize=13, color=COLOR_MUTED,
+              fontfamily=fonts["body"], linespacing=1.5,
+              transform=axR.transAxes, va="top")
+
+    axR.text(0.55, 0.70, "replayable",
+              fontsize=12, color=COLOR_REPLAYABLE,
+              fontfamily=fonts["body"], fontweight="bold",
+              transform=axR.transAxes, va="top")
+    axR.text(0.55, 0.64,
+              "2 model calls\n750 output tokens\nfirst instruction preserved",
+              fontsize=13, color=COLOR_TITLE,
+              fontfamily=fonts["body"], linespacing=1.5,
+              transform=axR.transAxes, va="top")
+
+    # Divider rule
+    axR.plot([0.04, 0.96], [0.34, 0.34], color=COLOR_GRID, linewidth=0.8,
+              transform=axR.transAxes, clip_on=False)
+
+    # Phase 3 hint
+    axR.text(0.04, 0.30, "N E X T   ·   A U D I T   S U B S T R A T E",
+              fontsize=10, color=COLOR_REPLAYABLE,
+              fontfamily=fonts["body"], fontweight="bold",
+              transform=axR.transAxes, va="top")
+    axR.text(0.04, 0.24,
+              "Every memory the agent uses is cryptographically\n"
+              "tied to the events that produced it. Drift fails the\n"
+              "runtime gate closed and emits a blocking correction.",
+              fontsize=12, color=COLOR_MUTED,
+              fontfamily=fonts["body"], linespacing=1.5,
+              transform=axR.transAxes, va="top")
+
+    # Big title on the left only
+    styled_title(
+        axL,
+        "How much does one decision cost?",
+        "real Claude session · 492 events · 1338-char memory budget",
+        fonts)
+    styled_footer(fig, "runs/*.jsonl  ·  github.com/maceip/LiteRT-DPM", fonts)
+    fig.savefig(out, dpi=100)  # 16x9 @ 100dpi = 1600x900
+    plt.close(fig)
+    print(f"  wrote {out}")
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", type=Path,
@@ -331,6 +465,8 @@ def main(argv: list[str]) -> int:
                             args.out_dir / "cost_asymmetry.png", fonts)
     _render_instruction_recall(chart_rows,
                                 args.out_dir / "instruction_recall.png", fonts)
+    _render_twitter_combined(chart_rows,
+                              args.out_dir / "twitter_combined.png", fonts)
     return 0
 
 
