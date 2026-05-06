@@ -14,6 +14,7 @@
 
 #include "runtime/platform/eventlog/posix_event_sink.h"
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -71,6 +72,20 @@ TEST(PosixEventSinkTest, RejectsPathTraversalIdentities) {
   EXPECT_FALSE(sink.AppendRecord("tenant-a", "..", "x").ok());
   EXPECT_FALSE(sink.AppendRecord("ten/ant", "session-1", "x").ok());
   EXPECT_FALSE(sink.AppendRecord("", "session-1", "x").ok());
+}
+
+TEST(PosixEventSinkTest, RejectsJsonUnsafeIdentities) {
+  PosixEventSink sink(TestRoot("posix_event_sink_json_unsafe"));
+  EXPECT_FALSE(sink.AppendRecord("tenant\"a", "session-1", "x").ok());
+  EXPECT_FALSE(sink.AppendRecord("tenant\\a", "session-1", "x").ok());
+  EXPECT_FALSE(sink.AppendRecord("tenant\na", "session-1", "x").ok());
+  EXPECT_FALSE(sink.AppendRecord("tenant:a", "session-1", "x").ok());
+
+  ASSERT_OK(sink.AppendRecord("tenant.v2", "session.1", "x"));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::string> records,
+                       sink.ReadRecords("tenant.v2", "session.1"));
+  ASSERT_EQ(records.size(), 1);
+  EXPECT_EQ(records[0], "x");
 }
 
 TEST(PosixEventSinkTest, RejectsEmptyPayloadToProtectReaderInvariant) {
@@ -184,6 +199,139 @@ TEST(PosixEventSinkTest, RetentionSidecarOverwritesOnEachCall) {
   EXPECT_NE(contents.find("200"), std::string::npos);
   EXPECT_EQ(contents.find("100"), std::string::npos);
   EXPECT_NE(contents.find("true"), std::string::npos);
+}
+
+TEST(PosixEventSinkTest, BranchSeesParentRecordsThenItsOwn) {
+  PosixEventSink sink(TestRoot("posix_event_sink_branch_basic"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p0"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p1"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p2"));
+
+  ASSERT_OK(sink.CreateBranch("tenant-a", "session-1",
+                              "tenant-a", "branch-X",
+                              /*parent_record_count_at_branch=*/2));
+
+  // Parent appends after branch should not show up on the branch.
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p3"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "branch-X", "b0"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "branch-X", "b1"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::string> branch_records,
+                       sink.ReadRecords("tenant-a", "branch-X"));
+  ASSERT_EQ(branch_records.size(), 4);
+  EXPECT_EQ(branch_records[0], "p0");
+  EXPECT_EQ(branch_records[1], "p1");
+  EXPECT_EQ(branch_records[2], "b0");
+  EXPECT_EQ(branch_records[3], "b1");
+
+  // Parent's view is unchanged by the branch's existence.
+  ASSERT_OK_AND_ASSIGN(std::vector<std::string> parent_records,
+                       sink.ReadRecords("tenant-a", "session-1"));
+  ASSERT_EQ(parent_records.size(), 4);
+  EXPECT_EQ(parent_records[3], "p3");
+}
+
+TEST(PosixEventSinkTest, BranchAtZeroRecordsYieldsEmptyParentSlice) {
+  PosixEventSink sink(TestRoot("posix_event_sink_branch_zero"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p0"));
+  ASSERT_OK(sink.CreateBranch("tenant-a", "session-1",
+                              "tenant-a", "branch-Y", 0));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "branch-Y", "b0"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::string> branch_records,
+                       sink.ReadRecords("tenant-a", "branch-Y"));
+  ASSERT_EQ(branch_records.size(), 1);
+  EXPECT_EQ(branch_records[0], "b0");
+}
+
+TEST(PosixEventSinkTest, BranchOfBranchSeesGrandparentSlice) {
+  PosixEventSink sink(TestRoot("posix_event_sink_branch_of_branch"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "root", "g0"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "root", "g1"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "root", "g2"));
+  ASSERT_OK(sink.CreateBranch("tenant-a", "root", "tenant-a", "B", 2));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "B", "b0"));
+  ASSERT_OK(sink.CreateBranch("tenant-a", "B", "tenant-a", "C", 3));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "C", "c0"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::string> records,
+                       sink.ReadRecords("tenant-a", "C"));
+  ASSERT_EQ(records.size(), 4);
+  EXPECT_EQ(records[0], "g0");
+  EXPECT_EQ(records[1], "g1");
+  EXPECT_EQ(records[2], "b0");
+  EXPECT_EQ(records[3], "c0");
+}
+
+TEST(PosixEventSinkTest, CreateBranchRejectsOversizedOffset) {
+  PosixEventSink sink(TestRoot("posix_event_sink_branch_oversize"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p0"));
+  EXPECT_FALSE(sink.CreateBranch("tenant-a", "session-1",
+                                 "tenant-a", "branch", 99).ok());
+}
+
+TEST(PosixEventSinkTest, CreateBranchRejectsCollidingIdentity) {
+  PosixEventSink sink(TestRoot("posix_event_sink_branch_collide"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p0"));
+  ASSERT_OK(sink.CreateBranch("tenant-a", "session-1",
+                              "tenant-a", "branch", 1));
+  EXPECT_FALSE(sink.CreateBranch("tenant-a", "session-1",
+                                 "tenant-a", "branch", 1).ok());
+}
+
+TEST(PosixEventSinkTest, ConcurrentCreateBranchPublishesOnce) {
+  PosixEventSink sink(TestRoot("posix_event_sink_branch_concurrent"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p0"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p1"));
+
+  constexpr int kWriters = 16;
+  std::vector<absl::Status> statuses(kWriters);
+  std::vector<std::thread> threads;
+  std::atomic<int> ready{0};
+  std::atomic<bool> start{false};
+  threads.reserve(kWriters);
+  for (int i = 0; i < kWriters; ++i) {
+    threads.emplace_back([&sink, &statuses, &ready, &start, i]() {
+      ready.fetch_add(1);
+      while (!start.load()) {
+        std::this_thread::yield();
+      }
+      statuses[i] = sink.CreateBranch("tenant-a", "session-1",
+                                      "tenant-a", "branch-race", 2);
+    });
+  }
+  while (ready.load() != kWriters) {
+    std::this_thread::yield();
+  }
+  start.store(true);
+  for (std::thread& thread : threads) {
+    thread.join();
+  }
+
+  int ok_count = 0;
+  int already_exists_count = 0;
+  for (const absl::Status& status : statuses) {
+    if (status.ok()) {
+      ++ok_count;
+    } else if (status.code() == absl::StatusCode::kAlreadyExists) {
+      ++already_exists_count;
+    }
+  }
+  EXPECT_EQ(ok_count, 1);
+  EXPECT_EQ(already_exists_count, kWriters - 1);
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::string> branch_records,
+                       sink.ReadRecords("tenant-a", "branch-race"));
+  ASSERT_EQ(branch_records.size(), 2);
+  EXPECT_EQ(branch_records[0], "p0");
+  EXPECT_EQ(branch_records[1], "p1");
+}
+
+TEST(PosixEventSinkTest, CreateBranchRejectsSelfBranch) {
+  PosixEventSink sink(TestRoot("posix_event_sink_branch_self"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p0"));
+  EXPECT_FALSE(sink.CreateBranch("tenant-a", "session-1",
+                                 "tenant-a", "session-1", 1).ok());
 }
 
 TEST(PosixEventSinkTest, DetectsCorruptedTrailingByte) {

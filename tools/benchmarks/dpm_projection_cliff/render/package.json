@@ -1,0 +1,21 @@
+{
+  "name": "dpm-projection-cliff-render",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Renders the DPM Projection Cliff bench output as inline-safe static SVG (for GitHub markdown), interactive HTML pages (for the webpage), and STL surface meshes (for GitHub's built-in 3D viewer).",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "render:ssr":         "node ssr_render.mjs",
+    "render:interactive": "node interactive_render.mjs",
+    "render:dag":         "node dag_render.mjs",
+    "render:stl":         "node cliff_to_stl.mjs"
+  },
+  "dependencies": {
+    "echarts":     "^5.5.1",
+    "@antv/g6":    "^5.0.21",
+    "jsdom":       "^24.1.1"
+  }
+}

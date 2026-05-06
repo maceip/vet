@@ -1,0 +1,40 @@
+# The model-class × dtype sweep that produces Chart C — checkpoint
+# size by architecture.
+#
+# Each cell records kv_bytes_per_1024_tokens so the chart can show
+# how much of the size win comes from architecture (GQA / MQA / MLA /
+# sliding-window) versus how much comes from the lossy codec
+# (int8_per_token, policy-gated).
+
+name: architecture
+schema_version: 1
+seed: 20260420
+repeats: 3
+
+# A single condition is enough; this chart isolates KV layout, not
+# decision quality.
+conditions:
+  - dpm_projection
+
+trajectory_chars:
+  - 4096
+
+memory_budget_chars:
+  - 5352
+
+model_classes:
+  - dense_mha
+  - gqa
+  - mqa
+  - mla
+  - sliding_window
+
+kv_dtypes:
+  # fp16 is always replay-safe; included for every model class.
+  - dtype: fp16
+    require_replay_safe: true
+  # int8 is policy-gated; the run records the *opt-in* path so the
+  # chart can color it as "lossy with policy gate" rather than letting
+  # a reader assume it's the default.
+  - dtype: int8_per_token
+    require_replay_safe: false

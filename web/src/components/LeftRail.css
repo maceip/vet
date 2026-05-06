@@ -1,0 +1,38 @@
+.leftRailInner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #dce452;
+  padding: 6px 0;
+}
+
+.leftRailArt {
+  display: block;
+  width: clamp(120px, 14vw, 180px);
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.leftRailLabels {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  pointer-events: none;
+  display: grid;
+  grid-template-rows: 1fr 1fr 1fr;
+  align-items: start;
+  justify-items: center;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: rgba(220, 228, 82, 0.78);
+}
+
+.leftRailLabels li {
+  margin-top: 8px;
+}

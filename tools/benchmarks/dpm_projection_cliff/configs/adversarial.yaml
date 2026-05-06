@@ -1,0 +1,43 @@
+# The adversarial-audit scenarios that produce Chart D.
+#
+# The driver builds a synthetic 50-step session with 3 branch points and
+# 1 merge, then for each scenario tampers with one node and runs
+# EvaluateCheckpointThawVerification + EvaluateCheckpointCompatibility
+# and records the resulting decision.
+#
+# Three scenarios cover the realistic threat surface; a "clean" baseline
+# row is also emitted for visual contrast.
+
+name: adversarial
+schema_version: 1
+seed: 20260420
+repeats: 1
+
+conditions:
+  - dpm_checkpoints
+
+trajectory_chars:
+  - 27000
+
+memory_budget_chars:
+  - 5352
+
+model_class: gqa
+kv_dtype: fp16
+kv_dtype_policy_replay_safe: true
+
+scenarios:
+  - clean
+  # Tamper with a single byte of the producer.architecture_tag inside
+  # one DAG node's serialized ABI. manifest_hash recomputation must
+  # detect the change.
+  - manifest_hash_mismatch_architecture_tag
+  # Same surface, but tamper with the model.artifact_hash bytes.
+  - manifest_hash_mismatch_artifact_hash
+  # Substitute a checkpoint payload from a different tenant. The store
+  # rejects on Put because (tenant, session) is part of the address;
+  # the chart shows the rejection point.
+  - cross_tenant_inject
+  # Truncate a checkpoint payload mid-record. The codec's magic header
+  # / length-prefix invariants catch it on decode.
+  - malformed_kv_payload

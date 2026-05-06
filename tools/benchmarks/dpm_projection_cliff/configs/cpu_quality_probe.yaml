@@ -1,0 +1,14 @@
+name: cpu_quality_probe
+schema_version: 1
+seed: 20260420
+repeats: 1
+conditions:
+  - dpm_projection
+trajectory_chars:
+  - 8000
+  - 16000
+memory_budget_chars:
+  - 5352
+model_class: gqa
+kv_dtype: fp16
+kv_dtype_policy_replay_safe: true

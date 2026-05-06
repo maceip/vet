@@ -44,9 +44,11 @@ constexpr absl::string_view kModelPathEnv = "DPM_DETERMINISM_MODEL_PATH";
 constexpr absl::string_view kModelIdEnv = "DPM_DETERMINISM_MODEL_ID";
 constexpr absl::string_view kBackendEnv = "DPM_DETERMINISM_BACKEND";
 constexpr absl::string_view kSchemaJson =
-    R"json({"Facts":["string with one-based [i] citation"],)"
-    R"json("Reasoning":["string with one-based [i] citation"],)"
-    R"json("Compliance":["string with one-based [i] citation"]})json";
+    R"json({
+      "Facts":["string with one-based [i] citation"],
+      "Reasoning":["string with one-based [i] citation"],
+      "Compliance":["string with one-based [i] citation"]
+    })json";
 
 std::string GetEnv(absl::string_view name) {
   const char* value = std::getenv(std::string(name).c_str());

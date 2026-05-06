@@ -1,0 +1,36 @@
+# The headline sweep that produces Chart A — "the projection cliff".
+#
+# Driver loops over (condition, trajectory_chars, memory_budget_chars,
+# repeat_idx). One JSONL row per (condition, trajectory, budget, repeat).
+
+name: trajectory_sweep
+schema_version: 1
+seed: 20260420
+repeats: 5
+
+# All four conditions on the same x-axis.
+conditions:
+  - summarization_baseline
+  - dpm_projection
+  - dpm_checkpoints
+  - dpm_checkpoints_prefix_cached
+
+trajectory_chars:
+  - 1000
+  - 5000
+  - 10000
+  - 27000
+  - 50000
+  - 100000
+  - 200000
+
+memory_budget_chars:
+  - 1338    # tight   (paper's 20x compression)
+  - 5352    # moderate (paper's 5x compression)
+  - 13381   # loose   (paper's 2x compression)
+
+# Pin the model class for the headline chart so the cliff is unambiguous.
+# Architecture sweep lives in architecture.yaml.
+model_class: gqa
+kv_dtype: fp16
+kv_dtype_policy_replay_safe: true

@@ -1,18 +1,22 @@
-# LiteRT-LM / DPM
+# Replayable agent memory
 
-A high-performance, stateless C++ inference framework for enterprise AI agents — built on Google's [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) and implementing **Deterministic Projection Memory** (DPM) from [arXiv:2604.20158](https://arxiv.org/abs/2604.20158), with two production-grade extensions: **Hierarchical Checkpoints** for instant agent handoff, and **Automated Audit Synthesis** for real-time drift detection.
+> Today's agents rewrite their memory every few turns. By hour two of a real session the agent is acting on a copy of a copy of a copy of what you actually said. We measured a 492-event session where this approach took 17 model calls to produce a memory that had lost the user's original instruction. **No framework on the market today can tell you which events produced the agent's last decision. The memory has been edited too many times to know.**
 
-[Product Website](https://ai.google.dev/edge/litert-lm) · [DPM Paper](https://arxiv.org/abs/2604.20158) · [Architecture Docs](./docs/_1_story.md)
+**👉 [Read the full explainer](https://maceip.github.io/LiteRT-DPM/)** · [DPM Paper](https://arxiv.org/abs/2604.20158) · [Bench data](./tools/benchmarks/dpm_projection_cliff/runs/)
+
+A C++ inference substrate built on Google's [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) implementing **replayable agent memory** — an append-only event log, memory rebuilt from the log at decision time, and every rebuild cryptographically tied to the events that produced it. Includes two extensions: **Hierarchical Checkpoints** for instant agent handoff, and a **replay-audit substrate** that catches drift between the projection and the events that produced it.
 
 ---
 
-## What is Deterministic Projection Memory?
+## The shape of it
 
-DPM is a memory architecture for AI agents that operate in regulated environments — finance, legal, medical, insurance, tax — where decisions must be reproducible and auditable. Conventional agent memory is path-dependent: rolling summaries, KV-cache mutation, and incremental updates mean the state at turn N depends on the order and quality of N intermediate LLM calls. Deterministic replay is mathematically impossible.
+Three primitives:
 
-DPM replaces this with a functional, log-based approach. The agent's only durable state is an immutable, append-only **event log** of every user input, model output, and tool result. Between turns, the KV-cache is wiped. At decision time, a single **projection** call — temperature 0, fixed seed, schema-anchored — maps the raw log into a structured JSON view that the agent acts on. The audit surface collapses from N compounding summary calls to one. The same log produces the same decision, byte-for-byte, every time.
+- **An append-only event log.** Every user input, every tool call, every result is appended. Nothing is rewritten.
+- **Memory rebuilt at decision time.** A single task-conditioned read over the log, executed once, used once, discarded.
+- **A content-addressed audit certificate.** Every rebuild produces a checkpoint; replay verifies it; drift fails the runtime gate closed and emits a blocking correction.
 
-The paper reports 7–15x speedups at tight memory budgets versus summarization-based memory, with equal or better accuracy. This repository ports that architecture into LiteRT-LM's C++ runtime, adds the network and storage primitives required for production deployment, and layers two extensions described below.
+The paper reports 7–15× speedups at tight memory budgets versus summarization-based memory, with equal or better accuracy. This repository ports that architecture into LiteRT-LM's C++ runtime, adds the network and storage primitives for production deployment, and layers the two extensions below.
 
 ---
 

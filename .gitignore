@@ -1,2 +1,5 @@
 /MODULE.bazel.lock
 /bazel-*
+
+# Vite local build output (Pages still serves from web/dist via Actions)
+docs/
