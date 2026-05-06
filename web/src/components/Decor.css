@@ -1,0 +1,47 @@
+.decor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.decor__shape {
+  position: absolute;
+  display: block;
+  filter: drop-shadow(0 0 14px rgba(220, 228, 82, 0.05));
+}
+
+.decor__topLeft {
+  top: -40px;
+  left: -40px;
+  width: clamp(220px, 26vw, 360px);
+  height: clamp(220px, 26vw, 360px);
+}
+
+.decor__topRight {
+  top: -60px;
+  right: -60px;
+  width: clamp(280px, 34vw, 460px);
+  height: clamp(280px, 34vw, 460px);
+}
+
+.decor__bottomRight {
+  bottom: -80px;
+  right: -80px;
+  width: clamp(260px, 30vw, 420px);
+  height: clamp(260px, 30vw, 420px);
+}
+
+.decor__bottomLeft {
+  bottom: -60px;
+  left: -60px;
+  width: clamp(240px, 28vw, 360px);
+  height: clamp(240px, 28vw, 360px);
+}
+
+@media (max-width: 820px) {
+  .decor__shape {
+    opacity: 0.55;
+  }
+}
