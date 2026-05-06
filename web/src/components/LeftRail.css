@@ -1,0 +1,64 @@
+.leftRailInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: #dce452;
+  padding: 18px 0;
+}
+
+.railNode {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: #dce452;
+}
+
+.railNode figcaption {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: rgba(220, 228, 82, 0.78);
+}
+
+.railGlyph {
+  width: 96px;
+  height: 96px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(220, 228, 82, 0.45);
+  border-radius: 14px;
+  padding: 12px;
+  background:
+    linear-gradient(135deg, rgba(220, 228, 82, 0.06), transparent 65%),
+    rgba(8, 10, 7, 0.7);
+}
+
+.railGlyph svg {
+  width: 100%;
+  height: 100%;
+  color: #dce452;
+}
+
+.railArrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: rgba(220, 228, 82, 0.7);
+}
+
+.railArrow svg {
+  width: 16px;
+  height: 22px;
+}
+
+.railArrowDot {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(220, 228, 82, 0.4);
+}

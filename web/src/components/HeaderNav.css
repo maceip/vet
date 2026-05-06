@@ -1,0 +1,99 @@
+.siteNav {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding: 22px 56px;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+}
+
+.siteNavBrand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #dce452;
+}
+
+.brandMark {
+  width: 36px;
+  height: 36px;
+  color: #dce452;
+}
+
+.siteNavBrandText {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.siteNavBrandText strong {
+  font-size: 16px;
+  letter-spacing: 0.06em;
+  color: #f4f4ec;
+  font-weight: 700;
+}
+
+.siteNavBrandText span {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: rgba(220, 228, 82, 0.74);
+  margin-top: 4px;
+}
+
+.siteNavLinks {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  margin-left: auto;
+  margin-right: 8px;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+}
+
+.siteNavLinks a {
+  color: rgba(246, 246, 232, 0.74);
+  text-decoration: none;
+  padding: 6px 4px;
+  border-bottom: 1px solid transparent;
+  transition: color 140ms ease, border-color 140ms ease;
+}
+
+.siteNavLinks a:hover {
+  color: #f4f4ec;
+}
+
+.siteNavLinks a.isActive {
+  color: #dce452;
+  border-bottom-color: #dce452;
+}
+
+.siteNavCta {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: #dce452;
+  text-decoration: none;
+  padding: 9px 18px;
+  border: 1px solid #dce452;
+  border-radius: 999px;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.siteNavCta:hover {
+  background: #dce452;
+  color: #0a0a0a;
+}
+
+@media (max-width: 820px) {
+  .siteNav {
+    padding: 16px 20px;
+    gap: 16px;
+  }
+  .siteNavLinks {
+    display: none;
+  }
+}
