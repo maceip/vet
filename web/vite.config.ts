@@ -7,7 +7,8 @@ export default defineConfig({
   plugins: [react()],
   base: "/LiteRT-DPM/",
   build: {
-    outDir: "dist",
+    outDir: "../docs",
+    emptyOutDir: true,
     sourcemap: false,
   },
 });

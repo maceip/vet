@@ -1,6 +1,7 @@
 import Decor from "./Decor";
 import LeftRail from "./LeftRail";
 import ReplayableSpinBlock from "./ReplayableSpinBlock";
+import Story from "./Story";
 
 export function Hero() {
   return (
@@ -21,6 +22,8 @@ export function Hero() {
 
         <ReplayableSpinBlock />
       </section>
+
+      <Story />
     </main>
   );
 }
