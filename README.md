@@ -125,9 +125,9 @@ The `LITERT_DPM=ON` flag enables the `EventSourcedLog`, `DPMProjector`, and `Sta
 
 | Version | Highlights |
 |---|---|
-| v0.3.0 (planned) | Phase 3 — Automated Audit Synthesis: Lambda + SQS + EC2 G6e pipeline; `CORRECTION` event handling; PostgreSQL audit ledger |
-| v0.2.0 (planned) | Phase 2 — Hierarchical Checkpoints: NEON Merkle kernel; gRPC client-streaming over 1 GB messages; MemoryDB ingest on EKS; instant handoff |
-| v0.1.0 (planned) | Phase 1 — DPM baseline: `EventSourcedLog`, `DPMProjector`, `StatelessDecisionEngine`; KV-cache invalidation; S3 multipart upload; determinism CI gate |
+| v0.3.0 (substrate landed; bench in progress) | **Phase 3 — Replayable audit substrate.** Hash-first replay verifier (`projection_replay_auditor`); content-addressed audit certificates with ML-DSA post-quantum signatures (dynamic `liboqs`); fail-closed runtime decision gate; structured `CorrectionPayload` + correction barrier; half-open `[start, end)` global event ranges across manifests, replay, and gates; rollup child refs with write-time coverage validation; Merkle-DAG-linked certificate provenance; 17+ green substrate tests. |
+| v0.2.0 (shipped) | **Phase 2 — Replayable memory substrate + first bench.** Append-only `EventSourcedLog` with CoW branching; binary `canonical_manifest` + BLAKE3/SHA-256 hashing; hierarchical `Level0` + `DeltaAppend` checkpoint codec; `CheckpointStore` + `LocalFilesystem` backend with idempotent durable writes; `MerkleDagStore` with provenance walk; `checkpoint_policy` (compatibility / thaw / compaction); two-phase `CheckpointUploadSession`; first DPM-vs-rolling-summary bench, 32 schema-validated `ScoreRow` records across 5 cases. |
+| v0.1.0 (shipped) | **Phase 1 — DPM baseline.** `EventSourcedLog`, `DPMProjector`, `projection_prompt` with task-conditioned rebuild; `StatelessDecisionEngine`; `KvDtypePolicy` replay-safety gates; determinism CI harness. |
 
 Tracks the upstream LiteRT-LM release line for the underlying inference engine. See [GitHub Releases](https://github.com/maceip/LiteRT-LM/releases) for the full history.
 
