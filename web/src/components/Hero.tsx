@@ -1,9 +1,12 @@
+import { useState } from "react";
 import Decor from "./Decor";
 import LeftRail from "./LeftRail";
 import ReplayableSpinBlock from "./ReplayableSpinBlock";
 import Story from "./Story";
 
 export function Hero() {
+  const [activePanelIndex, setActivePanelIndex] = useState(0);
+
   return (
     <main className="heroPage">
       <Decor />
@@ -20,10 +23,14 @@ export function Hero() {
           <RailToCubeWires />
         </aside>
 
-        <ReplayableSpinBlock />
+        <div className="heroMainColumn">
+          <ReplayableSpinBlock
+            activeIndex={activePanelIndex}
+            onActiveIndexChange={setActivePanelIndex}
+          />
+          <Story activeIndex={activePanelIndex} />
+        </div>
       </section>
-
-      <Story />
     </main>
   );
 }

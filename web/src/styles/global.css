@@ -79,6 +79,12 @@ a {
   color: #dce452;
 }
 
+img {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
 .heroPage {
   position: relative;
   padding: 24px 56px 96px;
@@ -135,6 +141,10 @@ a {
   gap: 56px;
   align-items: start;
   margin-top: 36px;
+}
+
+.heroMainColumn {
+  width: min(100%, 920px);
 }
 
 .leftRail {

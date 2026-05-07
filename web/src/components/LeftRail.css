@@ -11,6 +11,9 @@
   display: block;
   width: clamp(120px, 14vw, 180px);
   height: auto;
+  max-width: 100%;
+  object-fit: contain;
+  transform: none;
   user-select: none;
   -webkit-user-drag: none;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Edges, Html } from "@react-three/drei";
 import * as THREE from "three";
@@ -18,7 +18,6 @@ type FeatureIcon = "log" | "refresh" | "certificate" | "receipt";
 type Feature = {
   number: string;
   title: string;
-  body: string;
   icon: FeatureIcon;
 };
 
@@ -26,58 +25,53 @@ const FEATURES: Feature[] = [
   {
     number: "1",
     title: "Append-only logs don’t hallucinate",
-    body:
-      "Every prompt, every tool call, every result is written once and never edited. The log is just what happened. Hallucinations belong to models, not logs.",
     icon: "log",
   },
   {
     number: "2",
     title: "Memory rebuilt at decision time",
-    body:
-      "The agent reads the log, builds the memory it needs, uses it once, throws it away. Next decision, fresh build.",
     icon: "refresh",
   },
   {
     number: "3",
     title: "Content-addressed audit certificates",
-    body:
-      "The substrate replays the log to verify every memory the agent uses. If the replay doesn’t match, the agent stops. The certificate is a child node of the checkpoint in a Merkle DAG.",
     icon: "certificate",
   },
   {
     number: "4",
     title: "Decisions with receipts",
-    body:
-      "Every decision the agent makes points back to the exact events that caused it. Not a paraphrase, not a summary — the events themselves.",
     icon: "receipt",
   },
 ];
 
-export default function ReplayableSpinBlock() {
-  const [featureIndex, setFeatureIndex] = useState(1); // Start on section 2, like the mockup.
-  const [showGraphs, setShowGraphs] = useState(false);
+const PANEL_COUNT = FEATURES.length + 1;
+
+type ReplayableSpinBlockProps = {
+  activeIndex: number;
+  onActiveIndexChange: (index: number) => void;
+};
+
+export default function ReplayableSpinBlock({
+  activeIndex,
+  onActiveIndexChange,
+}: ReplayableSpinBlockProps) {
 
   const dragStartX = useRef<number | null>(null);
 
-  const currentIndex = showGraphs ? GRAPH_INDEX : featureIndex;
+  const currentIndex = Math.min(Math.max(activeIndex, 0), PANEL_COUNT - 1);
 
   const goTo = useCallback((index: number) => {
-    if (index === GRAPH_INDEX) {
-      setShowGraphs(true);
-      return;
-    }
-
-    setFeatureIndex(index);
-    setShowGraphs(false);
-  }, []);
+    const boundedIndex = (index + PANEL_COUNT) % PANEL_COUNT;
+    onActiveIndexChange(boundedIndex);
+  }, [onActiveIndexChange]);
 
   const next = useCallback(() => {
-    const nextIndex = (currentIndex + 1) % 5;
+    const nextIndex = (currentIndex + 1) % PANEL_COUNT;
     goTo(nextIndex);
   }, [currentIndex, goTo]);
 
   const previous = useCallback(() => {
-    const previousIndex = (currentIndex + 4) % 5;
+    const previousIndex = (currentIndex + PANEL_COUNT - 1) % PANEL_COUNT;
     goTo(previousIndex);
   }, [currentIndex, goTo]);
 
@@ -116,7 +110,7 @@ export default function ReplayableSpinBlock() {
         />
         <pointLight position={[-4, -2, 4]} intensity={0.9} color="#dce35a" />
 
-        <SpinBlock featureIndex={featureIndex} showGraphs={showGraphs} />
+        <SpinBlock activeIndex={currentIndex} />
       </Canvas>
 
       <button
@@ -160,13 +154,13 @@ export default function ReplayableSpinBlock() {
 }
 
 function SpinBlock({
-  featureIndex,
-  showGraphs,
+  activeIndex,
 }: {
-  featureIndex: number;
-  showGraphs: boolean;
+  activeIndex: number;
 }) {
   const groupRef = useRef<THREE.Group | null>(null);
+  const showGraphs = activeIndex === GRAPH_INDEX;
+  const featureIndex = showGraphs ? 0 : activeIndex;
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
@@ -198,9 +192,6 @@ function SpinBlock({
           color="#0b0e08"
           roughness={0.85}
           metalness={0.12}
-          transparent
-          opacity={0.12}
-          depthWrite={false}
         />
         <Edges scale={1.002} color="#d9df4f" threshold={15} linewidth={1} />
       </mesh>
@@ -262,15 +253,15 @@ function HtmlFace({
           color="#0b0e08"
           roughness={0.9}
           metalness={0.08}
-          transparent
-          opacity={0.88}
-          side={THREE.DoubleSide}
+          side={THREE.FrontSide}
         />
       </mesh>
 
       <Html
         transform
         center
+        occlude
+        position={[0, 0, 0.02]}
         scale={HTML_SCALE}
         zIndexRange={[20, 0]}
         className="spinHtml"
@@ -287,8 +278,6 @@ function FeatureFace({ feature }: { feature: Feature }) {
       <div className="featureCopy">
         <div className="featureNumber">{feature.number}.</div>
         <h3>{feature.title}</h3>
-        <div className="titleRule" />
-        <p>{feature.body}</p>
       </div>
 
       <div className="featureIconWrap">
