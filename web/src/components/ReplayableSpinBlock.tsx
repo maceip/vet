@@ -11,7 +11,7 @@ const GRAPH_INDEX = 4;
 const FACE_W = 5.6;
 const FACE_H = 3.9;
 const DEPTH = 5.6;
-const HTML_SCALE: [number, number, number] = [0.01, 0.01, 0.01];
+const HTML_SCALE: [number, number, number] = [0.36, 0.36, 0.36];
 
 type FeatureIcon = "log" | "refresh" | "certificate" | "receipt";
 
@@ -197,7 +197,11 @@ function SpinBlock({
       </mesh>
 
       {/* Front: feature 1 */}
-      <HtmlFace position={[0, 0, DEPTH / 2 + 0.01]} rotation={[0, 0, 0]}>
+      <HtmlFace
+        position={[0, 0, DEPTH / 2 + 0.01]}
+        rotation={[0, 0, 0]}
+        isActive={activeIndex === 0}
+      >
         <FeatureFace feature={FEATURES[0]} />
       </HtmlFace>
 
@@ -205,6 +209,7 @@ function SpinBlock({
       <HtmlFace
         position={[FACE_W / 2 + 0.01, 0, 0]}
         rotation={[0, Math.PI / 2, 0]}
+        isActive={activeIndex === 1}
       >
         <FeatureFace feature={FEATURES[1]} />
       </HtmlFace>
@@ -213,6 +218,7 @@ function SpinBlock({
       <HtmlFace
         position={[0, 0, -DEPTH / 2 - 0.01]}
         rotation={[0, Math.PI, 0]}
+        isActive={activeIndex === 2}
       >
         <FeatureFace feature={FEATURES[2]} />
       </HtmlFace>
@@ -221,6 +227,7 @@ function SpinBlock({
       <HtmlFace
         position={[-FACE_W / 2 - 0.01, 0, 0]}
         rotation={[0, -Math.PI / 2, 0]}
+        isActive={activeIndex === 3}
       >
         <FeatureFace feature={FEATURES[3]} />
       </HtmlFace>
@@ -229,6 +236,7 @@ function SpinBlock({
       <HtmlFace
         position={[0, FACE_H / 2 + 0.01, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
+        isActive={activeIndex === GRAPH_INDEX}
       >
         <GraphsFace />
       </HtmlFace>
@@ -240,10 +248,12 @@ function HtmlFace({
   children,
   position,
   rotation,
+  isActive,
 }: {
   children: React.ReactNode;
   position: [number, number, number];
   rotation: [number, number, number];
+  isActive: boolean;
 }) {
   return (
     <group position={position} rotation={rotation}>
@@ -257,17 +267,18 @@ function HtmlFace({
         />
       </mesh>
 
-      <Html
-        transform
-        center
-        occlude
-        position={[0, 0, 0.02]}
-        scale={HTML_SCALE}
-        zIndexRange={[20, 0]}
-        className="spinHtml"
-      >
-        {children}
-      </Html>
+      {isActive && (
+        <Html
+          transform
+          center
+          position={[0, 0, 0.02]}
+          scale={HTML_SCALE}
+          zIndexRange={[20, 0]}
+          className="spinHtml"
+        >
+          {children}
+        </Html>
+      )}
     </group>
   );
 }
