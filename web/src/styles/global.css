@@ -87,7 +87,7 @@ img {
 
 .heroPage {
   position: relative;
-  padding: 24px 56px 96px;
+  padding: 24px 56px 140px;
   max-width: 1280px;
   margin: 0 auto;
 }
@@ -140,7 +140,7 @@ img {
   grid-template-columns: 220px 1fr;
   gap: 56px;
   align-items: start;
-  margin-top: 36px;
+  margin-top: 12px;
 }
 
 .heroMainColumn {
@@ -172,9 +172,82 @@ img {
   filter: drop-shadow(0 0 5px rgba(220, 228, 82, 0.18));
 }
 
+.siteFooter {
+  position: fixed;
+  z-index: 30;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(220px, 2fr) minmax(80px, 1fr);
+  align-items: center;
+  gap: 24px;
+  min-height: 74px;
+  padding: 12px clamp(20px, 4vw, 56px);
+  border-top: 1px solid rgba(220, 228, 82, 0.34);
+  background:
+    radial-gradient(circle at 20% 0%, rgba(220, 228, 82, 0.08), transparent 32%),
+    rgba(5, 6, 5, 0.88);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 -18px 60px rgba(0, 0, 0, 0.38);
+}
+
+.siteFooter__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.siteFooter__mark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(220, 228, 82, 0.64);
+  color: #dce452;
+  font-family: "VeraMono", monospace;
+  font-weight: bold;
+}
+
+.siteFooter__brand span:last-child {
+  display: grid;
+  gap: 2px;
+  font-family: "VeraMono", monospace;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.siteFooter__brand strong {
+  color: rgba(246, 246, 232, 0.78);
+  font-size: 14px;
+}
+
+.siteFooter__brand em {
+  color: #dce452;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.siteFooter p {
+  justify-self: center;
+  margin: 0;
+  color: rgba(246, 246, 232, 0.62);
+  font-size: 14px;
+  text-align: center;
+}
+
+.siteFooter__copyright {
+  justify-self: end;
+  color: rgba(246, 246, 232, 0.52);
+  font-size: 14px;
+}
+
 @media (max-width: 980px) {
   .heroPage {
-    padding: 16px 20px 60px;
+    padding: 16px 20px 130px;
   }
   .heroGrid {
     grid-template-columns: 1fr;
@@ -185,5 +258,18 @@ img {
   }
   .railWires {
     display: none;
+  }
+
+  .siteFooter {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    justify-items: center;
+    min-height: 96px;
+    padding: 12px 20px;
+  }
+
+  .siteFooter p,
+  .siteFooter__copyright {
+    justify-self: center;
   }
 }

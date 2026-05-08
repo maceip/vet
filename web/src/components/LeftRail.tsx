@@ -33,11 +33,21 @@ export default function LeftRail() {
           d="M 154 222 V 308"
           markerEnd="url(#leftRailArrow)"
         />
+        <g className="leftRailConnectors__flow" transform="translate(154 262)">
+          <circle r="18" />
+          <path d="M 0 -8 V 8" />
+          <path d="M -7 2 L 0 9 L 7 2" />
+        </g>
         <path
           className="leftRailConnectors__step"
           d="M 154 470 V 556"
           markerEnd="url(#leftRailArrow)"
         />
+        <g className="leftRailConnectors__flow" transform="translate(154 510)">
+          <circle r="18" />
+          <path d="M 0 -8 V 8" />
+          <path d="M -7 2 L 0 9 L 7 2" />
+        </g>
 
         <circle className="leftRailConnectors__node" cx="154" cy="132" r="6" />
         <circle className="leftRailConnectors__node" cx="154" cy="380" r="6" />

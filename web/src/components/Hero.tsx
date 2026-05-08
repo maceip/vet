@@ -11,12 +11,6 @@ export function Hero() {
     <main className="heroPage">
       <Decor />
 
-      <header className="heroTitle">
-        <h1>REPLAYABLE</h1>
-        <h2>AGENT MEMORY</h2>
-        <p>A log-based substrate for auditable AI decisions.</p>
-      </header>
-
       <section className="heroGrid">
         <aside className="leftRail">
           <LeftRail />
@@ -31,7 +25,25 @@ export function Hero() {
           <Story activeIndex={activePanelIndex} />
         </div>
       </section>
+
+      <SiteFooter />
     </main>
+  );
+}
+
+function SiteFooter() {
+  return (
+    <footer className="siteFooter" aria-label="Replayable Systems footer">
+      <div className="siteFooter__brand" aria-label="Replayable Systems">
+        <span className="siteFooter__mark">R</span>
+        <span>
+          <strong>REPLAYABLE</strong>
+          <em>SYSTEMS</em>
+        </span>
+      </div>
+      <p>Building auditable AI systems on a trustless substrate.</p>
+      <span className="siteFooter__copyright">© 2026</span>
+    </footer>
   );
 }
 

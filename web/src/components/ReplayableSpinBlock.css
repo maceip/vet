@@ -1,4 +1,6 @@
 .spinBlockShell {
+  --spin-title-height: 72px;
+  --spin-footer-height: 150px;
   --bg: #070806;
   --panel: rgba(8, 10, 7, 0.88);
   --panel-2: rgba(18, 21, 13, 0.82);
@@ -10,9 +12,9 @@
 
   position: relative;
   width: min(100%, 920px);
-  height: 700px;
+  height: 760px;
   box-sizing: border-box;
-  padding-bottom: 116px;
+  padding: var(--spin-title-height) 0 var(--spin-footer-height);
   border: 1px solid rgba(220, 228, 82, 0.42);
   border-radius: 32px;
   overflow: hidden;
@@ -24,6 +26,53 @@
     inset 0 0 0 1px rgba(255, 255, 255, 0.025),
     0 40px 120px rgba(0, 0, 0, 0.38);
   touch-action: pan-y;
+}
+
+.spinBlockTitle {
+  position: absolute;
+  z-index: 6;
+  top: 16px;
+  left: 32px;
+  right: 32px;
+  display: grid;
+  justify-content: center;
+  justify-items: center;
+  pointer-events: none;
+}
+
+.spinBlockTitle h1,
+.spinBlockTitle h2,
+.spinBlockTitle p {
+  margin: 0;
+}
+
+.spinBlockTitle h1 {
+  font-family: "Foldit", "VeraMono", monospace;
+  font-variation-settings: "wght" 700;
+  font-weight: 700;
+  font-size: clamp(22px, 3vw, 34px);
+  line-height: 1;
+  letter-spacing: 0.08em;
+  color: rgba(246, 246, 232, 0.9);
+  text-transform: uppercase;
+}
+
+.spinBlockTitle h2 {
+  margin-top: -2px;
+  font-family: "VeraMono", monospace;
+  font-weight: bold;
+  font-size: clamp(16px, 2.1vw, 24px);
+  line-height: 1;
+  letter-spacing: 0.2em;
+  color: var(--lime);
+  text-transform: uppercase;
+}
+
+.spinBlockTitle p {
+  margin-top: 8px;
+  font-family: "VeraMono", monospace;
+  font-size: 12px;
+  color: rgba(246, 246, 232, 0.58);
 }
 
 .spinBlockShell canvas {
@@ -251,7 +300,7 @@
 
 .spinArrow {
   position: absolute;
-  top: calc((100% - 116px) / 2);
+  top: calc(var(--spin-title-height) + (100% - var(--spin-title-height) - var(--spin-footer-height)) / 2);
   z-index: 5;
   width: 54px;
   height: 54px;
@@ -288,7 +337,7 @@
   position: absolute;
   z-index: 5;
   left: 50%;
-  bottom: 44px;
+  bottom: 78px;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
@@ -318,11 +367,13 @@
   position: absolute;
   z-index: 5;
   left: 50%;
-  bottom: 16px;
+  bottom: 28px;
   transform: translateX(-50%);
   display: flex;
   gap: 12px;
   align-items: center;
+  padding-top: 14px;
+  border-top: 1px solid rgba(220, 228, 82, 0.28);
   color: var(--lime-soft);
   font-size: 15px;
   letter-spacing: 0.02em;
@@ -334,13 +385,14 @@
 
 @media (max-width: 820px) {
   .spinBlockShell {
-    height: 620px;
-    padding-bottom: 104px;
+    --spin-title-height: 64px;
+    --spin-footer-height: 132px;
+    height: 660px;
     border-radius: 24px;
   }
 
   .spinArrow {
-    top: calc((100% - 104px) / 2);
+    top: calc(var(--spin-title-height) + (100% - var(--spin-title-height) - var(--spin-footer-height)) / 2);
     width: 44px;
     height: 44px;
     font-size: 34px;
@@ -356,7 +408,7 @@
 
   .spinTabs {
     gap: 12px;
-    bottom: 44px;
+    bottom: 70px;
   }
 
   .spinTabs button {

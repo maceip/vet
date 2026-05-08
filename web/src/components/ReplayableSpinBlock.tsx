@@ -96,6 +96,12 @@ export default function ReplayableSpinBlock({
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
     >
+      <header className="spinBlockTitle">
+        <h1>REPLAYABLE</h1>
+        <h2>AGENT MEMORY</h2>
+        <p>A log-based substrate for auditable AI decisions.</p>
+      </header>
+
       <Canvas
         dpr={[1, 1.75]}
         camera={{ position: [0, 0.15, 9.2], fov: 39 }}
@@ -371,14 +377,9 @@ function drawFacePanel(ctx: CanvasRenderingContext2D) {
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, TEXTURE_W, TEXTURE_H);
 
-  ctx.strokeStyle = "rgba(220, 228, 82, 0.52)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.035)";
   ctx.lineWidth = 2;
-  roundedRect(ctx, 20, 20, TEXTURE_W - 40, TEXTURE_H - 40, 52);
-  ctx.stroke();
-
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
-  ctx.lineWidth = 2;
-  roundedRect(ctx, 32, 32, TEXTURE_W - 64, TEXTURE_H - 64, 44);
+  roundedRect(ctx, 28, 28, TEXTURE_W - 56, TEXTURE_H - 56, 48);
   ctx.stroke();
 }
 

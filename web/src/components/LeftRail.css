@@ -54,6 +54,20 @@
   stroke-width: 1.6;
 }
 
+.leftRailConnectors__flow circle {
+  fill: rgba(5, 6, 4, 0.82);
+  stroke: rgba(220, 228, 82, 0.88);
+  stroke-width: 1.7;
+}
+
+.leftRailConnectors__flow path {
+  fill: none;
+  stroke: rgba(220, 228, 82, 0.95);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .leftRailArt {
   position: relative;
   z-index: 1;

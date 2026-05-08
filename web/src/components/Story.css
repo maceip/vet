@@ -2,8 +2,36 @@
   position: relative;
   z-index: 2;
   max-width: 920px;
-  margin: 34px 0 120px;
+  margin: 48px 0 150px;
   padding: 0 24px;
+}
+
+.story::before {
+  content: "";
+  position: absolute;
+  top: -25px;
+  left: 56px;
+  right: 56px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(220, 228, 82, 0.54) 18%,
+    rgba(220, 228, 82, 0.54) 82%,
+    transparent
+  );
+  filter: drop-shadow(0 0 5px rgba(220, 228, 82, 0.18));
+}
+
+.story::after {
+  content: "";
+  position: absolute;
+  top: -25px;
+  left: 50%;
+  width: 1px;
+  height: 25px;
+  background: rgba(220, 228, 82, 0.54);
+  transform: translateX(-50%);
 }
 
 .story__section {
@@ -60,7 +88,7 @@
 
 @media (max-width: 820px) {
   .story {
-    margin: 24px 0 72px;
+    margin: 40px 0 120px;
     padding: 0;
   }
 
