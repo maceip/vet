@@ -3,7 +3,7 @@ import "./HeaderNav.css";
 export default function HeaderNav() {
   return (
     <header className="siteNav" aria-label="Site navigation">
-      <a className="siteNavBrand" href="/LiteRT-DPM/" aria-label="Replayable Systems home">
+      <a className="siteNavBrand" href="/TiHKAL/" aria-label="Replayable Systems home">
         <BrandMark />
         <div className="siteNavBrandText">
           <strong>REPLAYABLE</strong>
@@ -13,7 +13,7 @@ export default function HeaderNav() {
 
       <a
         className="siteNavGh"
-        href="https://github.com/maceip/LiteRT-DPM"
+        href="https://github.com/maceip/TiHKAL"
         target="_blank"
         rel="noopener noreferrer"
         aria-label="View source on GitHub"

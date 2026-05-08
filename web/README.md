@@ -21,7 +21,7 @@ Output: `web/dist/`. The Actions workflow uploads that as the Pages artifact.
 
 ## Notes
 
-- `vite.config.ts` `base: "/LiteRT-DPM/"` — pinned to the repo's Pages path. If
+- `vite.config.ts` `base: "/TiHKAL/"` — pinned to the repo's Pages path. If
   the repo is renamed, update both `base` here and the font URLs in
   `src/styles/global.css`.
 - Fonts and chart PNGs are static assets under `public/`.
