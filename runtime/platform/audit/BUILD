@@ -130,6 +130,15 @@ cc_test(
 )
 
 cc_test(
+    name = "liboqs_audit_certificate_signer_test",
+    srcs = ["liboqs_audit_certificate_signer_test.cc"],
+    deps = [
+        ":liboqs_audit_certificate_signer",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "audit_query_test",
     srcs = ["audit_query_test.cc"],
     deps = [

@@ -32,6 +32,8 @@ struct LibOqsSignatureKeyPair {
   std::string secret_key;
 };
 
+bool IsSupportedLibOqsVersionForAudit(absl::string_view version);
+
 absl::StatusOr<LibOqsSignatureKeyPair> GenerateLibOqsMlDsaKeyPair(
     absl::string_view algorithm, absl::string_view key_id,
     absl::string_view library_path = "");

@@ -23,6 +23,7 @@
 
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
+#include "absl/strings/match.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "runtime/platform/audit/audit_certificate.h"
@@ -65,6 +66,7 @@ using OqsSigSign = int (*)(const OQS_SIG*, uint8_t*, size_t*, const uint8_t*,
 using OqsSigVerify = int (*)(const OQS_SIG*, const uint8_t*, size_t,
                              const uint8_t*, size_t, const uint8_t*);
 using OqsSigAlgIsEnabled = int (*)(const char*);
+using OqsVersion = const char* (*)();
 
 bool IsMlDsaAlgorithm(absl::string_view algorithm) {
   return algorithm == kAuditSignatureAlgorithmMlDsa44 ||
@@ -159,6 +161,14 @@ class LibOqsApi {
     ASSIGN_OR_RETURN(api.alg_is_enabled_,
                      api.library_->Symbol<OqsSigAlgIsEnabled>(
                          "OQS_SIG_alg_is_enabled"));
+    ASSIGN_OR_RETURN(api.version_,
+                     api.library_->Symbol<OqsVersion>("OQS_version"));
+    const char* version = api.version_();
+    if (version == nullptr || !IsSupportedLibOqsVersionForAudit(version)) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "unsupported liboqs version for audit certificate signatures: ",
+          version == nullptr ? "<null>" : version));
+    }
     return api;
   }
 
@@ -196,6 +206,7 @@ class LibOqsApi {
   OqsSigSign sign_ = nullptr;
   OqsSigVerify verify_ = nullptr;
   OqsSigAlgIsEnabled alg_is_enabled_ = nullptr;
+  OqsVersion version_ = nullptr;
 };
 
 struct OqsSigDeleter {
@@ -220,6 +231,10 @@ absl::Status ValidateKeyPair(const LibOqsSignatureKeyPair& key_pair) {
 }
 
 }  // namespace
+
+bool IsSupportedLibOqsVersionForAudit(absl::string_view version) {
+  return version == "0.15.0" || absl::StartsWith(version, "0.15.");
+}
 
 absl::StatusOr<LibOqsSignatureKeyPair> GenerateLibOqsMlDsaKeyPair(
     absl::string_view algorithm, absl::string_view key_id,

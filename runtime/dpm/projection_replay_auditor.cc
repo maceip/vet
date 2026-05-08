@@ -14,6 +14,7 @@
 
 #include "runtime/dpm/projection_replay_auditor.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -134,6 +135,38 @@ absl::Status LinkAuditCertificateToDag(
       });
 }
 
+absl::StatusOr<std::vector<Hash256>> InvalidatedCheckpointClosure(
+    const DPMLogIdentity& identity, const Hash256& checkpoint_manifest_hash,
+    const CheckpointStore& store) {
+  std::vector<Hash256> all_manifests;
+  ASSIGN_OR_RETURN(all_manifests,
+                   store.ListManifests(identity.tenant_id,
+                                       identity.session_id));
+
+  std::vector<Hash256> invalidated{checkpoint_manifest_hash};
+  for (size_t cursor = 0; cursor < invalidated.size(); ++cursor) {
+    const Hash256 current = invalidated[cursor];
+    for (const Hash256& candidate : all_manifests) {
+      if (std::find(invalidated.begin(), invalidated.end(), candidate) !=
+          invalidated.end()) {
+        continue;
+      }
+      ASSIGN_OR_RETURN(CheckpointStore::ManifestRecord record,
+                       store.GetManifest(identity.tenant_id,
+                                         identity.session_id, candidate));
+      ASSIGN_OR_RETURN(CanonicalManifestInput manifest,
+                       DecodeCanonicalManifest(record.abi_bytes));
+      if (std::find(manifest.parent_hashes.begin(),
+                    manifest.parent_hashes.end(), current) !=
+          manifest.parent_hashes.end()) {
+        invalidated.push_back(candidate);
+      }
+    }
+  }
+  std::sort(invalidated.begin(), invalidated.end());
+  return invalidated;
+}
+
 }  // namespace
 
 absl::StatusOr<ProjectionReplayAuditResult> VerifyProjectionCheckpointFromRaw(
@@ -188,11 +221,13 @@ absl::StatusOr<ProjectionReplayAuditResult> VerifyProjectionCheckpointFromRaw(
   }
 
   ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
+  const uint64_t audit_log_generation = events.size();
   const uint64_t event_range_start = manifest_input.event_range_start;
   const uint64_t event_range_end =
       manifest_input.event_range_end == 0 ? manifest_input.base_event_index
                                           : manifest_input.event_range_end;
-  if (event_range_end <= event_range_start || event_range_end > events.size()) {
+  if (event_range_end <= event_range_start ||
+      event_range_end > audit_log_generation) {
     return absl::FailedPreconditionError(
         "audit log does not contain the checkpoint event range.");
   }
@@ -236,7 +271,7 @@ absl::StatusOr<ProjectionReplayAuditResult> VerifyProjectionCheckpointFromRaw(
                    FinalizeAuditCertificate(BuildCertificate(
                        log, config, checkpoint_manifest_hash,
                        manifest.referenced_body_hash, event_range_start,
-                       event_range_end, events.size(), verdict,
+                       event_range_end, audit_log_generation, verdict,
                        drift_score, drift_fields, correction_event_ids)));
 
   if (!matched && config.emit_correction_on_drift) {
@@ -249,7 +284,10 @@ absl::StatusOr<ProjectionReplayAuditResult> VerifyProjectionCheckpointFromRaw(
     payload.reason_code = "projection_replay_mismatch";
     payload.severity = CorrectionSeverity::kBlocking;
     payload.drift_fields = certificate.drift_fields;
-    payload.invalidates_checkpoints = {checkpoint_manifest_hash};
+    ASSIGN_OR_RETURN(
+        payload.invalidates_checkpoints,
+        InvalidatedCheckpointClosure(log.identity(), checkpoint_manifest_hash,
+                                     *store));
     payload.replacement_projection =
         replay_error.empty() ? replayed_projection : replay_error;
     payload.must_interrupt_before_next_predict = true;

@@ -42,6 +42,7 @@ namespace litert::lm {
 namespace {
 
 using ::testing::HasSubstr;
+using ::testing::UnorderedElementsAre;
 
 std::filesystem::path TestRoot(absl::string_view name) {
   std::filesystem::path path =
@@ -270,6 +271,70 @@ TEST(ProjectionReplayAuditorTest,
       EvaluateCorrectionBarrier(checkpoint.manifest_hash, index);
   EXPECT_TRUE(barrier.must_reproject);
   EXPECT_TRUE(barrier.must_interrupt_before_next_predict);
+}
+
+TEST(ProjectionReplayAuditorTest,
+     DriftCorrectionInvalidatesRollupAncestors) {
+  EventSourcedLog log(TestRoot("audit_replay_rollup_drift_log"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-rollup-drift",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "auditd initially classified as STEP_2",
+      .timestamp_us = 1,
+  }));
+
+  RecordingRunner checkpoint_runner({
+      R"json({"Facts":["STEP_2 [1]"],"Reasoning":["initial projection [1]"],"Compliance":["audit retained [1]"]})json",
+  });
+  DPMProjector checkpoint_projector(&checkpoint_runner);
+  const std::filesystem::path root =
+      TestRoot("audit_replay_rollup_drift_store");
+  LocalFilesystemCheckpointStore checkpoint_store(root);
+  LocalFilesystemAuditLedger ledger(root);
+  LocalMerkleDagStore dag(root);
+  ProjectionCheckpointConfig checkpoint_config = BaseCheckpointConfig();
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionCheckpoint leaf,
+      CreateProjectionCheckpoint(log, &checkpoint_projector,
+                                 checkpoint_config, &checkpoint_store, &dag));
+
+  ASSERT_OK_AND_ASSIGN(CheckpointStore::ManifestRecord leaf_record,
+                       checkpoint_store.GetManifest("tenant-a",
+                                                    "session-rollup-drift",
+                                                    leaf.manifest_hash));
+  ASSERT_OK_AND_ASSIGN(CanonicalManifestInput leaf_manifest,
+                       DecodeCanonicalManifest(leaf_record.abi_bytes));
+  ProjectionCheckpointConfig rollup_config = checkpoint_config;
+  rollup_config.level = 1;
+  rollup_config.created_unix_micros += 1;
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionCheckpoint root_checkpoint,
+      StoreRollupProjectionCheckpoint(
+          log.identity(), rollup_config, leaf.event_range_start,
+          leaf.event_range_end,
+          R"json({"Facts":["STEP_2 [1]"],"Reasoning":["rollup [1]"],"Compliance":["audit retained [1]"]})json",
+          {RollupChildRefFromManifest(leaf.manifest_hash, leaf_manifest)},
+          &checkpoint_store, &dag));
+
+  RecordingRunner audit_runner({
+      R"json({"Facts":["STEP_4 [1]"],"Reasoning":["replay caught escalation [1]"],"Compliance":["audit retained [1]"]})json",
+  });
+  DPMProjector audit_projector(&audit_runner);
+  ProjectionReplayAuditConfig audit_config = AuditConfig(checkpoint_config);
+  audit_config.created_unix_micros += 2;
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionReplayAuditResult audit,
+      VerifyProjectionCheckpointFromRaw(
+          log, &audit_projector, leaf.manifest_hash, audit_config,
+          &checkpoint_store, &ledger, &dag));
+
+  ASSERT_TRUE(audit.correction.has_value());
+  EXPECT_THAT(audit.correction->invalidates_checkpoints,
+              UnorderedElementsAre(leaf.manifest_hash,
+                                   root_checkpoint.manifest_hash));
 }
 
 TEST(ProjectionReplayAuditorTest,
