@@ -7,7 +7,56 @@
   padding: 6px 0;
 }
 
+.leftRailConnectors {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.leftRailConnectors path,
+.leftRailConnectors circle {
+  vector-effect: non-scaling-stroke;
+}
+
+.leftRailConnectors marker path {
+  fill: rgba(220, 228, 82, 0.9);
+}
+
+.leftRailConnectors__spine,
+.leftRailConnectors__lead,
+.leftRailConnectors__step {
+  fill: none;
+  stroke: rgba(220, 228, 82, 0.58);
+  stroke-width: 1.4;
+  filter: drop-shadow(0 0 5px rgba(220, 228, 82, 0.22));
+}
+
+.leftRailConnectors__spine {
+  stroke-dasharray: 4 7;
+  opacity: 0.82;
+}
+
+.leftRailConnectors__lead {
+  opacity: 0.72;
+}
+
+.leftRailConnectors__step {
+  stroke-width: 1.8;
+}
+
+.leftRailConnectors__node {
+  fill: #050604;
+  stroke: rgba(220, 228, 82, 0.9);
+  stroke-width: 1.6;
+}
+
 .leftRailArt {
+  position: relative;
+  z-index: 1;
   display: block;
   width: clamp(120px, 14vw, 180px);
   height: auto;
@@ -21,6 +70,7 @@
 .leftRailLabels {
   position: absolute;
   inset: 0;
+  z-index: 2;
   margin: 0;
   padding: 0;
   list-style: none;

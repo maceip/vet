@@ -152,6 +152,7 @@ img {
   top: 24px;
   display: flex;
   align-items: stretch;
+  overflow: visible;
 }
 
 .leftRail .leftRailInner {
@@ -160,11 +161,15 @@ img {
 
 .railWires {
   flex: 1 1 auto;
-  width: 100%;
-  height: 600px;
-  margin-top: 36px;
+  width: 172px;
+  min-width: 172px;
+  height: 700px;
+  margin-top: 22px;
+  margin-right: -172px;
   pointer-events: none;
-  opacity: 0.85;
+  opacity: 0.92;
+  overflow: visible;
+  filter: drop-shadow(0 0 5px rgba(220, 228, 82, 0.18));
 }
 
 @media (max-width: 980px) {
@@ -177,5 +182,8 @@ img {
   }
   .leftRail {
     position: static;
+  }
+  .railWires {
+    display: none;
   }
 }
