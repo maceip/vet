@@ -358,3 +358,61 @@ AGENT_REGISTRY = {
     Condition.RAW_ORACLE: RawOracleAgent,
     Condition.ROLLING_SUMMARY: RollingSummaryAgent,
 }
+
+
+def _selftest() -> int:
+    fixture = (
+        Path(__file__).parent
+        / "fixtures"
+        / "real_sessions"
+        / "curated_session_cases.json"
+    )
+    cases = load_session_cases(fixture)
+    if len(cases) != 5:
+        print(f"FAIL expected 5 curated cases, got {len(cases)}")
+        return 1
+
+    model = HeuristicModelAdapter()
+    raw = RawOracleAgent(model)
+    rolling = RollingSummaryAgent(model, window_size_events=4)
+
+    failures = 0
+    for case in cases:
+        if not case.probes:
+            print(f"FAIL {case.case_id}: missing probes")
+            failures += 1
+            continue
+        probe = case.probes[0]
+        raw_result = raw.run(case, probe, budget_chars=1338)
+        rolling_result = rolling.run(case, probe, budget_chars=1338)
+        if raw_result.condition != Condition.RAW_ORACLE:
+            print(f"FAIL {case.case_id}: raw condition={raw_result.condition}")
+            failures += 1
+        if rolling_result.condition != Condition.ROLLING_SUMMARY:
+            print(f"FAIL {case.case_id}: rolling condition={rolling_result.condition}")
+            failures += 1
+        if raw_result.model_calls != 1:
+            print(f"FAIL {case.case_id}: raw model_calls={raw_result.model_calls}")
+            failures += 1
+        if rolling_result.model_calls < 2:
+            print(
+                f"FAIL {case.case_id}: rolling model_calls="
+                f"{rolling_result.model_calls}"
+            )
+            failures += 1
+        if len(rolling_result.memory_bytes) > 1338:
+            print(
+                f"FAIL {case.case_id}: rolling memory escaped budget "
+                f"({len(rolling_result.memory_bytes)} chars)"
+            )
+            failures += 1
+
+    if failures:
+        print(f"memory_agents._selftest: {failures} FAILURES")
+    else:
+        print(f"memory_agents._selftest: ALL PASS ({len(cases)} cases)")
+    return failures
+
+
+if __name__ == "__main__":
+    raise SystemExit(_selftest())

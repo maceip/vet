@@ -170,6 +170,12 @@ and handoff-ish sessions without raw private logs.
   should swap in an API/model-backed adapter through the same `ModelAdapter`
   protocol.
 
+Smoke the fixture + baseline lane:
+
+```bash
+python tools/benchmarks/dpm_phase3_bench/memory_agents.py
+```
+
 ## Acceptance — first integration
 
 ```text
