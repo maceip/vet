@@ -592,11 +592,33 @@ def _heuristic_decision(prompt: str) -> str:
     return "Insufficient deterministic signal in supplied memory."
 
 
+def _default_adapter():
+    """Return the model adapter used for AGENT_REGISTRY agents.
+
+    Default: HeuristicModelAdapter (deterministic, no API calls). This
+    is the right default for CI smoke runs.
+
+    Opt-in: set BENCH_USE_ANTHROPIC=1 (or =true) to swap in
+    AnthropicModelAdapter. ANTHROPIC_API_KEY must be set; the adapter
+    raises with a clear message otherwise.
+    """
+    import os as _os
+    if _os.environ.get("BENCH_USE_ANTHROPIC", "").lower() in ("1", "true", "yes"):
+        try:
+            from tools.benchmarks.dpm_phase3_bench.anthropic_adapter import (
+                AnthropicModelAdapter,
+            )
+        except ModuleNotFoundError:
+            from anthropic_adapter import AnthropicModelAdapter  # type: ignore
+        return AnthropicModelAdapter()
+    return HeuristicModelAdapter()
+
+
 AGENT_REGISTRY = {
-    Condition.RAW_ORACLE: lambda: RawOracleAgent(HeuristicModelAdapter()),
-    Condition.ROLLING_SUMMARY: lambda: RollingSummaryAgent(HeuristicModelAdapter()),
+    Condition.RAW_ORACLE: lambda: RawOracleAgent(_default_adapter()),
+    Condition.ROLLING_SUMMARY: lambda: RollingSummaryAgent(_default_adapter()),
     Condition.DPM_PHASE3_CHECKPOINT: lambda: DpmPhase3CheckpointAgent(
-        HeuristicModelAdapter()
+        _default_adapter()
     ),
 }
 
