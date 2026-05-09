@@ -1,0 +1,95 @@
+{
+  "audit_gate": {
+    "audit_pass_count": 12,
+    "correction_emitted_count": 3,
+    "dpm_rows": 16,
+    "gate_accept_count": 12,
+    "gate_refuse_count": 4
+  },
+  "cases": [
+    "correction-heavy-session",
+    "handoff-session",
+    "long-real-session",
+    "long-session-context-retention",
+    "short-session-next-intent",
+    "tool-heavy-session"
+  ],
+  "cost_by_condition": {
+    "dpm_phase3_checkpoint": {
+      "input_tokens": {
+        "count": 15,
+        "mean": 1426.9333333333334
+      },
+      "model_calls": {
+        "count": 15,
+        "mean": 2.2
+      },
+      "skipped_or_errored_rows": 1,
+      "wall_ms": {
+        "count": 15,
+        "mean": 4546.2
+      }
+    },
+    "raw_oracle": {
+      "input_tokens": {
+        "count": 15,
+        "mean": 747.2
+      },
+      "model_calls": {
+        "count": 15,
+        "mean": 1.0
+      },
+      "skipped_or_errored_rows": 3,
+      "wall_ms": {
+        "count": 18,
+        "mean": 1033.388888888889
+      }
+    },
+    "rolling_summary": {
+      "input_tokens": {
+        "count": 18,
+        "mean": 50622.666666666664
+      },
+      "model_calls": {
+        "count": 18,
+        "mean": 16.0
+      },
+      "skipped_or_errored_rows": 0,
+      "wall_ms": {
+        "count": 18,
+        "mean": 82389.77777777778
+      }
+    }
+  },
+  "errored_rows": 1,
+  "needs_judge_rows": 0,
+  "quality_score_by_condition": {
+    "dpm_phase3_checkpoint": {
+      "count": 15,
+      "mean": 0.8
+    },
+    "raw_oracle": {
+      "count": 15,
+      "mean": 1.0
+    },
+    "rolling_summary": {
+      "count": 18,
+      "mean": 0.8888888888888888
+    }
+  },
+  "row_count": 52,
+  "stale_escape_by_condition": {
+    "dpm_phase3_checkpoint": {
+      "count": 1,
+      "mean": 0.0
+    },
+    "raw_oracle": {
+      "count": 1,
+      "mean": 0.0
+    },
+    "rolling_summary": {
+      "count": 1,
+      "mean": 1.0
+    }
+  }
+}
