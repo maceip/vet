@@ -224,7 +224,14 @@ def _row_from_result(
         audit_policy_version=result.audit_policy_version,
         event_count=case.n_events,
         event_range_start=result.event_range_start,
-        event_range_end=result.event_range_end or case.probe_T,
+        # Fall back to the case's full event log [0, n_events). probe_T
+        # is the zero-based index of the probe target, so [0, probe_T)
+        # under-claims by one event under half-open semantics. The
+        # audit certificate's range describes which events the
+        # substrate covered, not which events the agent saw before the
+        # probe — agents that want a tighter range set
+        # `result.event_range_end` themselves.
+        event_range_end=result.event_range_end or case.n_events,
         log_generation=result.log_generation,
         checkpoint_manifest_hash=result.checkpoint_manifest_hash,
         checkpoint_body_hash=result.checkpoint_body_hash,

@@ -317,11 +317,23 @@ def validate_row(row: BenchRow) -> None:
             if not row.checkpoint_manifest_hash:
                 raise BenchRowError(
                     "DPM gate_may_use=True requires checkpoint_manifest_hash")
+            if not row.checkpoint_body_hash:
+                raise BenchRowError(
+                    "DPM gate_may_use=True requires checkpoint_body_hash "
+                    "(the gate accepted the projection; the row must "
+                    "carry its content-addressed body)")
             if not row.audit_certificate_id:
                 raise BenchRowError(
                     "DPM gate_may_use=True requires audit_certificate_id")
-            for h, name in ((row.checkpoint_manifest_hash, "checkpoint_manifest_hash"),
-                            (row.audit_certificate_id, "audit_certificate_id")):
+            if row.audit_pass is not True:
+                raise BenchRowError(
+                    "DPM gate_may_use=True requires audit_pass=True; "
+                    "gate accept and audit pass are coupled")
+            for h, name in (
+                (row.checkpoint_manifest_hash, "checkpoint_manifest_hash"),
+                (row.checkpoint_body_hash, "checkpoint_body_hash"),
+                (row.audit_certificate_id, "audit_certificate_id"),
+            ):
                 if not _is_hex(h):
                     raise BenchRowError(
                         f"DPM {name} must be hex, got {h!r}")
@@ -373,15 +385,28 @@ def validate_row(row: BenchRow) -> None:
 class ChartSpec:
     """Declares which rows a chart is allowed to consume.
 
-    The phase3-bench failure mode this prevents: someone plots
-    `prompt_retention` rows alongside `decision` rows, which makes both
-    conditions look great because the prompt itself contains the
-    answer. Calling ChartSpec.filter on a mixed list raises before any
-    rendering happens.
+    The phase3-bench failure modes this prevents:
+
+    1. Someone plots `prompt_retention` rows alongside `decision` rows,
+       which makes both conditions look great because the prompt itself
+       contains the answer.
+    2. Someone plots rolling at budget=100 next to DPM at budget=200
+       on the same case+test_kind cell. Quality is being compared
+       across budgets, not within them. The fairness check enforces
+       that within each (case_id, test_kind, repeat) cell, every row
+       agrees on `budget_chars`.
+    3. Cost/latency charts dropping needs_judge rows even though
+       calls/tokens/wall_ms are still meaningful without a judge score.
+       `excludes_needs_judge` is True for quality charts (the right
+       call there) and False for cost charts.
+
+    Calling `ChartSpec.filter` on a mixed list raises BenchRowError
+    before any rendering happens.
     """
     name: str
     allowed_test_kinds: frozenset[TestKind]
     allowed_conditions: frozenset[Condition]
+    excludes_needs_judge: bool = True
 
     def filter(self, rows: Iterable[BenchRow]) -> list[BenchRow]:
         out: list[BenchRow] = []
@@ -395,16 +420,38 @@ class ChartSpec:
                 raise BenchRowError(
                     f"chart {self.name!r}: rejected condition="
                     f"{r.condition.value} (case {r.case_id})")
-            if r.score_status == ScoreStatus.NEEDS_JUDGE:
-                # needs_judge rows are excluded from deterministic
-                # quality charts, NEVER counted as zero. They get their
-                # own panel in the report.
+            if (self.excludes_needs_judge and
+                    r.score_status == ScoreStatus.NEEDS_JUDGE):
+                # Excluded from deterministic quality charts. NEVER
+                # counted as zero. Cost/latency keeps them.
                 continue
             if r.budget_chars <= 0:
                 raise BenchRowError(
                     f"chart {self.name!r}: rejected row without "
                     f"budget_chars (case {r.case_id})")
             out.append(r)
+
+        # Per-cell budget consistency. A cell is the cross-condition
+        # comparison unit: same case_id + test_kind + repeat. All rows
+        # that survive the filter and share a cell must share a budget,
+        # otherwise we're plotting rolling@100 next to DPM@200 and
+        # calling that a comparison.
+        cells: dict[tuple[str, str, int], dict[int, str]] = {}
+        for r in out:
+            key = (r.case_id, r.test_kind.value, r.repeat)
+            seen = cells.setdefault(key, {})
+            seen[r.budget_chars] = r.condition.value
+        for (case_id, tk, rep), budget_to_cond in cells.items():
+            if len(budget_to_cond) > 1:
+                detail = ", ".join(
+                    f"{cond}@{b}" for b, cond in
+                    sorted(budget_to_cond.items()))
+                raise BenchRowError(
+                    f"chart {self.name!r}: cell "
+                    f"(case_id={case_id!r}, test_kind={tk!r}, "
+                    f"repeat={rep}) has rows at multiple budgets — "
+                    f"{detail}. Charts compare conditions within a "
+                    "budget, not across them.")
         return out
 
 
@@ -436,6 +483,10 @@ PHASE3_COST_LATENCY_CHART = ChartSpec(
         Condition.ROLLING_SUMMARY,
         Condition.DPM_PHASE3_CHECKPOINT,
     }),
+    # Keep needs_judge rows. model_calls / input_tokens / output_tokens
+    # / wall_ms are meaningful even when the answer can't be
+    # deterministically scored.
+    excludes_needs_judge=False,
 )
 
 

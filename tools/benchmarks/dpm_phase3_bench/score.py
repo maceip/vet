@@ -16,8 +16,7 @@ Rules (deterministic; the LLM judge pass is a separate later module):
   1. exact-substring hit  : `expected_match.substring` appears in
                             answer_bytes. one check.
   2. must_include         : every item in rubric.must_include appears
-                            in answer_bytes (or memory_bytes as
-                            fallback). one check per item.
+                            in answer_bytes. one check per item.
   3. must_not_include     : NO item in rubric.must_not_include appears
                             in answer_bytes. one check per item.
   4. must_call_tools      : every item appears in answer_bytes; bonus
@@ -110,8 +109,8 @@ def _has_deterministic_checks(probe: SessionProbe) -> bool:
     em = probe.expected_match
     r = probe.rubric
     return bool(
-        em.substring or em.tool_name or em.correction_substring
-        or em.must_acknowledge
+        em.substring or em.tool_name or em.arg_substring
+        or em.correction_substring or em.must_acknowledge
         or r.must_include or r.must_not_include
         or r.must_call_tools or r.must_not_call_tools
     )
@@ -166,14 +165,16 @@ def score_probe(probe: SessionProbe, result: AgentResult) -> ScoreResult:
             "hit": _present(em.substring, answer),
         }
 
-    # 2. must_include
+    # 2. must_include — score the AGENT'S DECISION (answer_bytes).
+    # We deliberately do NOT fall back to memory_bytes: for raw_oracle
+    # memory IS the full event log, so any expected fact would score
+    # 1.0 regardless of what the agent actually said. Reviewer: PR
+    # comment 2026-05-09 caught this.
     must_include_hits: list[str] = []
     must_include_misses: list[str] = []
     for item in r.must_include:
         total += 1
-        # Allow memory as a fallback hit — the agent may name the fact
-        # in its memory rebuild even if the answer is short.
-        if _present(item, answer, memory):
+        if _present(item, answer):
             passed += 1
             must_include_hits.append(item)
         else:
@@ -249,6 +250,13 @@ def score_probe(probe: SessionProbe, result: AgentResult) -> ScoreResult:
             passed += 1
         else:
             misses.append(f"missing expected tool: {em.tool_name!r}")
+
+    if em.arg_substring:
+        total += 1
+        if _present(em.arg_substring, answer):
+            passed += 1
+        else:
+            misses.append(f"missing expected tool arg: {em.arg_substring!r}")
 
     # 7. acknowledgement (correction_detection style)
     if em.must_acknowledge:
@@ -440,6 +448,20 @@ def _selftest() -> int:
                     answer_bytes="case LIB2024-057 review")
     s = score_probe(p, r)
     expect(s.decision_score, 1.0, "expected_substring hit")
+
+    # 10. arg_substring must be scored for next_tool_call probes.
+    p = SessionProbe(
+        expected_match=ProbeExpectedMatch(
+            tool_name="Edit",
+            arg_substring="runtime/platform/checkpoint",
+        )
+    )
+    r = AgentResult(
+        condition=Condition.ROLLING_SUMMARY,
+        answer_bytes="Call Edit on runtime/platform/checkpoint next.",
+    )
+    s = score_probe(p, r)
+    expect(s.decision_score, 1.0, "expected tool arg hit")
 
     if fails:
         print(f"\nscore._selftest: {fails} FAILURES")
