@@ -710,6 +710,54 @@ def _selftest() -> int:
         print(f"FAIL: needs_judge row raised instead of excluded: {e}")
         fails += 1
 
+    # Chart guard: cost_latency chart KEEPS needs_judge rows
+    nj_cost_row = BenchRow(
+        run_id="x", case_id="c", corpus="real_sessions",
+        condition=Condition.ROLLING_SUMMARY,
+        test_kind=TestKind.COST_LATENCY,
+        budget_chars=100, model_id="m",
+        score_status=ScoreStatus.NEEDS_JUDGE,
+        model_calls=17, input_tokens=80000, output_tokens=8000,
+    )
+    try:
+        out = PHASE3_COST_LATENCY_CHART.filter([nj_cost_row])
+        if not out:
+            print("FAIL: cost chart dropped needs_judge row "
+                  "(should keep — calls/tokens are still meaningful)")
+            fails += 1
+    except BenchRowError as e:
+        print(f"FAIL: cost chart raised on needs_judge row: {e}")
+        fails += 1
+
+    # Chart guard: budget mismatch within a cell (rolling@100 + DPM@200
+    # for the same case + test_kind) MUST raise.
+    rolling_100 = BenchRow(
+        run_id="x", case_id="case-X", corpus="real_sessions",
+        condition=Condition.ROLLING_SUMMARY, test_kind=TestKind.DECISION,
+        budget_chars=100, repeat=0, model_id="m",
+        score_status=ScoreStatus.SCORED, decision_score=0.5,
+    )
+    dpm_200 = BenchRow(
+        run_id="x", case_id="case-X", corpus="real_sessions",
+        condition=Condition.DPM_PHASE3_CHECKPOINT,
+        test_kind=TestKind.DECISION,
+        budget_chars=200, repeat=0, model_id="m",
+        projection_model_id="m", auditor_model_id="a",
+        audit_policy_version="v1",
+        checkpoint_manifest_hash="ab"*32,
+        checkpoint_body_hash="cd"*32,
+        audit_certificate_id="ef"*32,
+        audit_verdict=AuditVerdict.PASS,
+        gate_may_use=True, audit_pass=True,
+        score_status=ScoreStatus.SCORED, decision_score=1.0,
+    )
+    try:
+        assert_quality_chart_rows([rolling_100, dpm_200])
+        print("FAIL: budget mismatch (100 vs 200) accepted by chart guard")
+        fails += 1
+    except BenchRowError:
+        pass
+
     # Round-trip
     rt = BenchRow.from_dict(json.loads(BenchRow(
         run_id="x", case_id="c", corpus="real_sessions",
