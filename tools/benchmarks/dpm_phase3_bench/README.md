@@ -153,6 +153,23 @@ The smoke creates a projection checkpoint, stores a passing audit certificate,
 loads it through `LoadAuditedProjectionCheckpointForDecision`, then appends a
 blocking correction and proves the audited loader refuses the same checkpoint.
 
+## Fixture and baseline smoke
+
+The initial real-session bench corpus is checked in under
+`fixtures/real_sessions/curated_session_cases.json`. It mirrors the redacted
+substrate golden fixture and covers short, long, correction-heavy, tool-heavy,
+and handoff-ish sessions without raw private logs.
+
+`memory_agents.py` provides the first baseline lane:
+
+- `RawOracleAgent`: full rendered event log in the final decision prompt when
+  it fits.
+- `RollingSummaryAgent`: rolling `summary = summarize(summary, window)` memory
+  with the same final decision prompt shape.
+- `HeuristicModelAdapter`: deterministic local smoke adapter. Headline runs
+  should swap in an API/model-backed adapter through the same `ModelAdapter`
+  protocol.
+
 ## Acceptance — first integration
 
 ```text
