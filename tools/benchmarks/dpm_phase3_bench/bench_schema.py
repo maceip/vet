@@ -571,6 +571,35 @@ def _selftest() -> int:
         memory_sha256="4"*64, answer_sha256="5"*64,
     ), "valid DPM row gate=true")
 
+    # Reject: DPM gate=true without checkpoint_body_hash
+    expect_err(lambda: BenchRow(
+        run_id="x", case_id="c", corpus="real_sessions",
+        condition=Condition.DPM_PHASE3_CHECKPOINT, test_kind=TestKind.DECISION,
+        budget_chars=100, model_id="m",
+        projection_model_id="m", auditor_model_id="a",
+        audit_policy_version="v1",
+        checkpoint_manifest_hash="ab"*32,
+        audit_certificate_id="ef"*32,
+        audit_verdict=AuditVerdict.PASS,
+        gate_may_use=True, audit_pass=True,
+        score_status=ScoreStatus.SCORED, decision_score=1.0,
+    ), "DPM gate=true missing checkpoint_body_hash")
+
+    # Reject: DPM gate=true with audit_pass != True
+    expect_err(lambda: BenchRow(
+        run_id="x", case_id="c", corpus="real_sessions",
+        condition=Condition.DPM_PHASE3_CHECKPOINT, test_kind=TestKind.DECISION,
+        budget_chars=100, model_id="m",
+        projection_model_id="m", auditor_model_id="a",
+        audit_policy_version="v1",
+        checkpoint_manifest_hash="ab"*32,
+        checkpoint_body_hash="cd"*32,
+        audit_certificate_id="ef"*32,
+        audit_verdict=AuditVerdict.PASS,
+        gate_may_use=True, audit_pass=None,
+        score_status=ScoreStatus.SCORED, decision_score=1.0,
+    ), "DPM gate=true with audit_pass=None")
+
     # Valid DPM row where gate refused.
     expect_ok(lambda: BenchRow(
         run_id="2026-05-09-smoke",
