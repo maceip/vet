@@ -113,9 +113,45 @@ tools/benchmarks/dpm_phase3_bench/
 ├── memory_agents.py         ← agents (engineers 3 + 4)
 ├── run_phase3_bench.py      ← runner (engineer 1)
 ├── fixtures/real_sessions/  ← (engineer 2)
-├── render_report.py         ← (engineer 4)
+├── render_report.py         ← report renderer (engineer 4)
+├── charts.py                ← dependency-free SVG charts (engineer 4)
 └── phase3_substrate_smoke.cc  ← optional C++ smoke (engineer 4)
 ```
+
+## Report smoke
+
+Engineer 4 can render a report from the schema sample rows before real model
+calls are available:
+
+```bash
+python tools/benchmarks/dpm_phase3_bench/render_report.py \
+  --input tools/benchmarks/dpm_phase3_bench/sample_rows/sample_rows.jsonl \
+  --out_dir .codex-local/phase3-bench-report-smoke
+```
+
+Expected outputs:
+
+- `phase3_handoff_report.md`
+- `summary.json`
+- `chart_decision_accuracy.svg`
+- `chart_stale_memory_escape.svg`
+- `chart_audit_gate.svg`
+- `chart_cost_latency.svg`
+- `examples/rolling_escape_case.md`
+- `examples/dpm_gate_case.md`
+
+## C++ substrate smoke
+
+Engineer 4 also owns a narrow C++ smoke that proves the report's DPM row fields
+map to the real Phase 3 substrate, not a Python-only facsimile:
+
+```bash
+bazelisk test //tools/benchmarks/dpm_phase3_bench:phase3_substrate_smoke
+```
+
+The smoke creates a projection checkpoint, stores a passing audit certificate,
+loads it through `LoadAuditedProjectionCheckpointForDecision`, then appends a
+blocking correction and proves the audited loader refuses the same checkpoint.
 
 ## Acceptance — first integration
 
