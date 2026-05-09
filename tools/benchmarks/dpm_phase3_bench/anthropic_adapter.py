@@ -118,15 +118,21 @@ class AnthropicModelAdapter:
         # this, the runner silently drops cells that hit a 429.
         delay = 30
         last_err: Exception | None = None
+        # Opus 4.7+ deprecated the `temperature` parameter (400s on
+        # `'temperature' is deprecated for this model.`). Older models
+        # still accept it. Build kwargs conditionally so the same
+        # adapter works across both.
+        kwargs: dict = dict(
+            model=self.model_id,
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        if not self.model_id.startswith("claude-opus-4-7"):
+            kwargs["temperature"] = self._temperature
         for attempt in range(5):
             try:
-                response = self._client.messages.create(
-                    model=self.model_id,
-                    max_tokens=max_tokens,
-                    temperature=self._temperature,
-                    system=system,
-                    messages=[{"role": "user", "content": prompt}],
-                )
+                response = self._client.messages.create(**kwargs)
                 last_err = None
                 break
             except self._anthropic.RateLimitError as e:
