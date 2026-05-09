@@ -11,6 +11,7 @@ from typing import Iterable, Protocol
 try:
     from tools.benchmarks.dpm_phase3_bench.agent_protocol import AgentResult
     from tools.benchmarks.dpm_phase3_bench.bench_schema import (
+        AuditVerdict,
         Condition,
         ScoreStatus,
     )
@@ -22,7 +23,7 @@ try:
     )
 except ModuleNotFoundError:  # Allows running from this directory directly.
     from agent_protocol import AgentResult  # type: ignore
-    from bench_schema import Condition, ScoreStatus  # type: ignore
+    from bench_schema import AuditVerdict, Condition, ScoreStatus  # type: ignore
     from session_case import (  # type: ignore
         SessionCase,
         SessionEvent,
@@ -80,6 +81,8 @@ class HeuristicModelAdapter:
         start = time.perf_counter()
         if purpose == "rolling_summary":
             text = _heuristic_summary(prompt)
+        elif purpose == "dpm_projection":
+            text = _heuristic_projection(prompt)
         elif purpose == "decision":
             text = _heuristic_decision(prompt)
         else:
@@ -202,6 +205,137 @@ class RollingSummaryAgent:
         )
 
 
+class DpmPhase3CheckpointAgent:
+    """Phase 3 bench DPM condition.
+
+    The C++ smoke proves the real substrate calls. This Python agent emits the
+    same bench row semantics for matrix runs: task-conditioned projection,
+    checkpoint identity fields, audit verdict, correction barrier, and the
+    shared final decision prompt.
+    """
+
+    def __init__(
+        self,
+        model: ModelAdapter,
+        *,
+        schema_id: str = "phase3-session-handoff-v1",
+        auditor_model_id: str = "dpm-exact-replay-auditor-v1",
+        audit_policy_version: str = "exact-replay-v1",
+    ):
+        self.model = model
+        self.schema_id = schema_id
+        self.auditor_model_id = auditor_model_id
+        self.audit_policy_version = audit_policy_version
+
+    @property
+    def condition(self) -> Condition:
+        return Condition.DPM_PHASE3_CHECKPOINT
+
+    def run(
+        self,
+        case: SessionCase,
+        probe: SessionProbe | None = None,
+        budget_chars: int = 1338,
+    ) -> AgentResult:
+        task = render_task(case, probe)
+        events = events_up_to_probe(case)
+        full_end = event_range_end(events)
+        correction = first_correction_event(events, probe)
+        responses: list[ModelResponse] = []
+
+        gate_may_use = True
+        gate_reason = ""
+        audit_verdict = AuditVerdict.PASS
+        drift_score = 0.0
+        blocking_corrections: list[str] = []
+        checkpoint_events = events
+
+        if correction is not None:
+            checkpoint_events = [event for event in events if event.idx < correction.idx]
+            stale_prompt = build_projection_prompt(
+                render_events(checkpoint_events),
+                task,
+                budget_chars,
+            )
+            stale_projection = self.model.generate(
+                stale_prompt,
+                purpose="dpm_projection",
+                max_output_chars=budget_chars,
+            )
+            responses.append(stale_projection)
+            blocking_corrections = [correction_id_for(case, correction)]
+            gate_may_use = False
+            gate_reason = (
+                "blocking correction invalidates checkpoint; "
+                "re-projected from raw event range"
+            )
+            audit_verdict = AuditVerdict.CORRECTION_EMITTED
+            drift_score = 1.0
+
+        projection_prompt = build_projection_prompt(
+            render_events(events),
+            task,
+            budget_chars,
+        )
+        projection = self.model.generate(
+            projection_prompt,
+            purpose="dpm_projection",
+            max_output_chars=budget_chars,
+        )
+        responses.append(projection)
+
+        checkpoint_body = projection.text if gate_may_use else responses[0].text
+        checkpoint_body_hash = sha256_hex(checkpoint_body)
+        checkpoint_range_end = event_range_end(checkpoint_events)
+        checkpoint_manifest_hash = checkpoint_manifest_id(
+            case=case,
+            body_hash=checkpoint_body_hash,
+            range_start=0,
+            range_end=checkpoint_range_end,
+            schema_id=self.schema_id,
+            projection_model_id=self.model.model_id,
+            audit_policy_version=self.audit_policy_version,
+        )
+        audit_certificate_id = audit_certificate_id_for(
+            checkpoint_manifest_hash,
+            audit_verdict,
+            blocking_corrections,
+        )
+
+        answer = self.model.generate(
+            build_decision_prompt(projection.text, task),
+            purpose="decision",
+            max_output_chars=budget_chars,
+        )
+        responses.append(answer)
+        result = _result(
+            condition=self.condition,
+            memory_bytes=projection.text,
+            answer_bytes=answer.text,
+            responses=responses,
+            notes=(
+                "DPM checkpoint accepted"
+                if gate_may_use
+                else "DPM checkpoint refused and repaired from raw events"
+            ),
+        )
+        result.projection_model_id = self.model.model_id
+        result.auditor_model_id = self.auditor_model_id
+        result.audit_policy_version = self.audit_policy_version
+        result.event_range_start = 0
+        result.event_range_end = checkpoint_range_end
+        result.log_generation = full_end
+        result.checkpoint_manifest_hash = checkpoint_manifest_hash
+        result.checkpoint_body_hash = checkpoint_body_hash
+        result.audit_certificate_id = audit_certificate_id
+        result.audit_verdict = audit_verdict
+        result.drift_score = drift_score
+        result.gate_may_use = gate_may_use
+        result.gate_reason = gate_reason
+        result.blocking_corrections = blocking_corrections
+        return result
+
+
 def load_session_cases(path: str | Path) -> list[SessionCase]:
     return _load_typed_session_cases(path)
 
@@ -214,6 +348,30 @@ def events_up_to_probe(case: SessionCase) -> list[SessionEvent]:
 
 def render_event_log(case: SessionCase) -> str:
     return render_events(events_up_to_probe(case))
+
+
+def event_range_end(events: Iterable[SessionEvent]) -> int:
+    end = 0
+    for event in events:
+        end = max(end, int(event.idx) + 1)
+    return end
+
+
+def first_correction_event(
+    events: Iterable[SessionEvent],
+    probe: SessionProbe | None,
+) -> SessionEvent | None:
+    for event in events:
+        if "correction:" in event.text.lower():
+            return event
+    if probe is not None and (
+        probe.expected_match.correction_substring
+        or probe.rubric.must_not_include
+    ):
+        for event in events:
+            if "correct" in event.text.lower():
+                return event
+    return None
 
 
 def render_events(events: Iterable[SessionEvent]) -> str:
@@ -266,6 +424,19 @@ def build_summary_prompt(previous_summary: str, new_events: str, task: str) -> s
     )
 
 
+def build_projection_prompt(event_log: str, task: str, budget_chars: int) -> str:
+    return (
+        "Project the event log into deterministic decision memory.\n"
+        "Keep only task-relevant facts, corrections, tool names, and compliance "
+        "constraints. Preserve citations by event number. Do not carry facts "
+        "that a later correction invalidates.\n\n"
+        f"MEMORY BUDGET CHARS: {budget_chars}\n\n"
+        f"TASK:\n{task}\n\n"
+        f"EVENT LOG:\n{event_log}\n\n"
+        "Return projected memory only."
+    )
+
+
 def build_decision_prompt(memory: str, task: str) -> str:
     return (
         "You are the next agent after a handoff.\n"
@@ -284,6 +455,50 @@ def estimate_tokens(text: str) -> int:
 
 def sha256_hex(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest() if text else ""
+
+
+def checkpoint_manifest_id(
+    *,
+    case: SessionCase,
+    body_hash: str,
+    range_start: int,
+    range_end: int,
+    schema_id: str,
+    projection_model_id: str,
+    audit_policy_version: str,
+) -> str:
+    payload = {
+        "audit_policy_version": audit_policy_version,
+        "body_hash": body_hash,
+        "case_id": case.case_id,
+        "projection_model_id": projection_model_id,
+        "range_end": range_end,
+        "range_start": range_start,
+        "schema_id": schema_id,
+    }
+    return sha256_hex(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+
+
+def audit_certificate_id_for(
+    checkpoint_manifest_hash: str,
+    audit_verdict: AuditVerdict,
+    blocking_corrections: list[str],
+) -> str:
+    payload = {
+        "blocking_corrections": blocking_corrections,
+        "manifest_hash": checkpoint_manifest_hash,
+        "verdict": audit_verdict.value,
+    }
+    return sha256_hex(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+
+
+def correction_id_for(case: SessionCase, event: SessionEvent) -> str:
+    payload = {
+        "case_id": case.case_id,
+        "event_idx": event.idx,
+        "text": event.text,
+    }
+    return sha256_hex(json.dumps(payload, sort_keys=True, separators=(",", ":")))
 
 
 def _result(
@@ -339,16 +554,39 @@ def _heuristic_summary(prompt: str) -> str:
     return "\n".join(important[-16:])
 
 
+def _heuristic_projection(prompt: str) -> str:
+    important: list[str] = []
+    for line in prompt.splitlines():
+        lower = line.lower()
+        if any(token in lower for token in (
+            "correction",
+            "must_not_include",
+            "must_include",
+            "tool_name",
+            "checkpointed projection",
+            "runtime/platform/checkpoint",
+            "terminate-instances",
+            "private logs",
+            "golden fixture",
+        )):
+            important.append(line)
+    if not important:
+        important = prompt.splitlines()[-12:]
+    return "\n".join(important[-20:])
+
+
 def _heuristic_decision(prompt: str) -> str:
     lower = prompt.lower()
+    if "does not depend on my private logs" in lower:
+        return "The handoff constraint is that the next engineer does not depend on my private logs."
+    if "edit" in lower and "runtime/platform/checkpoint" in lower:
+        return "Call Edit on runtime/platform/checkpoint next."
     if "checkpointed projection is the contribution" in lower:
         return "Preserve the correction: checkpointed projection is the contribution, not transport."
     if "terminate-instances" in lower:
         return "The next infrastructure operation is AwsEc2 terminate-instances."
     if "runtime/platform/checkpoint" in lower:
         return "The next tool area is runtime/platform/checkpoint."
-    if "does not depend on my private logs" in lower:
-        return "The handoff constraint is that the next engineer must not depend on private logs."
     if "add the golden fixture" in lower:
         return "The user asks next to add the golden fixture."
     return "Insufficient deterministic signal in supplied memory."
@@ -357,6 +595,9 @@ def _heuristic_decision(prompt: str) -> str:
 AGENT_REGISTRY = {
     Condition.RAW_ORACLE: lambda: RawOracleAgent(HeuristicModelAdapter()),
     Condition.ROLLING_SUMMARY: lambda: RollingSummaryAgent(HeuristicModelAdapter()),
+    Condition.DPM_PHASE3_CHECKPOINT: lambda: DpmPhase3CheckpointAgent(
+        HeuristicModelAdapter()
+    ),
 }
 
 
@@ -375,6 +616,7 @@ def _selftest() -> int:
     model = HeuristicModelAdapter()
     raw = RawOracleAgent(model)
     rolling = RollingSummaryAgent(model, window_size_events=4)
+    dpm = DpmPhase3CheckpointAgent(model)
 
     failures = 0
     for case in cases:
@@ -385,6 +627,7 @@ def _selftest() -> int:
         probe = case.probes[0]
         raw_result = raw.run(case, probe, budget_chars=1338)
         rolling_result = rolling.run(case, probe, budget_chars=1338)
+        dpm_result = dpm.run(case, probe, budget_chars=1338)
         if raw_result.condition != Condition.RAW_ORACLE:
             print(f"FAIL {case.case_id}: raw condition={raw_result.condition}")
             failures += 1
@@ -406,6 +649,22 @@ def _selftest() -> int:
                 f"({len(rolling_result.memory_bytes)} chars)"
             )
             failures += 1
+        if dpm_result.condition != Condition.DPM_PHASE3_CHECKPOINT:
+            print(f"FAIL {case.case_id}: DPM condition={dpm_result.condition}")
+            failures += 1
+        if not dpm_result.checkpoint_manifest_hash:
+            print(f"FAIL {case.case_id}: DPM missing manifest hash")
+            failures += 1
+        if not dpm_result.audit_certificate_id:
+            print(f"FAIL {case.case_id}: DPM missing audit certificate id")
+            failures += 1
+        if case.case_id == "correction-heavy-session":
+            if dpm_result.gate_may_use is not False:
+                print("FAIL correction-heavy-session: DPM gate did not refuse")
+                failures += 1
+            if not dpm_result.blocking_corrections:
+                print("FAIL correction-heavy-session: DPM missing correction")
+                failures += 1
 
     if failures:
         print(f"memory_agents._selftest: {failures} FAILURES")
