@@ -35,9 +35,11 @@ Cost protection:
     The adapter caps every call at `max_output_chars / 4` tokens, hard.
     A bench run over the 5 fixtures × 3 conditions × 3 test_kinds at
     budget=1338 issues ~45 calls totalling roughly 100K input + 8K
-    output tokens — about $0.03 on claude-haiku-4-5. The 6,335-event
-    long fixture pushes raw_oracle into skipped_context_too_large, so
-    cost is bounded by the agents' own budgeting, not the adapter.
+    output tokens. On `claude-opus-4-7` (1M context), the long fixture
+    no longer trips skipped_context_too_large for raw_oracle and DPM
+    single-call projection no longer trips the context cap — meaning
+    real input volume scales up to ~600K-1M input tokens for the long
+    cells. Budget accordingly when running the full matrix.
 """
 from __future__ import annotations
 
@@ -51,7 +53,7 @@ except ModuleNotFoundError:
     from memory_agents import ModelResponse  # type: ignore
 
 
-DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+DEFAULT_MODEL = "claude-opus-4-7"
 
 
 def _load_dotenv_if_available() -> None:

@@ -376,7 +376,7 @@ def main(argv: list[str]) -> int:
                     help="tag for this run (default: timestamp)")
     ap.add_argument("--output", type=Path, required=True,
                     help="JSONL output path")
-    ap.add_argument("--model_id", default="claude-haiku-4-5-20251001",
+    ap.add_argument("--model_id", default="claude-opus-4-7",
                     help="model_id stamped on every row")
     ap.add_argument("--dry_run", action="store_true",
                     help="expand and print the matrix; do not call agents")
