@@ -111,13 +111,30 @@ class AnthropicModelAdapter:
         max_tokens = max(64, min(8000, max_output_chars // 4 + 64))
         system = _system_for(purpose)
         start = time.perf_counter()
-        response = self._client.messages.create(
-            model=self.model_id,
-            max_tokens=max_tokens,
-            temperature=self._temperature,
-            system=system,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        # Big projection prompts (DPM on long sessions) routinely hit
+        # the 50K-tokens/minute org cap. Back off + retry; without
+        # this, the runner silently drops cells that hit a 429.
+        delay = 30
+        last_err: Exception | None = None
+        for attempt in range(5):
+            try:
+                response = self._client.messages.create(
+                    model=self.model_id,
+                    max_tokens=max_tokens,
+                    temperature=self._temperature,
+                    system=system,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                last_err = None
+                break
+            except self._anthropic.RateLimitError as e:
+                last_err = e
+                if attempt == 4:
+                    raise
+                time.sleep(delay)
+                delay = min(delay * 2, 240)
+        if last_err is not None:
+            raise last_err
         wall_ms = max(1, int((time.perf_counter() - start) * 1000))
         text = response.content[0].text if response.content else ""
         # Hard-clip to the agent's requested budget; the bench's chart
