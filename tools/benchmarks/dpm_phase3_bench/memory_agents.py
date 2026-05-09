@@ -355,8 +355,8 @@ def _heuristic_decision(prompt: str) -> str:
 
 
 AGENT_REGISTRY = {
-    Condition.RAW_ORACLE: RawOracleAgent,
-    Condition.ROLLING_SUMMARY: RollingSummaryAgent,
+    Condition.RAW_ORACLE: lambda: RawOracleAgent(HeuristicModelAdapter()),
+    Condition.ROLLING_SUMMARY: lambda: RollingSummaryAgent(HeuristicModelAdapter()),
 }
 
 

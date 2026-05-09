@@ -75,7 +75,7 @@
       {"idx": 9, "kind": "tool_result", "role": "tool", "text": "added secondary validation warning", "timestamp": "2026-04-29T11:02:09Z"}
     ],
     "probes": [
-      {"kind": "correction_detection", "question": "What correction must be preserved?", "expected_match": {"correction_substring": "checkpointed projection is the contribution", "must_acknowledge": "correction"}, "rationale": "user corrected phase two framing"}
+      {"kind": "correction_detection", "question": "What correction must be preserved?", "expected_match": {"correction_substring": "checkpointed projection is the contribution", "must_acknowledge": "correction"}, "rubric": {"must_include": ["checkpointed projection is the contribution"], "must_not_include": ["s3 transport is the phase two contribution", "transport as the main result"]}, "rationale": "user corrected phase two framing"}
     ]
   },
   {
