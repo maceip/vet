@@ -294,7 +294,12 @@ def validate_row(row: BenchRow) -> None:
                 "(human-readable error explanation)")
 
     # --- DPM-condition substrate evidence
-    if row.condition == Condition.DPM_PHASE3_CHECKPOINT:
+    # Errored rows skip DPM-specific evidence checks: by definition the
+    # agent didn't finish, so substrate fields will be empty. The row
+    # is excluded from aggregates via score_status; we just need it to
+    # serialize so the runner can record what failed.
+    if (row.condition == Condition.DPM_PHASE3_CHECKPOINT
+            and row.score_status != ScoreStatus.ERRORED):
         if not row.projection_model_id:
             raise BenchRowError(
                 "DPM rows require projection_model_id")
