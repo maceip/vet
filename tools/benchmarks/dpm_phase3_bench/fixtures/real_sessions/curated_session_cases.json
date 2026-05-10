@@ -7,15 +7,60 @@
     "n_events": 6,
     "probe_T": 5,
     "events": [
-      {"idx": 0, "kind": "user", "role": "user", "text": "create a tiny parser for audit rows", "timestamp": "2026-04-29T09:00:00Z"},
-      {"idx": 1, "kind": "assistant_text", "role": "assistant", "text": "I will add a small parser and a fixture-driven test.", "timestamp": "2026-04-29T09:00:04Z"},
-      {"idx": 2, "kind": "tool_call", "role": "assistant", "text": "[tool_use Read(src/audit_rows.cc)]", "timestamp": "2026-04-29T09:00:10Z", "tool_name": "Read", "tool_args": "src/audit_rows.cc"},
-      {"idx": 3, "kind": "tool_result", "role": "tool", "text": "file exists with ParseAuditRow stub", "timestamp": "2026-04-29T09:00:11Z"},
-      {"idx": 4, "kind": "assistant_text", "role": "assistant", "text": "The parser should keep event_id, actor, and decision_label.", "timestamp": "2026-04-29T09:00:20Z"},
-      {"idx": 5, "kind": "user", "role": "user", "text": "after that please add the golden fixture", "timestamp": "2026-04-29T09:00:30Z"}
+      {
+        "idx": 0,
+        "kind": "user",
+        "role": "user",
+        "text": "create a tiny parser for audit rows",
+        "timestamp": "2026-04-29T09:00:00Z"
+      },
+      {
+        "idx": 1,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "I will add a small parser and a fixture-driven test.",
+        "timestamp": "2026-04-29T09:00:04Z"
+      },
+      {
+        "idx": 2,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use Read(src/audit_rows.cc)]",
+        "timestamp": "2026-04-29T09:00:10Z",
+        "tool_name": "Read",
+        "tool_args": "src/audit_rows.cc"
+      },
+      {
+        "idx": 3,
+        "kind": "tool_result",
+        "role": "tool",
+        "text": "file exists with ParseAuditRow stub",
+        "timestamp": "2026-04-29T09:00:11Z"
+      },
+      {
+        "idx": 4,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "The parser should keep event_id, actor, and decision_label.",
+        "timestamp": "2026-04-29T09:00:20Z"
+      },
+      {
+        "idx": 5,
+        "kind": "user",
+        "role": "user",
+        "text": "after that please add the golden fixture",
+        "timestamp": "2026-04-29T09:00:30Z"
+      }
     ],
     "probes": [
-      {"kind": "next_user_intent", "question": "What does the user ask next?", "expected_match": {"substring": "add the golden fixture"}, "rationale": "short session next intent"}
+      {
+        "kind": "next_user_intent",
+        "question": "What does the user ask next?",
+        "expected_match": {
+          "substring": "add the golden fixture"
+        },
+        "rationale": "short session next intent"
+      }
     ]
   },
   {
@@ -26,33 +71,195 @@
     "n_events": 24,
     "probe_T": 23,
     "events": [
-      {"idx": 0, "kind": "system", "role": "system", "text": "workspace policy: preserve branch phase2-substrate-property-tests", "timestamp": ""},
-      {"idx": 1, "kind": "user", "role": "user", "text": "audit the checkpoint manifest tests for replay proof", "timestamp": "2026-04-29T10:00:00Z"},
-      {"idx": 2, "kind": "assistant_text", "role": "assistant", "text": "I will inspect manifest identity, payload hash, and provenance links.", "timestamp": "2026-04-29T10:00:05Z"},
-      {"idx": 3, "kind": "tool_call", "role": "assistant", "text": "[tool_use Read(runtime/platform/checkpoint/canonical_manifest.h)]", "timestamp": "2026-04-29T10:00:08Z", "tool_name": "Read", "tool_args": "runtime/platform/checkpoint/canonical_manifest.h"},
-      {"idx": 4, "kind": "tool_result", "role": "tool", "text": "CanonicalManifestInput includes tenant_id session_id parent_hashes body_hash", "timestamp": "2026-04-29T10:00:09Z"},
-      {"idx": 5, "kind": "assistant_text", "role": "assistant", "text": "The manifest hash must cover identity, model, parents, range, and body.", "timestamp": "2026-04-29T10:00:16Z"},
-      {"idx": 6, "kind": "user", "role": "user", "text": "also make sure raw private logs never enter git", "timestamp": "2026-04-29T10:01:00Z"},
-      {"idx": 7, "kind": "assistant_text", "role": "assistant", "text": "I will use only redacted SessionCase JSON fixtures.", "timestamp": "2026-04-29T10:01:05Z"},
-      {"idx": 8, "kind": "tool_call", "role": "assistant", "text": "[tool_use Search(git status --short)]", "timestamp": "2026-04-29T10:01:08Z", "tool_name": "Search", "tool_args": "git status --short"},
-      {"idx": 9, "kind": "tool_result", "role": "tool", "text": "working tree clean", "timestamp": "2026-04-29T10:01:09Z"},
-      {"idx": 10, "kind": "assistant_text", "role": "assistant", "text": "Fixture generation will be represented by source_path placeholder values.", "timestamp": "2026-04-29T10:01:16Z"},
-      {"idx": 11, "kind": "user", "role": "user", "text": "long sessions should prove middle context is not silently dropped", "timestamp": "2026-04-29T10:02:00Z"},
-      {"idx": 12, "kind": "assistant_text", "role": "assistant", "text": "Range coverage will assert every rendered event index is covered exactly once.", "timestamp": "2026-04-29T10:02:05Z"},
-      {"idx": 13, "kind": "tool_call", "role": "assistant", "text": "[tool_use Read(runtime/platform/provenance/provenance_query.cc)]", "timestamp": "2026-04-29T10:02:08Z", "tool_name": "Read", "tool_args": "runtime/platform/provenance/provenance_query.cc"},
-      {"idx": 14, "kind": "tool_result", "role": "tool", "text": "GetCheckpointProvenance traverses parent_hashes recursively", "timestamp": "2026-04-29T10:02:09Z"},
-      {"idx": 15, "kind": "assistant_text", "role": "assistant", "text": "Merkle integrity will fail if an ancestor node is corrupted.", "timestamp": "2026-04-29T10:02:16Z"},
-      {"idx": 16, "kind": "user", "role": "user", "text": "do not pull in transport or s3 express here", "timestamp": "2026-04-29T10:03:00Z"},
-      {"idx": 17, "kind": "assistant_text", "role": "assistant", "text": "This branch stays substrate-only and local-filesystem-backed.", "timestamp": "2026-04-29T10:03:05Z"},
-      {"idx": 18, "kind": "tool_call", "role": "assistant", "text": "[tool_use Build(phase2_substrate_property_test)]", "timestamp": "2026-04-29T10:03:08Z", "tool_name": "Build", "tool_args": "phase2_substrate_property_test"},
-      {"idx": 19, "kind": "tool_result", "role": "tool", "text": "test target passed on linux builder", "timestamp": "2026-04-29T10:03:09Z"},
-      {"idx": 20, "kind": "assistant_text", "role": "assistant", "text": "The next fixture should preserve the instruction to avoid transport code.", "timestamp": "2026-04-29T10:03:16Z"},
-      {"idx": 21, "kind": "user", "role": "user", "text": "okay now write the real session property tests", "timestamp": "2026-04-29T10:04:00Z"},
-      {"idx": 22, "kind": "assistant_text", "role": "assistant", "text": "I will parameterize P1 through P6 on the curated SessionCase fixture.", "timestamp": "2026-04-29T10:04:04Z"},
-      {"idx": 23, "kind": "tool_call", "role": "assistant", "text": "[tool_use Edit(runtime/platform/checkpoint)]", "timestamp": "2026-04-29T10:04:08Z", "tool_name": "Edit", "tool_args": "runtime/platform/checkpoint"}
+      {
+        "idx": 0,
+        "kind": "system",
+        "role": "system",
+        "text": "workspace policy: preserve branch phase2-substrate-property-tests",
+        "timestamp": ""
+      },
+      {
+        "idx": 1,
+        "kind": "user",
+        "role": "user",
+        "text": "audit the checkpoint manifest tests for replay proof",
+        "timestamp": "2026-04-29T10:00:00Z"
+      },
+      {
+        "idx": 2,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "I will inspect manifest identity, payload hash, and provenance links.",
+        "timestamp": "2026-04-29T10:00:05Z"
+      },
+      {
+        "idx": 3,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use Read(runtime/platform/checkpoint/canonical_manifest.h)]",
+        "timestamp": "2026-04-29T10:00:08Z",
+        "tool_name": "Read",
+        "tool_args": "runtime/platform/checkpoint/canonical_manifest.h"
+      },
+      {
+        "idx": 4,
+        "kind": "tool_result",
+        "role": "tool",
+        "text": "CanonicalManifestInput includes tenant_id session_id parent_hashes body_hash",
+        "timestamp": "2026-04-29T10:00:09Z"
+      },
+      {
+        "idx": 5,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "The manifest hash must cover identity, model, parents, range, and body.",
+        "timestamp": "2026-04-29T10:00:16Z"
+      },
+      {
+        "idx": 6,
+        "kind": "user",
+        "role": "user",
+        "text": "also make sure raw private logs never enter git",
+        "timestamp": "2026-04-29T10:01:00Z"
+      },
+      {
+        "idx": 7,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "I will use only redacted SessionCase JSON fixtures.",
+        "timestamp": "2026-04-29T10:01:05Z"
+      },
+      {
+        "idx": 8,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use Search(git status --short)]",
+        "timestamp": "2026-04-29T10:01:08Z",
+        "tool_name": "Search",
+        "tool_args": "git status --short"
+      },
+      {
+        "idx": 9,
+        "kind": "tool_result",
+        "role": "tool",
+        "text": "working tree clean",
+        "timestamp": "2026-04-29T10:01:09Z"
+      },
+      {
+        "idx": 10,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "Fixture generation will be represented by source_path placeholder values.",
+        "timestamp": "2026-04-29T10:01:16Z"
+      },
+      {
+        "idx": 11,
+        "kind": "user",
+        "role": "user",
+        "text": "long sessions should prove middle context is not silently dropped",
+        "timestamp": "2026-04-29T10:02:00Z"
+      },
+      {
+        "idx": 12,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "Range coverage will assert every rendered event index is covered exactly once.",
+        "timestamp": "2026-04-29T10:02:05Z"
+      },
+      {
+        "idx": 13,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use Read(runtime/platform/provenance/provenance_query.cc)]",
+        "timestamp": "2026-04-29T10:02:08Z",
+        "tool_name": "Read",
+        "tool_args": "runtime/platform/provenance/provenance_query.cc"
+      },
+      {
+        "idx": 14,
+        "kind": "tool_result",
+        "role": "tool",
+        "text": "GetCheckpointProvenance traverses parent_hashes recursively",
+        "timestamp": "2026-04-29T10:02:09Z"
+      },
+      {
+        "idx": 15,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "Merkle integrity will fail if an ancestor node is corrupted.",
+        "timestamp": "2026-04-29T10:02:16Z"
+      },
+      {
+        "idx": 16,
+        "kind": "user",
+        "role": "user",
+        "text": "do not pull in transport or s3 express here",
+        "timestamp": "2026-04-29T10:03:00Z"
+      },
+      {
+        "idx": 17,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "This branch stays substrate-only and local-filesystem-backed.",
+        "timestamp": "2026-04-29T10:03:05Z"
+      },
+      {
+        "idx": 18,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use Build(phase2_substrate_property_test)]",
+        "timestamp": "2026-04-29T10:03:08Z",
+        "tool_name": "Build",
+        "tool_args": "phase2_substrate_property_test"
+      },
+      {
+        "idx": 19,
+        "kind": "tool_result",
+        "role": "tool",
+        "text": "test target passed on linux builder",
+        "timestamp": "2026-04-29T10:03:09Z"
+      },
+      {
+        "idx": 20,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "The next fixture should preserve the instruction to avoid transport code.",
+        "timestamp": "2026-04-29T10:03:16Z"
+      },
+      {
+        "idx": 21,
+        "kind": "user",
+        "role": "user",
+        "text": "okay now write the real session property tests",
+        "timestamp": "2026-04-29T10:04:00Z"
+      },
+      {
+        "idx": 22,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "I will parameterize P1 through P6 on the curated SessionCase fixture.",
+        "timestamp": "2026-04-29T10:04:04Z"
+      },
+      {
+        "idx": 23,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use Edit(runtime/platform/checkpoint)]",
+        "timestamp": "2026-04-29T10:04:08Z",
+        "tool_name": "Edit",
+        "tool_args": "runtime/platform/checkpoint"
+      }
     ],
     "probes": [
-      {"kind": "next_tool_call", "question": "What tool area is touched next?", "expected_match": {"tool_name": "Edit", "arg_substring": "runtime/platform/checkpoint"}, "rationale": "long session tool continuation"}
+      {
+        "kind": "next_tool_call",
+        "question": "What tool area is touched next?",
+        "expected_match": {
+          "tool_name": "Edit",
+          "arg_substring": "runtime/platform/checkpoint"
+        },
+        "rationale": "long session tool continuation"
+      }
     ]
   },
   {
@@ -63,19 +270,113 @@
     "n_events": 10,
     "probe_T": 9,
     "events": [
-      {"idx": 0, "kind": "user", "role": "user", "text": "write the report as if s3 transport is the phase two contribution", "timestamp": "2026-04-29T11:00:00Z"},
-      {"idx": 1, "kind": "assistant_text", "role": "assistant", "text": "I will frame transport as the main result.", "timestamp": "2026-04-29T11:00:04Z"},
-      {"idx": 2, "kind": "user", "role": "user", "text": "correction: transport is supporting infrastructure, checkpointed projection is the contribution", "timestamp": "2026-04-29T11:01:00Z"},
-      {"idx": 3, "kind": "assistant_text", "role": "assistant", "text": "Corrected: checkpointed projections and replay semantics are the contribution.", "timestamp": "2026-04-29T11:01:05Z"},
-      {"idx": 4, "kind": "tool_call", "role": "assistant", "text": "[tool_use Edit(PHASE2_STATUS.md)]", "timestamp": "2026-04-29T11:01:08Z", "tool_name": "Edit", "tool_args": "PHASE2_STATUS.md"},
-      {"idx": 5, "kind": "tool_result", "role": "tool", "text": "updated status language", "timestamp": "2026-04-29T11:01:09Z"},
-      {"idx": 6, "kind": "user", "role": "user", "text": "also remove claims that AgenticQwen proves cross context", "timestamp": "2026-04-29T11:02:00Z"},
-      {"idx": 7, "kind": "assistant_text", "role": "assistant", "text": "AgenticQwen will be labeled secondary validation only.", "timestamp": "2026-04-29T11:02:05Z"},
-      {"idx": 8, "kind": "tool_call", "role": "assistant", "text": "[tool_use Edit(agentic_qwen/README.md)]", "timestamp": "2026-04-29T11:02:08Z", "tool_name": "Edit", "tool_args": "agentic_qwen/README.md"},
-      {"idx": 9, "kind": "tool_result", "role": "tool", "text": "added secondary validation warning", "timestamp": "2026-04-29T11:02:09Z"}
+      {
+        "idx": 0,
+        "kind": "user",
+        "role": "user",
+        "text": "write the report as if s3 transport is the phase two contribution",
+        "timestamp": "2026-04-29T11:00:00Z"
+      },
+      {
+        "idx": 1,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "I will frame transport as the main result.",
+        "timestamp": "2026-04-29T11:00:04Z"
+      },
+      {
+        "idx": 2,
+        "kind": "user",
+        "role": "user",
+        "text": "correction: transport is supporting infrastructure, checkpointed projection is the contribution",
+        "timestamp": "2026-04-29T11:01:00Z"
+      },
+      {
+        "idx": 3,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "Corrected: checkpointed projections and replay semantics are the contribution.",
+        "timestamp": "2026-04-29T11:01:05Z"
+      },
+      {
+        "idx": 4,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use Edit(PHASE2_STATUS.md)]",
+        "timestamp": "2026-04-29T11:01:08Z",
+        "tool_name": "Edit",
+        "tool_args": "PHASE2_STATUS.md"
+      },
+      {
+        "idx": 5,
+        "kind": "tool_result",
+        "role": "tool",
+        "text": "updated status language",
+        "timestamp": "2026-04-29T11:01:09Z"
+      },
+      {
+        "idx": 6,
+        "kind": "user",
+        "role": "user",
+        "text": "also remove claims that AgenticQwen proves cross context",
+        "timestamp": "2026-04-29T11:02:00Z"
+      },
+      {
+        "idx": 7,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "AgenticQwen will be labeled secondary validation only.",
+        "timestamp": "2026-04-29T11:02:05Z"
+      },
+      {
+        "idx": 8,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use Edit(agentic_qwen/README.md)]",
+        "timestamp": "2026-04-29T11:02:08Z",
+        "tool_name": "Edit",
+        "tool_args": "agentic_qwen/README.md"
+      },
+      {
+        "idx": 9,
+        "kind": "tool_result",
+        "role": "tool",
+        "text": "added secondary validation warning",
+        "timestamp": "2026-04-29T11:02:09Z"
+      }
     ],
     "probes": [
-      {"kind": "correction_detection", "question": "What correction must be preserved?", "expected_match": {"correction_substring": "checkpointed projection is the contribution", "must_acknowledge": "correction"}, "rubric": {"must_include": ["checkpointed projection is the contribution"], "must_not_include": ["s3 transport is the phase two contribution", "transport as the main result"]}, "rationale": "user corrected phase two framing"}
+      {
+        "kind": "correction_detection",
+        "question": "What correction must be preserved?",
+        "expected_match": {
+          "correction_substring": "checkpointed projection is the contribution",
+          "must_acknowledge": "correction"
+        },
+        "rubric": {
+          "must_include": [
+            "checkpointed projection is the contribution"
+          ],
+          "must_not_include": [
+            "s3 transport is the phase two contribution",
+            "transport as the main result"
+          ]
+        },
+        "rationale": "user corrected phase two framing"
+      }
+    ],
+    "correction_directives": [
+      {
+        "event_idx": 2,
+        "correction_id": "phase3-bench-corr-transport-v1",
+        "invalidated_facts": [
+          "s3 transport is the phase two contribution",
+          "transport as the main result"
+        ],
+        "replacement_facts": [
+          "checkpointed projection is the contribution"
+        ]
+      }
     ]
   },
   {
@@ -86,22 +387,118 @@
     "n_events": 13,
     "probe_T": 12,
     "events": [
-      {"idx": 0, "kind": "user", "role": "user", "text": "verify the branch and run the test target", "timestamp": "2026-04-29T12:00:00Z"},
-      {"idx": 1, "kind": "tool_call", "role": "assistant", "text": "[tool_use Bash(git branch --show-current)]", "timestamp": "2026-04-29T12:00:03Z", "tool_name": "Bash", "tool_args": "git branch --show-current"},
-      {"idx": 2, "kind": "tool_result", "role": "tool", "text": "phase2-substrate-property-tests", "timestamp": "2026-04-29T12:00:04Z"},
-      {"idx": 3, "kind": "tool_call", "role": "assistant", "text": "[tool_use Bash(git status --short)]", "timestamp": "2026-04-29T12:00:05Z", "tool_name": "Bash", "tool_args": "git status --short"},
-      {"idx": 4, "kind": "tool_result", "role": "tool", "text": "clean", "timestamp": "2026-04-29T12:00:06Z"},
-      {"idx": 5, "kind": "tool_call", "role": "assistant", "text": "[tool_use Bash(bazelisk test //runtime/platform/checkpoint:phase2_substrate_property_test)]", "timestamp": "2026-04-29T12:00:10Z", "tool_name": "Bash", "tool_args": "bazelisk test //runtime/platform/checkpoint:phase2_substrate_property_test"},
-      {"idx": 6, "kind": "tool_result", "role": "tool", "text": "test passed", "timestamp": "2026-04-29T12:00:20Z"},
-      {"idx": 7, "kind": "assistant_text", "role": "assistant", "text": "The branch is clean and the property test passed.", "timestamp": "2026-04-29T12:00:25Z"},
-      {"idx": 8, "kind": "user", "role": "user", "text": "now preserve the log and terminate the ec2 builder", "timestamp": "2026-04-29T12:01:00Z"},
-      {"idx": 9, "kind": "tool_call", "role": "assistant", "text": "[tool_use Scp(phase2-substrate-property-test.log)]", "timestamp": "2026-04-29T12:01:05Z", "tool_name": "Scp", "tool_args": "phase2-substrate-property-test.log"},
-      {"idx": 10, "kind": "tool_result", "role": "tool", "text": "copied log to .codex-local", "timestamp": "2026-04-29T12:01:06Z"},
-      {"idx": 11, "kind": "tool_call", "role": "assistant", "text": "[tool_use AwsEc2(terminate-instances)]", "timestamp": "2026-04-29T12:01:10Z", "tool_name": "AwsEc2", "tool_args": "terminate-instances"},
-      {"idx": 12, "kind": "tool_result", "role": "tool", "text": "instance shutting-down", "timestamp": "2026-04-29T12:01:11Z"}
+      {
+        "idx": 0,
+        "kind": "user",
+        "role": "user",
+        "text": "verify the branch and run the test target",
+        "timestamp": "2026-04-29T12:00:00Z"
+      },
+      {
+        "idx": 1,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use Bash(git branch --show-current)]",
+        "timestamp": "2026-04-29T12:00:03Z",
+        "tool_name": "Bash",
+        "tool_args": "git branch --show-current"
+      },
+      {
+        "idx": 2,
+        "kind": "tool_result",
+        "role": "tool",
+        "text": "phase2-substrate-property-tests",
+        "timestamp": "2026-04-29T12:00:04Z"
+      },
+      {
+        "idx": 3,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use Bash(git status --short)]",
+        "timestamp": "2026-04-29T12:00:05Z",
+        "tool_name": "Bash",
+        "tool_args": "git status --short"
+      },
+      {
+        "idx": 4,
+        "kind": "tool_result",
+        "role": "tool",
+        "text": "clean",
+        "timestamp": "2026-04-29T12:00:06Z"
+      },
+      {
+        "idx": 5,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use Bash(bazelisk test //runtime/platform/checkpoint:phase2_substrate_property_test)]",
+        "timestamp": "2026-04-29T12:00:10Z",
+        "tool_name": "Bash",
+        "tool_args": "bazelisk test //runtime/platform/checkpoint:phase2_substrate_property_test"
+      },
+      {
+        "idx": 6,
+        "kind": "tool_result",
+        "role": "tool",
+        "text": "test passed",
+        "timestamp": "2026-04-29T12:00:20Z"
+      },
+      {
+        "idx": 7,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "The branch is clean and the property test passed.",
+        "timestamp": "2026-04-29T12:00:25Z"
+      },
+      {
+        "idx": 8,
+        "kind": "user",
+        "role": "user",
+        "text": "now preserve the log and terminate the ec2 builder",
+        "timestamp": "2026-04-29T12:01:00Z"
+      },
+      {
+        "idx": 9,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use Scp(phase2-substrate-property-test.log)]",
+        "timestamp": "2026-04-29T12:01:05Z",
+        "tool_name": "Scp",
+        "tool_args": "phase2-substrate-property-test.log"
+      },
+      {
+        "idx": 10,
+        "kind": "tool_result",
+        "role": "tool",
+        "text": "copied log to .codex-local",
+        "timestamp": "2026-04-29T12:01:06Z"
+      },
+      {
+        "idx": 11,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use AwsEc2(terminate-instances)]",
+        "timestamp": "2026-04-29T12:01:10Z",
+        "tool_name": "AwsEc2",
+        "tool_args": "terminate-instances"
+      },
+      {
+        "idx": 12,
+        "kind": "tool_result",
+        "role": "tool",
+        "text": "instance shutting-down",
+        "timestamp": "2026-04-29T12:01:11Z"
+      }
     ],
     "probes": [
-      {"kind": "next_tool_call", "question": "Which infrastructure operation followed log preservation?", "expected_match": {"tool_name": "AwsEc2", "arg_substring": "terminate-instances"}, "rationale": "tool-heavy operational continuation"}
+      {
+        "kind": "next_tool_call",
+        "question": "Which infrastructure operation followed log preservation?",
+        "expected_match": {
+          "tool_name": "AwsEc2",
+          "arg_substring": "terminate-instances"
+        },
+        "rationale": "tool-heavy operational continuation"
+      }
     ]
   },
   {
@@ -112,20 +509,97 @@
     "n_events": 11,
     "probe_T": 10,
     "events": [
-      {"idx": 0, "kind": "user", "role": "user", "text": "I am handing this to the next engineer after this message", "timestamp": "2026-04-29T13:00:00Z"},
-      {"idx": 1, "kind": "assistant_text", "role": "assistant", "text": "I will write a concise handoff with branch, test, and blocker state.", "timestamp": "2026-04-29T13:00:05Z"},
-      {"idx": 2, "kind": "tool_call", "role": "assistant", "text": "[tool_use Read(runtime/platform/checkpoint/testing/PHASE2_TEST_MATRIX.md)]", "timestamp": "2026-04-29T13:00:08Z", "tool_name": "Read", "tool_args": "runtime/platform/checkpoint/testing/PHASE2_TEST_MATRIX.md"},
-      {"idx": 3, "kind": "tool_result", "role": "tool", "text": "matrix lists P1 through P6 and user-visible failure modes", "timestamp": "2026-04-29T13:00:09Z"},
-      {"idx": 4, "kind": "assistant_text", "role": "assistant", "text": "Handoff must say substrate tests are local-fixture-only and transport is separate.", "timestamp": "2026-04-29T13:00:16Z"},
-      {"idx": 5, "kind": "user", "role": "user", "text": "make sure the next engineer does not depend on my private logs", "timestamp": "2026-04-29T13:01:00Z"},
-      {"idx": 6, "kind": "assistant_text", "role": "assistant", "text": "I will mention checked-in redacted SessionCase JSON as the only test input.", "timestamp": "2026-04-29T13:01:05Z"},
-      {"idx": 7, "kind": "tool_call", "role": "assistant", "text": "[tool_use Write(HANDOFF.md)]", "timestamp": "2026-04-29T13:01:08Z", "tool_name": "Write", "tool_args": "HANDOFF.md"},
-      {"idx": 8, "kind": "tool_result", "role": "tool", "text": "wrote handoff", "timestamp": "2026-04-29T13:01:09Z"},
-      {"idx": 9, "kind": "assistant_text", "role": "assistant", "text": "The handoff records branch phase2-substrate-property-tests and target phase2-substrate.", "timestamp": "2026-04-29T13:01:16Z"},
-      {"idx": 10, "kind": "user", "role": "user", "text": "great, now the next engineer can continue from the fixture", "timestamp": "2026-04-29T13:02:00Z"}
+      {
+        "idx": 0,
+        "kind": "user",
+        "role": "user",
+        "text": "I am handing this to the next engineer after this message",
+        "timestamp": "2026-04-29T13:00:00Z"
+      },
+      {
+        "idx": 1,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "I will write a concise handoff with branch, test, and blocker state.",
+        "timestamp": "2026-04-29T13:00:05Z"
+      },
+      {
+        "idx": 2,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use Read(runtime/platform/checkpoint/testing/PHASE2_TEST_MATRIX.md)]",
+        "timestamp": "2026-04-29T13:00:08Z",
+        "tool_name": "Read",
+        "tool_args": "runtime/platform/checkpoint/testing/PHASE2_TEST_MATRIX.md"
+      },
+      {
+        "idx": 3,
+        "kind": "tool_result",
+        "role": "tool",
+        "text": "matrix lists P1 through P6 and user-visible failure modes",
+        "timestamp": "2026-04-29T13:00:09Z"
+      },
+      {
+        "idx": 4,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "Handoff must say substrate tests are local-fixture-only and transport is separate.",
+        "timestamp": "2026-04-29T13:00:16Z"
+      },
+      {
+        "idx": 5,
+        "kind": "user",
+        "role": "user",
+        "text": "make sure the next engineer does not depend on my private logs",
+        "timestamp": "2026-04-29T13:01:00Z"
+      },
+      {
+        "idx": 6,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "I will mention checked-in redacted SessionCase JSON as the only test input.",
+        "timestamp": "2026-04-29T13:01:05Z"
+      },
+      {
+        "idx": 7,
+        "kind": "tool_call",
+        "role": "assistant",
+        "text": "[tool_use Write(HANDOFF.md)]",
+        "timestamp": "2026-04-29T13:01:08Z",
+        "tool_name": "Write",
+        "tool_args": "HANDOFF.md"
+      },
+      {
+        "idx": 8,
+        "kind": "tool_result",
+        "role": "tool",
+        "text": "wrote handoff",
+        "timestamp": "2026-04-29T13:01:09Z"
+      },
+      {
+        "idx": 9,
+        "kind": "assistant_text",
+        "role": "assistant",
+        "text": "The handoff records branch phase2-substrate-property-tests and target phase2-substrate.",
+        "timestamp": "2026-04-29T13:01:16Z"
+      },
+      {
+        "idx": 10,
+        "kind": "user",
+        "role": "user",
+        "text": "great, now the next engineer can continue from the fixture",
+        "timestamp": "2026-04-29T13:02:00Z"
+      }
     ],
     "probes": [
-      {"kind": "next_user_intent", "question": "What constraint matters for the handoff?", "expected_match": {"substring": "does not depend on my private logs"}, "rationale": "handoff privacy constraint"}
+      {
+        "kind": "next_user_intent",
+        "question": "What constraint matters for the handoff?",
+        "expected_match": {
+          "substring": "does not depend on my private logs"
+        },
+        "rationale": "handoff privacy constraint"
+      }
     ]
   }
 ]

@@ -16,6 +16,7 @@ try:
         ScoreStatus,
     )
     from tools.benchmarks.dpm_phase3_bench.session_case import (
+        CorrectionDirective,
         SessionCase,
         SessionEvent,
         SessionProbe,
@@ -25,6 +26,7 @@ except ModuleNotFoundError:  # Allows running from this directory directly.
     from agent_protocol import AgentResult  # type: ignore
     from bench_schema import AuditVerdict, Condition, ScoreStatus  # type: ignore
     from session_case import (  # type: ignore
+        CorrectionDirective,
         SessionCase,
         SessionEvent,
         SessionProbe,
@@ -258,10 +260,19 @@ class DpmPhase3CheckpointAgent:
         task = render_task(case, probe)
         events = events_up_to_probe(case)
         full_end = event_range_end(events)
-        correction = first_correction_event(events, probe)
-        must_not_include = (
-            list(probe.rubric.must_not_include) if probe is not None else []
+        # Typed correction directive: declared on SessionCase
+        # (correction_directives) at fixture-construction time. Carries
+        # event_idx + invalidated_facts + replacement_facts as runtime
+        # data the agent is allowed to see (same status as the event log
+        # itself). Distinct from probe.rubric.must_not_include, which
+        # belongs to the hidden evaluator.
+        directive = first_correction_directive(case)
+        correction = (
+            events[directive.event_idx]
+            if directive is not None and 0 <= directive.event_idx < len(events)
+            else None
         )
+        invalidated_facts = list(directive.invalidated_facts) if directive else []
         responses: list[ModelResponse] = []
 
         gate_may_use = True
@@ -298,30 +309,23 @@ class DpmPhase3CheckpointAgent:
             drift_score = 1.0
 
         # Fallback / decision-feeding projection. When the gate refused
-        # AND the rubric carries a concrete invalidation list
-        # (must_not_include), thread the blocking correction event and
-        # that list into the prompt as explicit suppression directives.
+        # AND a typed correction directive declared invalidated_facts,
+        # thread the blocking correction event and the typed list into
+        # the prompt as explicit suppression directives.
         #
-        # Why gate on must_not_include: first_correction_event uses a
-        # substring heuristic ("correction:" in event text, with
-        # fallback to "correct"). On long-real-session that heuristic
-        # false-positives on roadmap doc headers and code comments
-        # containing the word "correction" — not actual user
-        # corrections. Without a rubric-grounded invalidation list, we
-        # can't tell what to suppress, and aggressive prompt-side
-        # suppression against a phantom correction tanks decision
-        # quality (proven in the 2026-05-10 dpm refuse-cells re-run on
-        # long-real-session × decision: 1.0 → 0.0). Net rule: refuse
-        # on detected corrections (substrate accounting), but only
-        # apply correction-aware projection when the rubric explicitly
-        # lists what's invalidated.
-        suppress = (not gate_may_use) and bool(must_not_include)
+        # Both `correction` (the SessionEvent) and `invalidated_facts`
+        # (the list of strings) are runtime data — the event lives in
+        # the event log the agent already projected over, and the
+        # typed directive is fixture-declared runtime metadata, NOT
+        # the hidden scoring rubric. Distinction enforced after the
+        # 2026-05 review's HIGH finding on rubric leakage.
+        suppress = (not gate_may_use) and bool(invalidated_facts)
         projection_prompt = build_projection_prompt(
             render_events(events),
             task,
             budget_chars,
             correction=correction if suppress else None,
-            must_not_include=must_not_include if suppress else None,
+            invalidated_facts=invalidated_facts if suppress else None,
         )
         projection = self.model.generate(
             projection_prompt,
@@ -330,18 +334,15 @@ class DpmPhase3CheckpointAgent:
         )
         responses.append(projection)
 
-        # Deterministic guard: post-projection scan for must_not_include
-        # contamination. If the correction-aware projector still
-        # smuggled an invalidated phrase into memory, record it as a
-        # projection_repair_failure so the row is honest about WHY
-        # DPM lost on this cell (fallback contamination, not a normal
-        # quality miss). Only checked on the fallback path; if the
-        # gate accepted, the original checkpoint memory has already
-        # been audited at write-time.
+        # Deterministic guard: post-projection scan against the typed
+        # directive's invalidated_facts. If the correction-aware
+        # projector still smuggled an invalidated phrase into memory,
+        # record it as projection_repair_failure. Uses runtime data
+        # (the directive), never the scoring rubric.
         repair_failures: list[str] = []
-        if not gate_may_use and must_not_include:
+        if not gate_may_use and invalidated_facts:
             mem_lower = projection.text.lower()
-            for item in must_not_include:
+            for item in invalidated_facts:
                 if item and item.lower() in mem_lower:
                     repair_failures.append(item)
 
@@ -426,21 +427,18 @@ def event_range_end(events: Iterable[SessionEvent]) -> int:
     return end
 
 
-def first_correction_event(
-    events: Iterable[SessionEvent],
-    probe: SessionProbe | None,
-) -> SessionEvent | None:
-    for event in events:
-        if "correction:" in event.text.lower():
-            return event
-    if probe is not None and (
-        probe.expected_match.correction_substring
-        or probe.rubric.must_not_include
-    ):
-        for event in events:
-            if "correct" in event.text.lower():
-                return event
-    return None
+def first_correction_directive(case: SessionCase) -> CorrectionDirective | None:
+    """Typed lookup. Returns the first correction declared on the case
+    by the fixture, or None if no correction is in scope.
+
+    The previous substring-based detector (looking for "correction:" or
+    "correct" in event text) was removed after the 2026-05 review found
+    it false-positives on roadmap-doc events containing the word
+    "correction" — driving phantom DPM gate refusals on
+    long-real-session. Corrections must now be declared explicitly in
+    `SessionCase.correction_directives` at fixture-construction time.
+    """
+    return case.correction_directives[0] if case.correction_directives else None
 
 
 def render_events(events: Iterable[SessionEvent]) -> str:
@@ -461,6 +459,17 @@ def render_events(events: Iterable[SessionEvent]) -> str:
 
 
 def render_task(case: SessionCase, probe: SessionProbe | None = None) -> str:
+    """Build the *runtime-visible* task — question only, no scoring spec.
+
+    The probe also carries `expected_match` (the answer substring) and
+    `rubric` (must_include / must_not_include / must_call_tools / etc.).
+    Those are the evaluator's hidden ground truth and must NEVER be
+    rendered into a model prompt — doing so feeds the answer key to the
+    model and invalidates every comparative claim. The scorer in
+    `score.py` keeps the full probe; the agent only sees this rendered
+    task. See review at runs/2026-05-10-opus-r3 (rubric leakage,
+    HIGH severity).
+    """
     probes = [probe] if probe is not None else list(case.probes)
     if not probes:
         return DEFAULT_DECISION_INSTRUCTION
@@ -471,8 +480,6 @@ def render_task(case: SessionCase, probe: SessionProbe | None = None) -> str:
                 {
                     "kind": probe.kind,
                     "question": probe.question,
-                    "expected_match": asdict(probe.expected_match),
-                    "rubric": asdict(probe.rubric),
                 },
                 ensure_ascii=False,
                 sort_keys=True,
@@ -499,19 +506,18 @@ def build_projection_prompt(
     budget_chars: int,
     *,
     correction: SessionEvent | None = None,
-    must_not_include: list[str] | None = None,
+    invalidated_facts: list[str] | None = None,
 ) -> str:
     """Project the event log into deterministic decision memory.
 
-    When `correction` and/or `must_not_include` are provided, emit
+    When `correction` and/or `invalidated_facts` are provided, emit
     explicit BLOCKING CORRECTION and INVALIDATED FACTS suppression
-    blocks. The Phase 3 audit gate refuses checkpoints when a
-    blocking correction lands, but if the agent re-projects from raw
-    events the projector itself must be correction-aware — otherwise
-    the invalidated fact reappears in the fallback memory and the
-    decision call propagates it. This is the prompt-side half of the
-    fallback-path fix; the agent-side half runs a deterministic guard
-    on the resulting projection text.
+    blocks. Both inputs are *runtime data*: `correction` is an event
+    from the same event log the agent already sees; `invalidated_facts`
+    is a typed list declared on `SessionCase.correction_directives`,
+    NOT pulled from the hidden scoring rubric. The distinction is
+    load-bearing — feeding rubric data into the prompt would leak the
+    answer key.
     """
     blocks: list[str] = []
     if correction is not None:
@@ -523,8 +529,8 @@ def build_projection_prompt(
             "even if earlier events asserted it. Cite the correction event "
             "so the suppression is auditable.\n"
         )
-    if must_not_include:
-        listed = "\n".join(f"  - {item}" for item in must_not_include)
+    if invalidated_facts:
+        listed = "\n".join(f"  - {item}" for item in invalidated_facts)
         blocks.append(
             "\nINVALIDATED FACTS — DO NOT REPRODUCE:\n"
             f"{listed}\n"

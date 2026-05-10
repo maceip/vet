@@ -88,6 +88,28 @@ class SessionProbe:
 
 
 @dataclass
+class CorrectionDirective:
+    """Typed correction declared by the fixture, NOT inferred from text.
+
+    `event_idx` points to the SessionEvent in `case.events` that is the
+    user's correction. `invalidated_facts` and `replacement_facts` are
+    runtime suppressions/replacements — the agent is allowed to see them
+    (they describe what the user said), in contrast to the scoring
+    rubric which is evaluator-only.
+
+    Substring-based correction detection (looking for the literal word
+    "correction" in event text) was removed after the 2026-05 review
+    surfaced false positives on long-real-session: roadmap-doc events
+    containing the word "correction" were being treated as user
+    corrections and triggering phantom gate refusals.
+    """
+    event_idx: int = 0
+    correction_id: str = ""
+    invalidated_facts: list[str] = field(default_factory=list)
+    replacement_facts: list[str] = field(default_factory=list)
+
+
+@dataclass
 class SessionCase:
     case_id: str = ""
     domain: str = ""
@@ -97,6 +119,7 @@ class SessionCase:
     probe_T: int = 0
     events: list[SessionEvent] = field(default_factory=list)
     probes: list[SessionProbe] = field(default_factory=list)
+    correction_directives: list[CorrectionDirective] = field(default_factory=list)
     paired_case_id: str = ""
     pair_role: str = ""
 
@@ -157,6 +180,15 @@ def _parse_probe(d: dict[str, Any]) -> SessionProbe:
     )
 
 
+def _parse_correction_directive(d: dict[str, Any]) -> CorrectionDirective:
+    return CorrectionDirective(
+        event_idx=int(d.get("event_idx", 0)),
+        correction_id=d.get("correction_id", "") or "",
+        invalidated_facts=list(d.get("invalidated_facts") or []),
+        replacement_facts=list(d.get("replacement_facts") or []),
+    )
+
+
 def parse_session_case(d: dict[str, Any]) -> SessionCase:
     return SessionCase(
         case_id=d.get("case_id", "") or "",
@@ -167,6 +199,10 @@ def parse_session_case(d: dict[str, Any]) -> SessionCase:
         probe_T=int(d.get("probe_T", 0)),
         events=[_parse_event(e) for e in (d.get("events") or [])],
         probes=[_parse_probe(p) for p in (d.get("probes") or [])],
+        correction_directives=[
+            _parse_correction_directive(c)
+            for c in (d.get("correction_directives") or [])
+        ],
         paired_case_id=d.get("paired_case_id", "") or "",
         pair_role=d.get("pair_role", "") or "",
     )
