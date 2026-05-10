@@ -12,7 +12,7 @@ miss the substrate-level result entirely.
 - Rows: `162`
 - Cases: `6`
 - Needs judge rows: `0`
-- Errored rows: `12`
+- Errored rows: `0`
 
 ## Safety / Audit (Phase 3 headline)
 
@@ -28,7 +28,7 @@ events with typed correction directives — a primitive rolling cannot offer.
 | gate_accept_count | 36 |
 | gate_refuse_count | 18 |
 | audit_pass_count | 36 |
-| correction_emitted_count | 9 |
+| correction_emitted_count | 18 |
 
 ![Audit gate](chart_audit_gate.svg)
 
@@ -41,7 +41,7 @@ memory or answer despite a blocking correction in the log.
 | --- | --- | --- |
 | raw_oracle | 3 | 1 |
 | rolling_summary | 3 | 0.667 |
-| dpm_phase3_checkpoint | 3 | 0 |
+| dpm_phase3_checkpoint | 6 | 0 |
 
 ![Stale-memory escape](chart_stale_memory_escape.svg)
 
@@ -57,8 +57,8 @@ per-cell variance breakdown below for the run-to-run component alone.
 | condition | scored_rows | mean | stddev | min | max |
 | --- | --- | --- | --- | --- | --- |
 | raw_oracle | 54 | 0.819 | 0.377 | 0 | 1 |
-| rolling_summary | 51 | 0.98 | 0.068 | 0.75 | 1 |
-| dpm_phase3_checkpoint | 45 | 1 | 0 | 1 | 1 |
+| rolling_summary | 54 | 0.981 | 0.066 | 0.75 | 1 |
+| dpm_phase3_checkpoint | 54 | 1 | 0 | 1 | 1 |
 
 ![Decision quality](chart_decision_accuracy.svg)
 
@@ -89,9 +89,13 @@ to get a usable mean.
 | handoff-session | rolling_summary | correction_safety | 3 | 1 | 0 | 1 | 1 |
 | handoff-session | rolling_summary | decision | 3 | 1 | 0 | 1 | 1 |
 | handoff-session | rolling_summary | handoff | 3 | 1 | 0 | 1 | 1 |
+| long-real-session | dpm_phase3_checkpoint | correction_safety | 3 | 1 | 0 | 1 | 1 |
+| long-real-session | dpm_phase3_checkpoint | decision | 3 | 1 | 0 | 1 | 1 |
+| long-real-session | dpm_phase3_checkpoint | handoff | 3 | 1 | 0 | 1 | 1 |
 | long-real-session | raw_oracle | correction_safety | 3 | 1 | 0 | 1 | 1 |
 | long-real-session | raw_oracle | decision | 3 | 1 | 0 | 1 | 1 |
 | long-real-session | raw_oracle | handoff | 3 | 1 | 0 | 1 | 1 |
+| long-real-session | rolling_summary | correction_safety | 3 | 1 | 0 | 1 | 1 |
 | long-real-session | rolling_summary | decision | 3 | 1 | 0 | 1 | 1 |
 | long-real-session | rolling_summary | handoff | 3 | 1 | 0 | 1 | 1 |
 | long-session-context-retention | dpm_phase3_checkpoint | correction_safety | 3 | 1 | 0 | 1 | 1 |
@@ -128,8 +132,8 @@ to get a usable mean.
 | condition | executed_rows | skipped_or_errored | mean_model_calls | mean_wall_ms | mean_input_tokens |
 | --- | --- | --- | --- | --- | --- |
 | raw_oracle | 54 | 0 | 1 | 3592 | 54828 |
-| rolling_summary | 51 | 3 | 12.176 | 117032 | 47948 |
-| dpm_phase3_checkpoint | 45 | 9 | 2.2 | 8552 | 1957 |
+| rolling_summary | 54 | 0 | 16 | 155661 | 66888 |
+| dpm_phase3_checkpoint | 54 | 0 | 2.333 | 12229 | 88302 |
 
 ![Cost latency](chart_cost_latency.svg)
 

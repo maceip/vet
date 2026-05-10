@@ -10,9 +10,9 @@ Gate may use checkpoint: `False`
 
 Audit verdict: `correction_emitted`
 
-Audit certificate id: `fe1c234b604fdccfc637dfa6e195fa7950daa11895eb76357a44abdf73569e36`
+Audit certificate id: `cc32982e3e3e5961e187cd224b59176ad11b4ff2a980d1b0e041b510ef8b2572`
 
-Checkpoint manifest hash: `8b36a1a172dc20135e275a8a459cdf31f58c159f2d446e6a8e0cbfd8904f6c1f`
+Checkpoint manifest hash: `9a8802f02be763b37a70db8bbe42454a1d6c7523df2c2c9fc38cf64725e8840f`
 
 Blocking corrections: `585f87c25cc5213af65dde4a2ff25f7fc586b5c7992ed57fc78237491dda57e2`
 

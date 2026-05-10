@@ -1,7 +1,7 @@
 {
   "audit_gate": {
     "audit_pass_count": 36,
-    "correction_emitted_count": 9,
+    "correction_emitted_count": 18,
     "dpm_rows": 54,
     "gate_accept_count": 36,
     "gate_refuse_count": 18
@@ -17,26 +17,26 @@
   "cost_by_condition": {
     "dpm_phase3_checkpoint": {
       "input_tokens": {
-        "count": 45,
-        "max": 2623.0,
-        "mean": 1957.0666666666666,
+        "count": 54,
+        "max": 520027.0,
+        "mean": 88301.9074074074,
         "min": 1182.0,
-        "stddev": 531.1321698204523
+        "stddev": 194886.46542686378
       },
       "model_calls": {
-        "count": 45,
+        "count": 54,
         "max": 3.0,
-        "mean": 2.2,
+        "mean": 2.3333333333333335,
         "min": 2.0,
-        "stddev": 0.40451991747794525
+        "stddev": 0.4758309514308865
       },
-      "skipped_or_errored_rows": 9,
+      "skipped_or_errored_rows": 0,
       "wall_ms": {
-        "count": 45,
-        "max": 18758.0,
-        "mean": 8552.377777777778,
+        "count": 54,
+        "max": 45268.0,
+        "mean": 12228.75925925926,
         "min": 3977.0,
-        "stddev": 3636.531159878556
+        "stddev": 9372.278728441226
       }
     },
     "raw_oracle": {
@@ -65,34 +65,34 @@
     },
     "rolling_summary": {
       "input_tokens": {
-        "count": 51,
-        "max": 388868.0,
-        "mean": 47947.58823529412,
+        "count": 54,
+        "max": 388880.0,
+        "mean": 66887.9074074074,
         "min": 1188.0,
-        "stddev": 125725.4631369758
+        "stddev": 145346.94782852076
       },
       "model_calls": {
-        "count": 51,
+        "count": 54,
         "max": 81.0,
-        "mean": 12.176470588235293,
+        "mean": 16.0,
         "min": 2.0,
-        "stddev": 25.38795453151194
+        "stddev": 29.347623734604554
       },
-      "skipped_or_errored_rows": 3,
+      "skipped_or_errored_rows": 0,
       "wall_ms": {
-        "count": 51,
-        "max": 824039.0,
-        "mean": 117032.45098039215,
+        "count": 54,
+        "max": 827357.0,
+        "mean": 155661.0185185185,
         "min": 5169.0,
-        "stddev": 267201.3920619662
+        "stddev": 305325.9863530021
       }
     }
   },
-  "errored_rows": 12,
+  "errored_rows": 0,
   "needs_judge_rows": 0,
   "quality_score_by_condition": {
     "dpm_phase3_checkpoint": {
-      "count": 45,
+      "count": 54,
       "max": 1.0,
       "mean": 1.0,
       "min": 1.0,
@@ -106,17 +106,17 @@
       "stddev": 0.3774813086296855
     },
     "rolling_summary": {
-      "count": 51,
+      "count": 54,
       "max": 1.0,
-      "mean": 0.9803921568627451,
+      "mean": 0.9814814814814815,
       "min": 0.75,
-      "stddev": 0.06788109558083828
+      "stddev": 0.06608763214317867
     }
   },
   "row_count": 162,
   "stale_escape_by_condition": {
     "dpm_phase3_checkpoint": {
-      "count": 3,
+      "count": 6,
       "max": 0.0,
       "mean": 0.0,
       "min": 0.0,

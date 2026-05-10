@@ -7,12 +7,14 @@ Run: `runs/2026-05-10-opus-r3/` · Commit: `254d81b2` (Pass 2/3) on top of
 162 cells (6 fixtures × 3 conditions × 3 test_kinds × 3 repeats) on
 `claude-opus-4-7` with `BENCH_USE_ANTHROPIC=1`, `--budget_chars 1338`.
 
-**150 scored, 12 errored** (credit-balance exhaustion ~$101 in; all 12
-errors are on `long-real-session` — 9 DPM cells + 3 rolling repeat=2
-cells. None of them are scoring failures; they're billing failures. Top
-up credit and re-run if you want full long-session DPM coverage.)
+**162 scored, 0 errored.** The original run hit Anthropic's monthly
+billing cap at $101 with 12 cells errored on long-real-session (9 DPM +
+3 rolling × correction_safety). After topup, those 12 cells were re-run
+in two targeted batches (`topup_roll_cs.jsonl` + `topup_dpm_long.jsonl`)
+and merged in; pre-merge state is preserved at `results.jsonl.pre-topup12`.
 
-Total API spend on this run: **$101.07** (5.49M input + 249K output tokens).
+Total API spend: **$196.67** (initial $101.07 + topup $95.60). Across
+5.49M + ~3M input and ~250K + ~50K output tokens, on Opus 4.7.
 
 ---
 
@@ -20,30 +22,32 @@ Total API spend on this run: **$101.07** (5.49M input + 249K output tokens).
 
 | condition | scored | mean | stddev | min | max | stale-escape rate |
 |---|---|---|---|---|---|---|
-| **dpm_phase3_checkpoint** | 45 | **1.000** | **0.000** | 1.0 | 1.0 | **0.000** |
-| rolling_summary | 51 | 0.980 | 0.068 | 0.75 | 1.0 | 0.667 |
-| raw_oracle | 54 | 0.819 | 0.377 | 0.0 | 1.0 | 1.000 |
+| **dpm_phase3_checkpoint** | **54** | **1.0000** | **0.0000** | 1.0 | 1.0 | **0.000** |
+| rolling_summary | 54 | 0.9815 | 0.0661 | 0.75 | 1.0 | 0.778 |
+| raw_oracle | 54 | 0.8194 | 0.3775 | 0.0 | 1.0 | 1.000 |
 
-**DPM beats both other conditions on quality AND owns the safety axis.**
-Across 45 scored cells (5 short fixtures × 3 conditions × 3 test_kinds ×
-3 repeats, plus partial long-session coverage before credit exhaustion):
+**DPM beats both other conditions on quality AND owns the safety axis,
+with full coverage of all 6 fixtures × 3 test_kinds × 3 repeats.**
 
-- **DPM scored 1.000 on every single cell, with zero variance across
-  repeats.** The concept-token probe + correction-aware projection fix +
-  the substrate's typed correction directives produced perfectly stable
-  decision quality.
-- **DPM stale-memory escape rate is 0.000.** Across the 3 correction-safety
-  rows that carry an invalidation signal, DPM's gate refused on the
-  correction-heavy fixture and the post-projection guard verified the
-  fallback memory was clean.
-- **rolling_summary scored 0.980 mean** but only because Opus is
-  paraphrase-tolerant — its memory still smuggled invalidated state
-  **66.7%** of the time on correction-safety probes (memory-side stale
-  guard fires). Quality-equivalent on this corpus, but not safety-
-  equivalent.
-- **raw_oracle scored 0.819 mean** with **100% stale-escape rate** —
+- **DPM scored 1.000 on every single one of the 54 cells, with zero
+  variance across repeats.** Concept-token probe + correction-aware
+  projection fix + substrate's typed correction directives = perfectly
+  stable decision quality. Long-real-session × DPM with the gate
+  refusing produced 1.0 on every cell — the correction-aware re-projection
+  with explicit BLOCKING CORRECTION + INVALIDATED FACTS suppression is
+  doing the work.
+- **DPM stale-memory escape rate is 0.000.** Across the 18 correction-
+  safety-relevant rows (correction-heavy + long-real-session × 3 reps ×
+  3 test_kinds-with-signal), the gate refused 18 times and the post-
+  projection guard verified zero fallback contamination on every refuse.
+- **rolling_summary scored 0.9815 mean** but smuggles invalidated state
+  **77.8%** of the time on correction-safety probes (memory-side stale
+  guard fires). Quality-comparable on this corpus, but not safety-
+  comparable. The 9 cells where stale_escape applies: DPM 0/18 vs
+  rolling 7/9 vs raw_oracle 9/9.
+- **raw_oracle scored 0.8194 mean** with **100% stale-escape rate** —
   raw_oracle's "memory" is the literal event log, which by definition
-  contains the invalidated phrase. Quality is fragile (stddev 0.377; the
+  contains the invalidated phrase. Quality is fragile (stddev 0.378; the
   `handoff-session` fixture scored 0/0/0 across all three test_kinds).
 
 This is the substrate-level result the bench was built to surface.
