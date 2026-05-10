@@ -206,12 +206,30 @@ class RollingSummaryAgent:
 
 
 class DpmPhase3CheckpointAgent:
-    """Phase 3 bench DPM condition.
+    """Phase 3 bench DPM condition — Python mirror of the substrate API.
 
-    The C++ smoke proves the real substrate calls. This Python agent emits the
-    same bench row semantics for matrix runs: task-conditioned projection,
-    checkpoint identity fields, audit verdict, correction barrier, and the
-    shared final decision prompt.
+    The canonical implementation is the C++ helper
+    `LoadOrReplayAuditedProjectionCheckpointForDecision` in
+    `runtime/dpm/audited_checkpoint_loader.h` (commit 4a4df40f). That helper:
+      1. Tries the cached checkpoint via `MayUseCheckpointForDecision`.
+      2. If the gate refuses for blocking-correction reasons, replays raw
+         events through DPMProjector with typed `ProjectionCorrectionDirective`s
+         and a deterministic invalidated-facts guard.
+      3. Fails closed for every other refusal mode.
+
+    The C++ smoke at `phase3_substrate_smoke.cc::BlockingCorrectionReplaysWith
+    CorrectionDirectives` exercises this end-to-end on fixture-shaped data.
+
+    This Python class mirrors the same semantics for matrix runs against an
+    LLM-backed `ModelAdapter`: task-conditioned projection, checkpoint identity
+    fields, audit verdict, correction barrier, and the shared final decision
+    prompt. The mirror is prompt-layer (BLOCKING CORRECTION + INVALIDATED
+    FACTS injected into the projection prompt + a post-projection guard);
+    the substrate version is structural (typed directives, programmatic
+    invalidated-fact filtering). They agree on observable behavior.
+
+    When the Python and C++ versions diverge in the future, the C++ helper
+    is the source of truth — update this class to match.
     """
 
     def __init__(
