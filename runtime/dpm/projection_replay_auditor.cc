@@ -290,6 +290,12 @@ absl::StatusOr<ProjectionReplayAuditResult> VerifyProjectionCheckpointFromRaw(
                                      *store));
     payload.replacement_projection =
         replay_error.empty() ? replayed_projection : replay_error;
+    payload.correction_text =
+        replay_error.empty()
+            ? "Replay produced a different projected-memory body; the stale "
+              "checkpoint must not be used for the next decision."
+            : replay_error;
+    payload.replacement_facts = {payload.replacement_projection};
     payload.must_interrupt_before_next_predict = true;
     payload.created_unix_micros = config.created_unix_micros;
     correction = std::move(payload);

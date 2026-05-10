@@ -24,6 +24,7 @@
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "runtime/dpm/event.h"
 #include "runtime/dpm/event_sourced_log.h"
+#include "runtime/dpm/projection_prompt.h"
 #include "runtime/platform/hash/hasher.h"
 
 namespace litert::lm {
@@ -44,6 +45,11 @@ struct CorrectionPayload {
   CorrectionSeverity severity = CorrectionSeverity::kBlocking;
   std::vector<std::string> drift_fields;
   std::vector<Hash256> invalidates_checkpoints;
+  std::string correction_text;
+  std::vector<std::string> invalidated_facts;
+  std::vector<std::string> replacement_facts;
+  ProjectionCorrectionScope scope =
+      ProjectionCorrectionScope::kCheckpointRange;
   std::string replacement_projection;
   bool must_interrupt_before_next_predict = true;
   int64_t created_unix_micros = 0;
@@ -57,6 +63,9 @@ absl::Status ValidateCorrectionPayload(const CorrectionPayload& payload);
 std::string CorrectionPayloadToJson(const CorrectionPayload& payload);
 absl::StatusOr<CorrectionPayload> CorrectionPayloadFromJson(
     absl::string_view json);
+
+std::vector<ProjectionCorrectionDirective> BuildProjectionCorrectionDirectives(
+    const std::vector<CorrectionPayload>& corrections);
 
 absl::Status AppendCorrectionEvent(EventSourcedLog* log,
                                    const CorrectionPayload& payload);

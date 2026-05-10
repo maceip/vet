@@ -15,6 +15,8 @@
 #include "runtime/dpm/audited_checkpoint_loader.h"
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
@@ -22,20 +24,18 @@
 #include "runtime/dpm/checkpoint_decision_gate.h"
 #include "runtime/dpm/checkpointed_projection.h"
 #include "runtime/dpm/correction_protocol.h"
+#include "runtime/dpm/dpm_projector.h"
+#include "runtime/dpm/event.h"
 #include "runtime/platform/audit/audit_ledger.h"
 #include "runtime/platform/checkpoint/checkpoint_store.h"
 #include "runtime/util/status_macros.h"
 
 namespace litert::lm {
+namespace {
 
-absl::StatusOr<AuditedProjectionCheckpoint>
-LoadAuditedProjectionCheckpointForDecision(
-    const AuditedProjectionCheckpointRequest& request, CheckpointStore* store,
-    const AuditLedger& ledger, const CorrectionIndex& corrections) {
-  if (store == nullptr) {
-    return absl::InvalidArgumentError("CheckpointStore is required.");
-  }
-  CheckpointDecisionGateRequest gate_request{
+CheckpointDecisionGateRequest GateRequestFrom(
+    const AuditedProjectionCheckpointRequest& request) {
+  return CheckpointDecisionGateRequest{
       .identity = request.identity,
       .checkpoint_manifest_hash = request.checkpoint_manifest_hash,
       .checkpoint_event_range_start = request.checkpoint_event_range_start,
@@ -48,9 +48,20 @@ LoadAuditedProjectionCheckpointForDecision(
       .min_valid_signatures = request.min_valid_signatures,
       .allowed_signature_algorithms = request.allowed_signature_algorithms,
   };
+}
+
+}  // namespace
+
+absl::StatusOr<AuditedProjectionCheckpoint>
+LoadAuditedProjectionCheckpointForDecision(
+    const AuditedProjectionCheckpointRequest& request, CheckpointStore* store,
+    const AuditLedger& ledger, const CorrectionIndex& corrections) {
+  if (store == nullptr) {
+    return absl::InvalidArgumentError("CheckpointStore is required.");
+  }
   ASSIGN_OR_RETURN(CheckpointDecisionGateResult gate,
                    MayUseCheckpointForDecision(
-                       gate_request, ledger, corrections,
+                       GateRequestFrom(request), ledger, corrections,
                        request.signature_verifier));
   if (!gate.may_use) {
     return absl::FailedPreconditionError(
@@ -64,6 +75,66 @@ LoadAuditedProjectionCheckpointForDecision(
   return AuditedProjectionCheckpoint{
       .projected_memory = std::move(projected_memory),
       .gate = std::move(gate),
+  };
+}
+
+absl::StatusOr<CorrectionAwareCheckpointReplay>
+LoadOrReplayAuditedProjectionCheckpointForDecision(
+    const EventSourcedLog& log, DPMProjector* projector,
+    const CorrectionAwareCheckpointReplayRequest& request,
+    CheckpointStore* store, const AuditLedger& ledger,
+    const CorrectionIndex& corrections) {
+  if (projector == nullptr) {
+    return absl::InvalidArgumentError("DPM projector is required.");
+  }
+  if (store == nullptr) {
+    return absl::InvalidArgumentError("CheckpointStore is required.");
+  }
+  ASSIGN_OR_RETURN(CheckpointDecisionGateResult gate,
+                   MayUseCheckpointForDecision(
+                       GateRequestFrom(request.checkpoint), ledger,
+                       corrections,
+                       request.checkpoint.signature_verifier));
+  if (gate.may_use) {
+    ASSIGN_OR_RETURN(
+        std::string projected_memory,
+        LoadProjectionCheckpoint(request.checkpoint.identity,
+                                 request.checkpoint.checkpoint_manifest_hash,
+                                 store));
+    return CorrectionAwareCheckpointReplay{
+        .projected_memory = std::move(projected_memory),
+        .gate = std::move(gate),
+        .replayed_from_raw = false,
+    };
+  }
+
+  const CorrectionBarrierDecision barrier = EvaluateCorrectionBarrier(
+      request.checkpoint.checkpoint_manifest_hash, corrections);
+  if (!barrier.must_reproject || barrier.blocking_corrections.empty()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("checkpoint cannot be used for decision: ",
+                     gate.reason));
+  }
+  std::vector<ProjectionCorrectionDirective> directives =
+      BuildProjectionCorrectionDirectives(barrier.blocking_corrections);
+  ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
+  const uint64_t replay_end =
+      request.replay_event_range_end == 0 ? events.size()
+                                          : request.replay_event_range_end;
+  if (replay_end > events.size()) {
+    return absl::InvalidArgumentError(
+        "correction-aware replay range exceeds log generation.");
+  }
+  ASSIGN_OR_RETURN(
+      std::string projected_memory,
+      projector->ProjectRangeWithCorrections(
+          log, request.replay_event_range_start, replay_end,
+          request.projection, directives));
+  return CorrectionAwareCheckpointReplay{
+      .projected_memory = std::move(projected_memory),
+      .gate = std::move(gate),
+      .replayed_from_raw = true,
+      .correction_directives = std::move(directives),
   };
 }
 

@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
@@ -45,20 +46,24 @@ std::filesystem::path TestPath(absl::string_view name) {
 class RecordingRunner : public DPMInferenceRunner {
  public:
   explicit RecordingRunner(std::string response)
-      : response_(std::move(response)) {}
+      : responses_({std::move(response)}) {}
+  explicit RecordingRunner(std::vector<std::string> responses)
+      : responses_(std::move(responses)) {}
 
   absl::StatusOr<std::string> Generate(
       absl::string_view prompt, const DPMInferenceConfig& config) override {
     prompts.push_back(std::string(prompt));
     configs.push_back(config);
-    return response_;
+    if (next_ >= responses_.size()) return responses_.back();
+    return responses_[next_++];
   }
 
   std::vector<std::string> prompts;
   std::vector<DPMInferenceConfig> configs;
 
  private:
-  std::string response_;
+  std::vector<std::string> responses_;
+  size_t next_ = 0;
 };
 
 TEST(DPMProjectorTest, CreatesSchemaAnchoredDeterministicProjectionPrompt) {
@@ -182,6 +187,167 @@ TEST(DPMProjectorTest, RejectsProjectionWithoutOneBasedCitations) {
   config.model_id = "pinned-test-model";
 
   EXPECT_FALSE(projector.Project(log, config).ok());
+}
+
+TEST(DPMProjectorTest,
+     ProjectRangeWithCorrectionsInjectsBlockingDirectiveAndPassesCleanOutput) {
+  EventSourcedLog log(TestPath("dpm_projector_correction_prompt_test"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-1",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "initial analysis says transport as main result",
+      .timestamp_us = 100,
+  }));
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kCorrection,
+      .payload = "correction: credential theft is the main result",
+      .timestamp_us = 200,
+  }));
+  RecordingRunner runner(
+      R"json({"Facts":["credential theft is the main result [2]"],"Reasoning":["correction supersedes earlier analysis [2]"],"Compliance":["audit trail retained [2]"]})json");
+  DPMProjector projector(&runner);
+  DPMProjector::ProjectionConfig config;
+  config.schema_id = "incident_response_v1";
+  config.schema_json =
+      R"json({"Facts":["string with [i]"],"Reasoning":["string with [i]"],"Compliance":["string with [i]"]})json";
+  config.model_id = "pinned-test-model";
+  const std::vector<ProjectionCorrectionDirective> directives = {
+      ProjectionCorrectionDirective{
+          .correction_event_id = "corr-transport",
+          .correction_event_index = 1,
+          .correction_text = "Transport was not the main result.",
+          .invalidated_facts = {"transport as main result"},
+          .replacement_facts = {"credential theft is the main result [2]"},
+      }};
+
+  ASSERT_OK_AND_ASSIGN(
+      std::string projection,
+      projector.ProjectRangeWithCorrections(log, 0, 2, config, directives));
+
+  EXPECT_THAT(projection, HasSubstr("credential theft is the main result"));
+  EXPECT_THAT(projection, Not(HasSubstr("transport as main result")));
+  ASSERT_EQ(runner.prompts.size(), 1);
+  EXPECT_THAT(runner.prompts[0], HasSubstr("[BLOCKING CORRECTIONS]"));
+  EXPECT_THAT(runner.prompts[0], HasSubstr("corr-transport"));
+  EXPECT_THAT(runner.prompts[0], HasSubstr("transport as main result"));
+}
+
+TEST(DPMProjectorTest, ProjectRangeWithCorrectionsRepairsLeakedOldFact) {
+  EventSourcedLog log(TestPath("dpm_projector_correction_repair_test"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-1",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "initial analysis says transport as main result",
+      .timestamp_us = 100,
+  }));
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kCorrection,
+      .payload = "correction: credential theft is the main result",
+      .timestamp_us = 200,
+  }));
+  RecordingRunner runner(std::vector<std::string>{
+      R"json({"Facts":["transport as main result [1]"],"Reasoning":["old path [1]"],"Compliance":["audit trail retained [1]"]})json",
+      R"json({"Facts":["credential theft is the main result [2]"],"Reasoning":["correction supersedes earlier analysis [2]"],"Compliance":["audit trail retained [2]"]})json",
+  });
+  DPMProjector projector(&runner);
+  DPMProjector::ProjectionConfig config;
+  config.schema_id = "incident_response_v1";
+  config.schema_json =
+      R"json({"Facts":["string with [i]"],"Reasoning":["string with [i]"],"Compliance":["string with [i]"]})json";
+  config.model_id = "pinned-test-model";
+  const std::vector<ProjectionCorrectionDirective> directives = {
+      ProjectionCorrectionDirective{
+          .correction_event_id = "corr-transport",
+          .correction_event_index = 1,
+          .invalidated_facts = {"transport as main result"},
+          .replacement_facts = {"credential theft is the main result [2]"},
+      }};
+
+  ASSERT_OK_AND_ASSIGN(
+      std::string projection,
+      projector.ProjectRangeWithCorrections(log, 0, 2, config, directives));
+
+  EXPECT_THAT(projection, HasSubstr("credential theft is the main result"));
+  EXPECT_THAT(projection, Not(HasSubstr("transport as main result")));
+  ASSERT_EQ(runner.prompts.size(), 2);
+  EXPECT_THAT(runner.prompts[1], HasSubstr("CORRECTION REPAIR"));
+  EXPECT_THAT(runner.prompts[1], HasSubstr("[FORBIDDEN SUBSTRINGS]"));
+}
+
+TEST(DPMProjectorTest,
+     ProjectRangeWithCorrectionsFailsClosedWhenRepairStillLeaks) {
+  EventSourcedLog log(TestPath("dpm_projector_correction_fail_closed_test"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-1",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "initial analysis says transport as main result",
+      .timestamp_us = 100,
+  }));
+  RecordingRunner runner(std::vector<std::string>{
+      R"json({"Facts":["transport as main result [1]"],"Reasoning":["old path [1]"],"Compliance":["audit trail retained [1]"]})json",
+      R"json({"Facts":["transport as main result [1]"],"Reasoning":["still old [1]"],"Compliance":["audit trail retained [1]"]})json",
+  });
+  DPMProjector projector(&runner);
+  DPMProjector::ProjectionConfig config;
+  config.schema_id = "incident_response_v1";
+  config.schema_json =
+      R"json({"Facts":["string with [i]"],"Reasoning":["string with [i]"],"Compliance":["string with [i]"]})json";
+  config.model_id = "pinned-test-model";
+  const std::vector<ProjectionCorrectionDirective> directives = {
+      ProjectionCorrectionDirective{
+          .correction_event_id = "corr-transport",
+          .invalidated_facts = {"transport as main result"},
+      }};
+
+  absl::StatusOr<std::string> projection =
+      projector.ProjectRangeWithCorrections(log, 0, 1, config, directives);
+
+  ASSERT_FALSE(projection.ok());
+  EXPECT_EQ(projection.status().code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_THAT(std::string(projection.status().message()),
+              HasSubstr("invalidated fact"));
+}
+
+TEST(DPMProjectorTest, UnrelatedCorrectionDoesNotSuppressValidFact) {
+  EventSourcedLog log(TestPath("dpm_projector_unrelated_correction_test"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-1",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "initial analysis says transport as main result",
+      .timestamp_us = 100,
+  }));
+  RecordingRunner runner(
+      R"json({"Facts":["transport as main result [1]"],"Reasoning":["signal retained [1]"],"Compliance":["audit trail retained [1]"]})json");
+  DPMProjector projector(&runner);
+  DPMProjector::ProjectionConfig config;
+  config.schema_id = "incident_response_v1";
+  config.schema_json =
+      R"json({"Facts":["string with [i]"],"Reasoning":["string with [i]"],"Compliance":["string with [i]"]})json";
+  config.model_id = "pinned-test-model";
+  const std::vector<ProjectionCorrectionDirective> directives = {
+      ProjectionCorrectionDirective{
+          .correction_event_id = "corr-unrelated",
+          .invalidated_facts = {"database state changed"},
+      }};
+
+  ASSERT_OK_AND_ASSIGN(
+      std::string projection,
+      projector.ProjectRangeWithCorrections(log, 0, 1, config, directives));
+
+  EXPECT_THAT(projection, HasSubstr("transport as main result"));
+  ASSERT_EQ(runner.prompts.size(), 1);
 }
 
 TEST(StatelessDecisionEngineTest, AppendsRequestProjectsThenAppendsDecision) {
