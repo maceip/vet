@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="248" viewBox="0 0 920 248">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="24" y="34" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#111827">Model Calls</text>
+<text x="24" y="57" font-family="Arial, sans-serif" font-size="13" fill="#4b5563">Mean calls per row; rolling memory pays N summary updates</text>
+<line x1="250" y1="60" x2="770" y2="60" stroke="#e5e7eb"/>
+<text x="24" y="96" font-family="Arial, sans-serif" font-size="14" fill="#111827">raw_oracle</text>
+<rect x="250" y="77" width="520" height="24" rx="3" fill="#f3f4f6"/>
+<rect x="250" y="77" width="43" height="24" rx="3" fill="#2563eb"/>
+<text x="784" y="95" font-family="Arial, sans-serif" font-size="13" fill="#111827">1</text>
+<text x="250" y="114" font-family="Arial, sans-serif" font-size="11" fill="#6b7280">54 rows</text>
+<text x="24" y="140" font-family="Arial, sans-serif" font-size="14" fill="#111827">rolling_summary</text>
+<rect x="250" y="121" width="520" height="24" rx="3" fill="#f3f4f6"/>
+<rect x="250" y="121" width="520" height="24" rx="3" fill="#d97706"/>
+<text x="784" y="139" font-family="Arial, sans-serif" font-size="13" fill="#111827">12.2</text>
+<text x="250" y="158" font-family="Arial, sans-serif" font-size="11" fill="#6b7280">51 rows</text>
+<text x="24" y="184" font-family="Arial, sans-serif" font-size="14" fill="#111827">dpm_phase3_checkpoint</text>
+<rect x="250" y="165" width="520" height="24" rx="3" fill="#f3f4f6"/>
+<rect x="250" y="165" width="94" height="24" rx="3" fill="#059669"/>
+<text x="784" y="183" font-family="Arial, sans-serif" font-size="13" fill="#111827">2.2</text>
+<text x="250" y="202" font-family="Arial, sans-serif" font-size="11" fill="#6b7280">45 rows</text>
+</svg>
