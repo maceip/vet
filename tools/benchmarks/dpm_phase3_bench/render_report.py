@@ -9,6 +9,7 @@ from typing import Iterable
 
 try:
     from tools.benchmarks.dpm_phase3_bench.bench_schema import (
+        PHASE3_HANDOFF_QUALITY_CHART,
         AuditVerdict,
         BenchRow,
         BenchRowError,
@@ -23,6 +24,7 @@ try:
     )
 except ModuleNotFoundError:  # Allows running from this directory directly.
     from bench_schema import (  # type: ignore
+        PHASE3_HANDOFF_QUALITY_CHART,
         AuditVerdict,
         BenchRow,
         BenchRowError,
@@ -83,13 +85,35 @@ def _guard_report_inputs(rows: Iterable[BenchRow]) -> None:
                 raise SystemExit(f"{row.case_id}: DPM gate accepted without certificate id")
 
 
+def _matched_cells_filter(rows: list[BenchRow]) -> list[BenchRow]:
+    """Drop any row whose (case_id, repeat) cell is not present for ALL
+    conditions in `rows`. Without this, stale-escape and quality
+    comparisons can have unequal denominators (e.g. DPM emits a
+    stale_memory_escape signal for one fixture that the other
+    conditions don't, biasing the rate). The 2026-05 review's MEDIUM
+    finding on stale-escape denominator parity required this guard."""
+    if not rows:
+        return rows
+    conds_present = {r.condition for r in rows}
+    cells: dict[tuple[str, int], set[Condition]] = {}
+    for r in rows:
+        cells.setdefault((r.case_id, r.repeat), set()).add(r.condition)
+    matched = {k for k, v in cells.items() if v >= conds_present}
+    return [r for r in rows if (r.case_id, r.repeat) in matched]
+
+
 def _summary(rows: list[BenchRow]) -> dict:
-    quality_rows = [
-        r for r in rows
-        if r.test_kind in QUALITY_KINDS
-        and r.score_status == ScoreStatus.SCORED
+    # ChartSpec validation gate: the headline quality chart only
+    # admits rows with matching budgets within a (case, test_kind,
+    # repeat) cell across conditions. Wired in for the 2026-05
+    # review's MEDIUM finding on bypassed chart guards.
+    quality_rows = PHASE3_HANDOFF_QUALITY_CHART.filter([
+        r for r in rows if r.score_status == ScoreStatus.SCORED
         and r.decision_score is not None
-    ]
+    ])
+    # Run a matched-cells parity filter so per-condition means are
+    # over the same set of cells.
+    quality_rows = _matched_cells_filter(quality_rows)
     score_by_condition = {
         condition.value: _aggregate([r.decision_score for r in quality_rows
                                      if r.condition == condition])
@@ -101,6 +125,10 @@ def _summary(rows: list[BenchRow]) -> dict:
         if r.test_kind == TestKind.CORRECTION_SAFETY
         and r.stale_memory_escape is not None
     ]
+    # Matched-cells parity for stale escape too: if one condition has a
+    # signal on a (case, repeat) but another doesn't, drop the cell so
+    # rate denominators are comparable.
+    stale_rows = _matched_cells_filter(stale_rows)
     stale_escape_by_condition = {
         condition.value: _aggregate([1.0 if r.stale_memory_escape else 0.0
                                      for r in stale_rows
