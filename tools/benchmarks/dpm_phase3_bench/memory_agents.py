@@ -241,6 +241,9 @@ class DpmPhase3CheckpointAgent:
         events = events_up_to_probe(case)
         full_end = event_range_end(events)
         correction = first_correction_event(events, probe)
+        must_not_include = (
+            list(probe.rubric.must_not_include) if probe is not None else []
+        )
         responses: list[ModelResponse] = []
 
         gate_may_use = True
@@ -251,6 +254,10 @@ class DpmPhase3CheckpointAgent:
         checkpoint_events = events
 
         if correction is not None:
+            # Snapshot of the would-have-been checkpoint frozen for hashing.
+            # No correction-aware suppression here — this projection
+            # represents what the checkpoint claimed BEFORE the correction
+            # landed, so the audit can prove gate refusal was justified.
             checkpoint_events = [event for event in events if event.idx < correction.idx]
             stale_prompt = build_projection_prompt(
                 render_events(checkpoint_events),
@@ -272,10 +279,18 @@ class DpmPhase3CheckpointAgent:
             audit_verdict = AuditVerdict.CORRECTION_EMITTED
             drift_score = 1.0
 
+        # Fallback / decision-feeding projection. When the gate refused,
+        # this projection MUST be correction-aware: thread the blocking
+        # correction event and the rubric's must_not_include list into
+        # the prompt as explicit suppression directives. Without this,
+        # the projector re-includes the invalidated fact (the bug found
+        # in the Opus 2026-05-10 run on dpm × handoff × correction-heavy).
         projection_prompt = build_projection_prompt(
             render_events(events),
             task,
             budget_chars,
+            correction=correction if not gate_may_use else None,
+            must_not_include=must_not_include if not gate_may_use else None,
         )
         projection = self.model.generate(
             projection_prompt,
@@ -283,6 +298,21 @@ class DpmPhase3CheckpointAgent:
             max_output_chars=budget_chars,
         )
         responses.append(projection)
+
+        # Deterministic guard: post-projection scan for must_not_include
+        # contamination. If the correction-aware projector still
+        # smuggled an invalidated phrase into memory, record it as a
+        # projection_repair_failure so the row is honest about WHY
+        # DPM lost on this cell (fallback contamination, not a normal
+        # quality miss). Only checked on the fallback path; if the
+        # gate accepted, the original checkpoint memory has already
+        # been audited at write-time.
+        repair_failures: list[str] = []
+        if not gate_may_use and must_not_include:
+            mem_lower = projection.text.lower()
+            for item in must_not_include:
+                if item and item.lower() in mem_lower:
+                    repair_failures.append(item)
 
         checkpoint_body = projection.text if gate_may_use else responses[0].text
         checkpoint_body_hash = sha256_hex(checkpoint_body)
@@ -308,16 +338,22 @@ class DpmPhase3CheckpointAgent:
             max_output_chars=budget_chars,
         )
         responses.append(answer)
+        notes_parts: list[str] = []
+        if gate_may_use:
+            notes_parts.append("DPM checkpoint accepted")
+        else:
+            notes_parts.append("checkpoint_refused_reprojected_with_blocking_correction")
+        if repair_failures:
+            notes_parts.append(
+                "projection_repair_failure: "
+                + ", ".join(repr(item) for item in repair_failures)
+            )
         result = _result(
             condition=self.condition,
             memory_bytes=projection.text,
             answer_bytes=answer.text,
             responses=responses,
-            notes=(
-                "DPM checkpoint accepted"
-                if gate_may_use
-                else "DPM checkpoint refused and repaired from raw events"
-            ),
+            notes="; ".join(notes_parts),
         )
         result.projection_model_id = self.model.model_id
         result.auditor_model_id = self.auditor_model_id
@@ -424,12 +460,52 @@ def build_summary_prompt(previous_summary: str, new_events: str, task: str) -> s
     )
 
 
-def build_projection_prompt(event_log: str, task: str, budget_chars: int) -> str:
+def build_projection_prompt(
+    event_log: str,
+    task: str,
+    budget_chars: int,
+    *,
+    correction: SessionEvent | None = None,
+    must_not_include: list[str] | None = None,
+) -> str:
+    """Project the event log into deterministic decision memory.
+
+    When `correction` and/or `must_not_include` are provided, emit
+    explicit BLOCKING CORRECTION and INVALIDATED FACTS suppression
+    blocks. The Phase 3 audit gate refuses checkpoints when a
+    blocking correction lands, but if the agent re-projects from raw
+    events the projector itself must be correction-aware — otherwise
+    the invalidated fact reappears in the fallback memory and the
+    decision call propagates it. This is the prompt-side half of the
+    fallback-path fix; the agent-side half runs a deterministic guard
+    on the resulting projection text.
+    """
+    blocks: list[str] = []
+    if correction is not None:
+        blocks.append(
+            f"\nBLOCKING CORRECTION (event #{int(correction.idx) + 1}):\n"
+            f"{correction.text}\n"
+            "You MUST treat any earlier claim this correction overturns as "
+            "REVOKED. Do not include the revoked claim in your projection, "
+            "even if earlier events asserted it. Cite the correction event "
+            "so the suppression is auditable.\n"
+        )
+    if must_not_include:
+        listed = "\n".join(f"  - {item}" for item in must_not_include)
+        blocks.append(
+            "\nINVALIDATED FACTS — DO NOT REPRODUCE:\n"
+            f"{listed}\n"
+            "These literal phrases are invalidated by the correction above. "
+            "Do NOT include them in your projection in any form. If later "
+            "events restate the corrected version, prefer that.\n"
+        )
+    suppressions = "".join(blocks)
     return (
         "Project the event log into deterministic decision memory.\n"
         "Keep only task-relevant facts, corrections, tool names, and compliance "
         "constraints. Preserve citations by event number. Do not carry facts "
-        "that a later correction invalidates.\n\n"
+        "that a later correction invalidates."
+        f"{suppressions}\n"
         f"MEMORY BUDGET CHARS: {budget_chars}\n\n"
         f"TASK:\n{task}\n\n"
         f"EVENT LOG:\n{event_log}\n\n"

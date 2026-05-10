@@ -326,7 +326,19 @@ def _detect_stale_escape(
             and result.gate_may_use is True):
         return True
 
-    # 3. Expected acknowledgement missing AND a forbidden fact is in the
+    # 3. Memory-side smuggle: the projection / rolling memory itself
+    # contains an invalidated phrase. The answer might be clean (the
+    # decision-call LLM happened to drop it), but the memory is still
+    # contaminated, which means the next decision built on this memory
+    # would propagate. This catches the fallback re-projection failure
+    # mode independently of whether the LLM happened to repeat it.
+    if r.must_not_include and result.memory_bytes:
+        memory_lower = result.memory_bytes.lower()
+        for item in r.must_not_include:
+            if item and item.lower() in memory_lower:
+                return True
+
+    # 4. Expected acknowledgement missing AND a forbidden fact is in the
     # answer (we already returned True for that above; this branch is
     # the "missing ack alone" case). Only count when the probe explicitly
     # demands acknowledgement.
