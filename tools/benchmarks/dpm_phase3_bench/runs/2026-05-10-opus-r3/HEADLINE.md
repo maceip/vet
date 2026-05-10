@@ -1,3 +1,57 @@
+# ⚠ SUPERSEDED — comparative numbers in this run are contaminated.
+
+**A 2026-05 review found three issues that invalidate the comparative
+1.000 / 0.98 / 0.82 quality claim and the 0% / 78% / 100% safety claim
+on this run. Do not cite numbers from this file.**
+
+The contamination, in order of severity:
+
+1. **Rubric leakage (HIGH).** `render_task` was serializing
+   `expected_match` (the answer substring) and `rubric` (`must_include`,
+   `must_not_include`, `must_call_tools`) into the runtime task fed to
+   every model call: raw decision, rolling summary + decision, DPM
+   projection + decision. The model saw the answer key. Fixed by
+   commit `39e965b0`.
+
+2. **`test_kind` matrix inflation (HIGH).** The 162-row matrix was
+   built by relabeling 54 distinct experiments under three test_kind
+   labels (decision / handoff / correction_safety). The agent never
+   branched on `test_kind`; it was a label, not an axis. Per-condition
+   `n=54 with stddev=0` assumed independent samples — they weren't.
+   Fixed by commit `9944bef7`. New matrix is 18 distinct cells × N
+   repeats.
+
+3. **Substring-based correction detection (HIGH).** `first_correction_event`
+   matched the literal word "correction" / "correct" in event text.
+   On `long-real-session`, 15 events contained the word in roadmap-doc
+   prose; 9 of the 18 DPM gate refusals reported below were phantoms
+   triggered on these false positives, not on real user corrections.
+   Fixed by commit `39e965b0` (typed `CorrectionDirective` declared at
+   fixture-construction time).
+
+Additional reviewer findings affecting this report's framing:
+
+4. **"Real BLAKE3 audit certificate" overclaim.** Every reference in
+   this file to `audit_certificate_id` and `checkpoint_manifest_hash`
+   on Python rows is a SHA-256 fingerprint over canonical JSON,
+   computed in `memory_agents.py:sha256_hex`. The substrate's actual
+   BLAKE3 ledger (`LocalFilesystemAuditLedger`) is exercised by
+   `phase3_substrate_smoke.cc` only — Python bench rows do not flow
+   through it. Treat the Python field as "manifest fingerprint
+   mirroring substrate semantics," not as a real ledger cert.
+
+5. Chart-guard / denominator parity issues (MEDIUM): fixed by
+   commit `821d41d1`.
+
+Verbatim review and per-finding fix log in commits `39e965b0`,
+`9944bef7`, `821d41d1` on `phase3-bench`.
+
+Rerun against the fixed code is required before any number from this
+work leaves the repo. The text below this banner is the original
+HEADLINE as written; keep for audit history only.
+
+---
+
 # Phase 3 bench — Opus 4.7, `--repeat 3`, hardened report layout
 
 Run: `runs/2026-05-10-opus-r3/` · Commit: `254d81b2` (Pass 2/3) on top of

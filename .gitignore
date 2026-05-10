@@ -1,2 +1,7 @@
 /MODULE.bazel.lock
 /bazel-*
+
+# Python bytecode (per 2026-05 review LOW finding on tracked pycache).
+__pycache__/
+*.pyc
+*.pyo

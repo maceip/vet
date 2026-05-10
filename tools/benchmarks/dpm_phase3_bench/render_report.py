@@ -384,9 +384,9 @@ Gate may use checkpoint: `{row.gate_may_use}`
 
 Audit verdict: `{row.audit_verdict.value}`
 
-Audit certificate id: `{row.audit_certificate_id or "(none)"}`
+Manifest fingerprint (Python SHA-256, mirrors substrate cert semantics): `{row.audit_certificate_id or "(none)"}`
 
-Checkpoint manifest hash: `{row.checkpoint_manifest_hash or "(none)"}`
+Checkpoint manifest hash (Python SHA-256): `{row.checkpoint_manifest_hash or "(none)"}`
 
 Blocking corrections: `{", ".join(row.blocking_corrections) if row.blocking_corrections else "(none)"}`
 
@@ -428,9 +428,17 @@ def _write_markdown(rows: list[BenchRow], summary: dict, path: Path) -> None:
         "",
         "### Audit gate",
         "",
-        "Rolling memory has no equivalent to this gate; DPM rows expose certificate",
-        "and correction evidence directly. Refuse rows force re-projection from raw",
-        "events with typed correction directives — a primitive rolling cannot offer.",
+        "Rolling memory has no equivalent to this gate; DPM rows expose manifest",
+        "fingerprints and correction evidence directly. Refuse rows force",
+        "re-projection from raw events with typed correction directives — a",
+        "primitive rolling cannot offer.",
+        "",
+        "Manifest-fingerprint and audit-certificate fields on Python bench rows",
+        "are SHA-256 hashes computed at row-emit time (`memory_agents.sha256_hex`),",
+        "mirroring substrate semantics. The substrate's actual BLAKE3 ledger",
+        "(`LocalFilesystemAuditLedger`) is exercised by `phase3_substrate_smoke.cc`;",
+        "the Python matrix does not flow rows through it. Treat ledger-cert claims",
+        "for these rows as substrate-equivalent in shape, not in provenance.",
         "",
         _markdown_table(
             ["metric", "value"],
