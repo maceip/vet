@@ -1,0 +1,140 @@
+{
+  "audit_gate": {
+    "audit_pass_count": 15,
+    "correction_emitted_count": 3,
+    "dpm_rows": 18,
+    "gate_accept_count": 15,
+    "gate_refuse_count": 3
+  },
+  "cases": [
+    "correction-heavy-session",
+    "handoff-session",
+    "long-real-session",
+    "long-session-context-retention",
+    "short-session-next-intent",
+    "tool-heavy-session"
+  ],
+  "cost_by_condition": {
+    "dpm_phase3_checkpoint": {
+      "input_tokens": {
+        "count": 18,
+        "max": 324500.0,
+        "mean": 55439.61111111111,
+        "min": 892.0,
+        "stddev": 123816.3779892195
+      },
+      "model_calls": {
+        "count": 18,
+        "max": 3.0,
+        "mean": 2.1666666666666665,
+        "min": 2.0,
+        "stddev": 0.3834824944236852
+      },
+      "skipped_or_errored_rows": 0,
+      "wall_ms": {
+        "count": 18,
+        "max": 26575.0,
+        "mean": 11083.5,
+        "min": 3596.0,
+        "stddev": 6628.272725494132
+      }
+    },
+    "raw_oracle": {
+      "input_tokens": {
+        "count": 18,
+        "max": 323774.0,
+        "mean": 54692.333333333336,
+        "min": 473.0,
+        "stddev": 123826.14062561787
+      },
+      "model_calls": {
+        "count": 18,
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "stddev": 0.0
+      },
+      "skipped_or_errored_rows": 0,
+      "wall_ms": {
+        "count": 18,
+        "max": 17671.0,
+        "mean": 4030.1111111111113,
+        "min": 1408.0,
+        "stddev": 4646.232982546676
+      }
+    },
+    "rolling_summary": {
+      "input_tokens": {
+        "count": 18,
+        "max": 378183.0,
+        "mean": 64752.833333333336,
+        "min": 930.0,
+        "stddev": 144230.18177541962
+      },
+      "model_calls": {
+        "count": 18,
+        "max": 81.0,
+        "mean": 16.0,
+        "min": 2.0,
+        "stddev": 29.917533714018134
+      },
+      "skipped_or_errored_rows": 0,
+      "wall_ms": {
+        "count": 18,
+        "max": 895442.0,
+        "mean": 154734.33333333334,
+        "min": 4489.0,
+        "stddev": 328633.0013577635
+      }
+    }
+  },
+  "errored_rows": 0,
+  "needs_judge_rows": 0,
+  "quality_score_by_condition": {
+    "dpm_phase3_checkpoint": {
+      "count": 18,
+      "max": 1.0,
+      "mean": 0.4861111111111111,
+      "min": 0.0,
+      "stddev": 0.4655185456454654
+    },
+    "raw_oracle": {
+      "count": 18,
+      "max": 1.0,
+      "mean": 0.7175925925925926,
+      "min": 0.0,
+      "stddev": 0.37718739912615024
+    },
+    "rolling_summary": {
+      "count": 18,
+      "max": 1.0,
+      "mean": 0.5601851851851852,
+      "min": 0.0,
+      "stddev": 0.4218361237769548
+    }
+  },
+  "row_count": 54,
+  "stale_escape_by_condition": {
+    "dpm_phase3_checkpoint": {
+      "count": 3,
+      "max": 0.0,
+      "mean": 0.0,
+      "min": 0.0,
+      "stddev": 0.0
+    },
+    "raw_oracle": {
+      "count": 3,
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "stddev": 0.0
+    },
+    "rolling_summary": {
+      "count": 3,
+      "max": 1.0,
+      "mean": 0.6666666666666666,
+      "min": 0.0,
+      "stddev": 0.5773502691896257
+    }
+  }
+}
