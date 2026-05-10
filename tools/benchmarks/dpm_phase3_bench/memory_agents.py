@@ -100,7 +100,7 @@ class HeuristicModelAdapter:
 class RawOracleAgent:
     """Full-log decision ceiling when the rendered event log fits."""
 
-    def __init__(self, model: ModelAdapter, *, max_context_chars: int = 200_000):
+    def __init__(self, model: ModelAdapter, *, max_context_chars: int = 3_000_000):
         self.model = model
         self.max_context_chars = max_context_chars
 
