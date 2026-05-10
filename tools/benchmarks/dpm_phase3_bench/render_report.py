@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from statistics import mean
+from statistics import mean, stdev
 from typing import Iterable
 
 try:
@@ -151,9 +151,59 @@ def _summary(rows: list[BenchRow]) -> dict:
     }
 
 
+def _per_cell_variance_section(rows: list[BenchRow]) -> list[str]:
+    """Per-(case, condition, test_kind) variance, only emitted when at least
+    one cell has more than one sample (i.e. the run was --repeat>1). This is
+    the run-to-run noise floor — orthogonal to fixture-difficulty variance."""
+    cells: dict[tuple, list[float]] = {}
+    for r in rows:
+        if r.test_kind not in QUALITY_KINDS: continue
+        if r.score_status != ScoreStatus.SCORED: continue
+        if r.decision_score is None: continue
+        key = (r.case_id, r.condition.value, r.test_kind.value)
+        cells.setdefault(key, []).append(float(r.decision_score))
+    high_variance = [(k, v) for k, v in cells.items() if len(v) >= 2]
+    if not high_variance:
+        return []
+    high_variance.sort(key=lambda kv: (kv[0][0], kv[0][1], kv[0][2]))
+    table_rows: list[list[str]] = []
+    for (case_id, cond, kind), vals in high_variance:
+        n = len(vals)
+        m = mean(vals)
+        sd = stdev(vals) if n >= 2 else 0.0
+        table_rows.append([case_id, cond, kind, str(n),
+                           _fmt(m), _fmt(sd),
+                           _fmt(min(vals)), _fmt(max(vals))])
+    return [
+        "### Per-cell variance (`--repeat > 1`)",
+        "",
+        "Run-to-run decision_score variance for cells with multiple samples.",
+        "High stddev on a cell means Opus stochasticity (no `temperature=0`)",
+        "is dominating the signal there; widen the rubric or run more repeats",
+        "to get a usable mean.",
+        "",
+        _markdown_table(
+            ["case_id", "condition", "test_kind", "n", "mean", "stddev", "min", "max"],
+            table_rows,
+        ),
+        "",
+    ]
+
+
 def _aggregate(values: Iterable[float | None]) -> dict:
     nums = [float(v) for v in values if v is not None]
-    return {"count": len(nums), "mean": (mean(nums) if nums else None)}
+    if not nums:
+        return {"count": 0, "mean": None, "stddev": None, "min": None, "max": None}
+    n = len(nums)
+    m = mean(nums)
+    sd = stdev(nums) if n >= 2 else 0.0
+    return {
+        "count": n,
+        "mean": m,
+        "stddev": sd,
+        "min": min(nums),
+        "max": max(nums),
+    }
 
 
 def _executed_rows(rows: Iterable[BenchRow], condition: Condition) -> list[BenchRow]:
@@ -335,6 +385,10 @@ def _write_markdown(rows: list[BenchRow], summary: dict, path: Path) -> None:
         "This report compares rolling memory with DPM Phase 3 checkpointed",
         "decision memory on audit-safe handoff after a correction.",
         "",
+        "Panel order: **safety / audit first** (the Phase 3 invariant), then",
+        "decision quality, then cost. Quality numbers without the audit context",
+        "miss the substrate-level result entirely.",
+        "",
         "## Run Summary",
         "",
         f"- Rows: `{summary['row_count']}`",
@@ -342,19 +396,25 @@ def _write_markdown(rows: list[BenchRow], summary: dict, path: Path) -> None:
         f"- Needs judge rows: `{summary['needs_judge_rows']}`",
         f"- Errored rows: `{summary['errored_rows']}`",
         "",
-        "## Decision Quality",
+        "## Safety / Audit (Phase 3 headline)",
+        "",
+        "### Audit gate",
+        "",
+        "Rolling memory has no equivalent to this gate; DPM rows expose certificate",
+        "and correction evidence directly. Refuse rows force re-projection from raw",
+        "events with typed correction directives — a primitive rolling cannot offer.",
         "",
         _markdown_table(
-            ["condition", "scored_rows", "mean_decision_score"],
-            [[condition, str(stats["count"]), _fmt(stats["mean"])]
-             for condition, stats in summary["quality_score_by_condition"].items()],
+            ["metric", "value"],
+            [[k, str(v)] for k, v in summary["audit_gate"].items()],
         ),
         "",
-        "![Decision quality](chart_decision_accuracy.svg)",
+        "![Audit gate](chart_audit_gate.svg)",
         "",
-        "## Stale-Memory Escape",
+        "### Stale-memory escape",
         "",
-        "Lower is better. This is the Phase 3 headline metric.",
+        "Lower is better. Counts cells where an invalidated phrase made it into",
+        "memory or answer despite a blocking correction in the log.",
         "",
         _markdown_table(
             ["condition", "rows", "escape_rate"],
@@ -364,17 +424,26 @@ def _write_markdown(rows: list[BenchRow], summary: dict, path: Path) -> None:
         "",
         "![Stale-memory escape](chart_stale_memory_escape.svg)",
         "",
-        "## Audit Gate",
+        "## Decision Quality",
         "",
-        "Rolling memory has no equivalent to this gate; DPM rows expose certificate",
-        "and correction evidence directly.",
+        "Mean decision score by condition. **Read this in conjunction with the",
+        "Safety / Audit panel above** — a high quality score is not a Phase 3 win",
+        "if it was bought by smuggling invalidated state through memory. With",
+        "`--repeat > 1` the stddev column measures variance across all rows in",
+        "the condition (fixture difficulty + run-to-run noise combined); see the",
+        "per-cell variance breakdown below for the run-to-run component alone.",
         "",
         _markdown_table(
-            ["metric", "value"],
-            [[k, str(v)] for k, v in summary["audit_gate"].items()],
+            ["condition", "scored_rows", "mean", "stddev", "min", "max"],
+            [[condition, str(stats["count"]),
+              _fmt(stats["mean"]), _fmt(stats["stddev"]),
+              _fmt(stats["min"]), _fmt(stats["max"])]
+             for condition, stats in summary["quality_score_by_condition"].items()],
         ),
         "",
-        "![Audit gate](chart_audit_gate.svg)",
+        "![Decision quality](chart_decision_accuracy.svg)",
+        "",
+        *_per_cell_variance_section(rows),
         "",
         "## Cost",
         "",
