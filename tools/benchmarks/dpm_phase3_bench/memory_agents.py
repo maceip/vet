@@ -279,18 +279,31 @@ class DpmPhase3CheckpointAgent:
             audit_verdict = AuditVerdict.CORRECTION_EMITTED
             drift_score = 1.0
 
-        # Fallback / decision-feeding projection. When the gate refused,
-        # this projection MUST be correction-aware: thread the blocking
-        # correction event and the rubric's must_not_include list into
-        # the prompt as explicit suppression directives. Without this,
-        # the projector re-includes the invalidated fact (the bug found
-        # in the Opus 2026-05-10 run on dpm × handoff × correction-heavy).
+        # Fallback / decision-feeding projection. When the gate refused
+        # AND the rubric carries a concrete invalidation list
+        # (must_not_include), thread the blocking correction event and
+        # that list into the prompt as explicit suppression directives.
+        #
+        # Why gate on must_not_include: first_correction_event uses a
+        # substring heuristic ("correction:" in event text, with
+        # fallback to "correct"). On long-real-session that heuristic
+        # false-positives on roadmap doc headers and code comments
+        # containing the word "correction" — not actual user
+        # corrections. Without a rubric-grounded invalidation list, we
+        # can't tell what to suppress, and aggressive prompt-side
+        # suppression against a phantom correction tanks decision
+        # quality (proven in the 2026-05-10 dpm refuse-cells re-run on
+        # long-real-session × decision: 1.0 → 0.0). Net rule: refuse
+        # on detected corrections (substrate accounting), but only
+        # apply correction-aware projection when the rubric explicitly
+        # lists what's invalidated.
+        suppress = (not gate_may_use) and bool(must_not_include)
         projection_prompt = build_projection_prompt(
             render_events(events),
             task,
             budget_chars,
-            correction=correction if not gate_may_use else None,
-            must_not_include=must_not_include if not gate_may_use else None,
+            correction=correction if suppress else None,
+            must_not_include=must_not_include if suppress else None,
         )
         projection = self.model.generate(
             projection_prompt,
@@ -341,8 +354,10 @@ class DpmPhase3CheckpointAgent:
         notes_parts: list[str] = []
         if gate_may_use:
             notes_parts.append("DPM checkpoint accepted")
-        else:
+        elif suppress:
             notes_parts.append("checkpoint_refused_reprojected_with_blocking_correction")
+        else:
+            notes_parts.append("checkpoint_refused_reprojected_no_rubric_suppression")
         if repair_failures:
             notes_parts.append(
                 "projection_repair_failure: "
