@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <exception>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"  // from @com_google_absl
@@ -26,6 +27,7 @@
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/dpm/event.h"
 #include "runtime/dpm/event_sourced_log.h"
+#include "runtime/dpm/projection_prompt.h"
 #include "runtime/platform/hash/hasher.h"
 #include "runtime/util/status_macros.h"
 
@@ -137,6 +139,10 @@ std::string CorrectionPayloadToJson(const CorrectionPayload& payload) {
     invalidates.push_back(hash.ToHex());
   }
   json["invalidates_checkpoints"] = invalidates;
+  json["correction_text"] = payload.correction_text;
+  json["invalidated_facts"] = payload.invalidated_facts;
+  json["replacement_facts"] = payload.replacement_facts;
+  json["scope"] = std::string(ProjectionCorrectionScopeToString(payload.scope));
   json["replacement_projection"] = payload.replacement_projection;
   json["must_interrupt_before_next_predict"] =
       payload.must_interrupt_before_next_predict;
@@ -186,6 +192,21 @@ absl::StatusOr<CorrectionPayload> CorrectionPayloadFromJson(
         payload.invalidates_checkpoints.push_back(hash);
       }
     }
+    payload.correction_text = json.value("correction_text", std::string());
+    if (json.contains("invalidated_facts") &&
+        json["invalidated_facts"].is_array()) {
+      payload.invalidated_facts =
+          json["invalidated_facts"].get<std::vector<std::string>>();
+    }
+    if (json.contains("replacement_facts") &&
+        json["replacement_facts"].is_array()) {
+      payload.replacement_facts =
+          json["replacement_facts"].get<std::vector<std::string>>();
+    }
+    ASSIGN_OR_RETURN(
+        payload.scope,
+        ProjectionCorrectionScopeFromString(
+            json.value("scope", std::string("checkpoint_range"))));
     payload.replacement_projection =
         json.value("replacement_projection", std::string());
     payload.must_interrupt_before_next_predict =
@@ -198,6 +219,29 @@ absl::StatusOr<CorrectionPayload> CorrectionPayloadFromJson(
     return absl::InvalidArgumentError(
         absl::StrCat("Invalid CorrectionPayload JSON: ", e.what()));
   }
+}
+
+std::vector<ProjectionCorrectionDirective> BuildProjectionCorrectionDirectives(
+    const std::vector<CorrectionPayload>& corrections) {
+  std::vector<ProjectionCorrectionDirective> directives;
+  directives.reserve(corrections.size());
+  for (const CorrectionPayload& correction : corrections) {
+    if (correction.severity != CorrectionSeverity::kBlocking) continue;
+    ProjectionCorrectionDirective directive;
+    directive.correction_event_id = correction.correction_id;
+    directive.correction_event_index =
+        correction.target_event_range_end > 0
+            ? correction.target_event_range_end - 1
+            : correction.target_event_range_start;
+    directive.correction_text =
+        correction.correction_text.empty() ? correction.reason_code
+                                           : correction.correction_text;
+    directive.invalidated_facts = correction.invalidated_facts;
+    directive.replacement_facts = correction.replacement_facts;
+    directive.scope = correction.scope;
+    directives.push_back(std::move(directive));
+  }
+  return directives;
 }
 
 absl::Status AppendCorrectionEvent(EventSourcedLog* log,

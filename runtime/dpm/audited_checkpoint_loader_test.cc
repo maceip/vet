@@ -39,6 +39,7 @@ namespace litert::lm {
 namespace {
 
 using ::testing::HasSubstr;
+using ::testing::Not;
 
 std::filesystem::path TestRoot(absl::string_view name) {
   std::filesystem::path path =
@@ -54,9 +55,12 @@ class RecordingRunner : public DPMInferenceRunner {
 
   absl::StatusOr<std::string> Generate(
       absl::string_view prompt, const DPMInferenceConfig& config) override {
+    prompts.push_back(std::string(prompt));
     if (next_ >= responses_.size()) return responses_.back();
     return responses_[next_++];
   }
+
+  std::vector<std::string> prompts;
 
  private:
   std::vector<std::string> responses_;
@@ -225,6 +229,85 @@ TEST(AuditedCheckpointLoaderTest,
   ASSERT_FALSE(blocked.ok());
   EXPECT_THAT(std::string(blocked.status().message()),
               HasSubstr("blocking correction"));
+}
+
+TEST(AuditedCheckpointLoaderTest,
+     BlockingCorrectionReplaysRawLogWithCorrectionDirectives) {
+  EventSourcedLog log(TestRoot("audited_loader_replay_log"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-1",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "initial analysis says transport as main result",
+      .timestamp_us = 1,
+  }));
+
+  const std::string stale_projection =
+      R"json({"Facts":["transport as main result [1]"],"Reasoning":["old path [1]"],"Compliance":["audit retained [1]"]})json";
+  RecordingRunner checkpoint_runner({stale_projection});
+  DPMProjector checkpoint_projector(&checkpoint_runner);
+  const std::filesystem::path root = TestRoot("audited_loader_replay_store");
+  LocalFilesystemCheckpointStore checkpoint_store(root);
+  LocalFilesystemAuditLedger ledger(root);
+  LocalMerkleDagStore dag(root);
+  ProjectionCheckpointConfig config = CheckpointConfig();
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionCheckpoint checkpoint,
+      CreateProjectionCheckpoint(log, &checkpoint_projector, config,
+                                 &checkpoint_store, &dag));
+  ASSERT_OK_AND_ASSIGN(AuditCertificate pass,
+                       FinalizeAuditCertificate(CertificateFor(
+                           checkpoint, config, AuditVerdict::kPass, 0.0,
+                           1777390000000010)));
+  ASSERT_OK(ledger.PutCertificate(pass));
+
+  CorrectionPayload correction;
+  correction.correction_id = "corr-transport";
+  correction.target_checkpoint_manifest_hash = checkpoint.manifest_hash;
+  correction.target_event_range_start = 0;
+  correction.target_event_range_end = checkpoint.event_count;
+  correction.audit_certificate_id = pass.certificate_id;
+  correction.reason_code = "projection_drift";
+  correction.severity = CorrectionSeverity::kBlocking;
+  correction.invalidates_checkpoints = {checkpoint.manifest_hash};
+  correction.correction_text = "Transport was not the main result.";
+  correction.invalidated_facts = {"transport as main result"};
+  correction.replacement_facts = {"credential theft is the main result [2]"};
+  correction.must_interrupt_before_next_predict = true;
+  correction.created_unix_micros = 1777390000000020;
+  ASSERT_OK(AppendCorrectionEvent(&log, correction));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Event> events, log.GetAllEvents());
+  ASSERT_OK_AND_ASSIGN(CorrectionIndex corrections,
+                       CorrectionIndex::Build(events));
+  RecordingRunner replay_runner({
+      R"json({"Facts":["credential theft is the main result [2]"],"Reasoning":["correction supersedes earlier analysis [2]"],"Compliance":["audit retained [2]"]})json",
+  });
+  DPMProjector replay_projector(&replay_runner);
+  CorrectionAwareCheckpointReplayRequest replay_request;
+  replay_request.checkpoint = RequestFor(log, checkpoint);
+  replay_request.projection = config.projection;
+
+  ASSERT_OK_AND_ASSIGN(
+      CorrectionAwareCheckpointReplay replay,
+      LoadOrReplayAuditedProjectionCheckpointForDecision(
+          log, &replay_projector, replay_request, &checkpoint_store, ledger,
+          corrections));
+
+  EXPECT_FALSE(replay.gate.may_use);
+  EXPECT_TRUE(replay.replayed_from_raw);
+  ASSERT_EQ(replay.correction_directives.size(), 1);
+  EXPECT_EQ(replay.correction_directives[0].invalidated_facts,
+            correction.invalidated_facts);
+  EXPECT_THAT(replay.projected_memory,
+              HasSubstr("credential theft is the main result"));
+  EXPECT_THAT(replay.projected_memory,
+              Not(HasSubstr("transport as main result")));
+  ASSERT_EQ(replay_runner.prompts.size(), 1);
+  EXPECT_THAT(replay_runner.prompts[0], HasSubstr("[BLOCKING CORRECTIONS]"));
+  EXPECT_THAT(replay_runner.prompts[0], HasSubstr("corr-transport"));
 }
 
 }  // namespace

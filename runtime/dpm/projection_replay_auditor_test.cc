@@ -217,6 +217,33 @@ TEST(ProjectionReplayAuditorTest, BodyTamperFailsBeforeReplayCertificate) {
 }
 
 TEST(ProjectionReplayAuditorTest,
+     CorrectionPayloadRoundTripsCorrectionAwareReplayFields) {
+  const Hash256 checkpoint = HashBytes(HashAlgorithm::kBlake3, "checkpoint");
+  const Hash256 certificate = HashBytes(HashAlgorithm::kBlake3, "certificate");
+  CorrectionPayload payload = BlockingCorrectionFor(checkpoint, certificate);
+  payload.correction_text = "Transport was not the main result.";
+  payload.invalidated_facts = {"transport as main result"};
+  payload.replacement_facts = {"credential theft is the main result [2]"};
+  payload.scope = ProjectionCorrectionScope::kGlobal;
+
+  ASSERT_OK_AND_ASSIGN(
+      CorrectionPayload decoded,
+      CorrectionPayloadFromJson(CorrectionPayloadToJson(payload)));
+  EXPECT_EQ(decoded.correction_text, payload.correction_text);
+  EXPECT_EQ(decoded.invalidated_facts, payload.invalidated_facts);
+  EXPECT_EQ(decoded.replacement_facts, payload.replacement_facts);
+  EXPECT_EQ(decoded.scope, ProjectionCorrectionScope::kGlobal);
+
+  const std::vector<ProjectionCorrectionDirective> directives =
+      BuildProjectionCorrectionDirectives({decoded});
+  ASSERT_EQ(directives.size(), 1);
+  EXPECT_EQ(directives[0].correction_event_id, payload.correction_id);
+  EXPECT_EQ(directives[0].correction_text, payload.correction_text);
+  EXPECT_EQ(directives[0].invalidated_facts, payload.invalidated_facts);
+  EXPECT_EQ(directives[0].replacement_facts, payload.replacement_facts);
+}
+
+TEST(ProjectionReplayAuditorTest,
      DriftWritesCorrectionCertificateAndCorrectionPayloadTripsBarrier) {
   EventSourcedLog log(TestRoot("audit_replay_drift_log"),
                       DPMLogIdentity{

@@ -23,7 +23,9 @@
 #include "runtime/dpm/checkpoint_decision_gate.h"
 #include "runtime/dpm/checkpointed_projection.h"
 #include "runtime/dpm/correction_protocol.h"
+#include "runtime/dpm/dpm_projector.h"
 #include "runtime/dpm/event_sourced_log.h"
+#include "runtime/dpm/projection_prompt.h"
 #include "runtime/platform/audit/audit_certificate_signer.h"
 #include "runtime/platform/audit/audit_ledger.h"
 #include "runtime/platform/checkpoint/checkpoint_store.h"
@@ -51,6 +53,21 @@ struct AuditedProjectionCheckpoint {
   CheckpointDecisionGateResult gate;
 };
 
+struct CorrectionAwareCheckpointReplayRequest {
+  AuditedProjectionCheckpointRequest checkpoint;
+  DPMProjector::ProjectionConfig projection;
+  uint64_t replay_event_range_start = 0;
+  // 0 means replay through the current append-only log generation.
+  uint64_t replay_event_range_end = 0;
+};
+
+struct CorrectionAwareCheckpointReplay {
+  std::string projected_memory;
+  CheckpointDecisionGateResult gate;
+  bool replayed_from_raw = false;
+  std::vector<ProjectionCorrectionDirective> correction_directives;
+};
+
 // Runtime enforcement hook for Phase 3: callers that want to use a checkpoint
 // as decision memory must pass through the audit/correction gate first. Missing
 // audit, pending audit, failed thaw, drift, and blocking corrections all fail
@@ -59,6 +76,19 @@ absl::StatusOr<AuditedProjectionCheckpoint>
 LoadAuditedProjectionCheckpointForDecision(
     const AuditedProjectionCheckpointRequest& request, CheckpointStore* store,
     const AuditLedger& ledger, const CorrectionIndex& corrections);
+
+// Convenience recovery path for the common Phase 3 case:
+//  1. Use the checkpoint if the gate accepts it.
+//  2. If the gate refuses because a blocking correction invalidated it, replay
+//     raw events through DPM with typed correction directives and deterministic
+//     invalidated-fact guards.
+//  3. Fail closed for every other refusal mode.
+absl::StatusOr<CorrectionAwareCheckpointReplay>
+LoadOrReplayAuditedProjectionCheckpointForDecision(
+    const EventSourcedLog& log, DPMProjector* projector,
+    const CorrectionAwareCheckpointReplayRequest& request,
+    CheckpointStore* store, const AuditLedger& ledger,
+    const CorrectionIndex& corrections);
 
 }  // namespace litert::lm
 

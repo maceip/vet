@@ -18,10 +18,12 @@
 #include <cstdint>
 #include <exception>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
+#include "absl/strings/str_join.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/dpm/event.h"
@@ -83,6 +85,50 @@ absl::Status ValidateProjectionCitations(const nlohmann::ordered_json& json) {
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::string> CanonicalizeProjectionJson(
+    absl::string_view raw_projection) {
+  try {
+    nlohmann::ordered_json projection =
+        nlohmann::ordered_json::parse(std::string(raw_projection));
+    RETURN_IF_ERROR(ValidateProjectionCitations(projection));
+    return projection.dump();
+  } catch (const std::exception& e) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "DPM projection output is not valid JSON: ", e.what(),
+        "; raw prefix: ", std::string(raw_projection).substr(0, 512)));
+  }
+}
+
+DPMInferenceConfig InferenceConfigFor(
+    const DPMProjector::ProjectionConfig& config) {
+  return DPMInferenceConfig{
+      .max_output_tokens = static_cast<int>(config.max_tokens),
+      .seed = config.seed,
+      .temperature = config.temperature,
+      .fresh_context = true,
+      .model_id = config.model_id,
+  };
+}
+
+std::string CreateCorrectionRepairPrompt(
+    absl::string_view previous_projection,
+    const std::vector<std::string>& invalidated_facts,
+    const std::vector<ProjectionCorrectionDirective>& correction_directives) {
+  return absl::StrCat(
+      "System. CORRECTION REPAIR for DPM projected memory.\n"
+      "The previous projection violated blocking correction directives. "
+      "Remove the forbidden facts listed below while preserving valid JSON, "
+      "one-based citations, and all non-conflicting replacement facts.\n\n",
+      FormatProjectionCorrectionDirectives(correction_directives),
+      "[FORBIDDEN SUBSTRINGS]\n- ", absl::StrJoin(invalidated_facts, "\n- "),
+      "\n\n[PREVIOUS PROJECTION]\n", previous_projection, "\n\n",
+      "[EXPECTED OUTPUT]\n"
+      "Return only a valid JSON object in this exact shape:\n",
+      "{\"Facts\":[\"... [i]\"],\"Reasoning\":[\"... [i]\"],"
+      "\"Compliance\":[\"... [i]\"]}\n",
+      "The corrected JSON must not contain any forbidden substring.\n");
+}
+
 }  // namespace
 
 proto::SamplerParameters CreateDPMSamplerParameters(
@@ -110,26 +156,8 @@ absl::StatusOr<std::string> DPMProjector::Project(
   ASSIGN_OR_RETURN(std::string prompt, CreateProjectionPrompt(log, config));
   ASSIGN_OR_RETURN(
       std::string raw_projection,
-      runner_->Generate(prompt,
-                        DPMInferenceConfig{
-                            .max_output_tokens =
-                                static_cast<int>(config.max_tokens),
-                            .seed = config.seed,
-                            .temperature = config.temperature,
-                            .fresh_context = true,
-                            .model_id = config.model_id,
-                        }));
-  try {
-    nlohmann::ordered_json projection =
-        nlohmann::ordered_json::parse(raw_projection);
-    RETURN_IF_ERROR(ValidateProjectionCitations(projection));
-    return projection.dump();
-  } catch (const std::exception& e) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("DPM projection output is not valid JSON: ", e.what(),
-                     "; raw prefix: ",
-                     raw_projection.substr(0, 512)));
-  }
+      runner_->Generate(prompt, InferenceConfigFor(config)));
+  return CanonicalizeProjectionJson(raw_projection);
 }
 
 absl::StatusOr<std::string> DPMProjector::ProjectRange(
@@ -147,26 +175,84 @@ absl::StatusOr<std::string> DPMProjector::ProjectRange(
                                                   event_range_end, config));
   ASSIGN_OR_RETURN(
       std::string raw_projection,
-      runner_->Generate(prompt,
-                        DPMInferenceConfig{
-                            .max_output_tokens =
-                                static_cast<int>(config.max_tokens),
-                            .seed = config.seed,
-                            .temperature = config.temperature,
-                            .fresh_context = true,
-                            .model_id = config.model_id,
-                        }));
-  try {
-    nlohmann::ordered_json projection =
-        nlohmann::ordered_json::parse(raw_projection);
-    RETURN_IF_ERROR(ValidateProjectionCitations(projection));
-    return projection.dump();
-  } catch (const std::exception& e) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("DPM projection output is not valid JSON: ", e.what(),
-                     "; raw prefix: ",
-                     raw_projection.substr(0, 512)));
+      runner_->Generate(prompt, InferenceConfigFor(config)));
+  return CanonicalizeProjectionJson(raw_projection);
+}
+
+absl::StatusOr<std::string> DPMProjector::ProjectWithCorrections(
+    const EventSourcedLog& log, const ProjectionConfig& config,
+    const std::vector<ProjectionCorrectionDirective>& correction_directives) {
+  if (runner_ == nullptr) {
+    return absl::FailedPreconditionError("DPM projector runner is null.");
   }
+  if (config.model_id.empty()) {
+    return absl::InvalidArgumentError(
+        "DPM projection requires a pinned model_id.");
+  }
+  ASSIGN_OR_RETURN(
+      std::string prompt,
+      CreateProjectionPromptWithCorrections(log, config,
+                                            correction_directives));
+  ASSIGN_OR_RETURN(
+      std::string raw_projection,
+      runner_->Generate(prompt, InferenceConfigFor(config)));
+  ASSIGN_OR_RETURN(std::string projection,
+                   CanonicalizeProjectionJson(raw_projection));
+  std::vector<std::string> invalidated =
+      FindInvalidatedFacts(projection, correction_directives);
+  for (int attempt = 0;
+       !invalidated.empty() && attempt < config.correction_repair_attempts;
+       ++attempt) {
+    ASSIGN_OR_RETURN(
+        std::string repaired_raw,
+        runner_->Generate(CreateCorrectionRepairPrompt(
+                              projection, invalidated, correction_directives),
+                          InferenceConfigFor(config)));
+    ASSIGN_OR_RETURN(projection, CanonicalizeProjectionJson(repaired_raw));
+    invalidated = FindInvalidatedFacts(projection, correction_directives);
+  }
+  RETURN_IF_ERROR(
+      ValidateNoInvalidatedFacts(projection, correction_directives));
+  return projection;
+}
+
+absl::StatusOr<std::string> DPMProjector::ProjectRangeWithCorrections(
+    const EventSourcedLog& log, uint64_t event_range_start,
+    uint64_t event_range_end, const ProjectionConfig& config,
+    const std::vector<ProjectionCorrectionDirective>& correction_directives) {
+  if (runner_ == nullptr) {
+    return absl::FailedPreconditionError("DPM projector runner is null.");
+  }
+  if (config.model_id.empty()) {
+    return absl::InvalidArgumentError(
+        "DPM projection requires a pinned model_id.");
+  }
+  ASSIGN_OR_RETURN(
+      std::string prompt,
+      CreateProjectionPromptForRangeWithCorrections(
+          log, event_range_start, event_range_end, config,
+          correction_directives));
+  ASSIGN_OR_RETURN(
+      std::string raw_projection,
+      runner_->Generate(prompt, InferenceConfigFor(config)));
+  ASSIGN_OR_RETURN(std::string projection,
+                   CanonicalizeProjectionJson(raw_projection));
+  std::vector<std::string> invalidated =
+      FindInvalidatedFacts(projection, correction_directives);
+  for (int attempt = 0;
+       !invalidated.empty() && attempt < config.correction_repair_attempts;
+       ++attempt) {
+    ASSIGN_OR_RETURN(
+        std::string repaired_raw,
+        runner_->Generate(CreateCorrectionRepairPrompt(
+                              projection, invalidated, correction_directives),
+                          InferenceConfigFor(config)));
+    ASSIGN_OR_RETURN(projection, CanonicalizeProjectionJson(repaired_raw));
+    invalidated = FindInvalidatedFacts(projection, correction_directives);
+  }
+  RETURN_IF_ERROR(
+      ValidateNoInvalidatedFacts(projection, correction_directives));
+  return projection;
 }
 
 absl::StatusOr<std::string> DPMProjector::CreateProjectionPrompt(
@@ -191,6 +277,34 @@ absl::StatusOr<std::string> DPMProjector::CreateProjectionPrompt(
       litert::lm::CreateProjectionPrompt(
           event_log, config.schema_id, config.schema_json,
           config.memory_budget_chars, config.max_event_log_chars));
+  return prompt;
+}
+
+absl::StatusOr<std::string> DPMProjector::CreateProjectionPromptWithCorrections(
+    const EventSourcedLog& log, const ProjectionConfig& config,
+    const std::vector<ProjectionCorrectionDirective>& correction_directives)
+    const {
+  if (config.schema_id.empty()) {
+    return absl::InvalidArgumentError(
+        "DPM projection requires a non-empty schema_id.");
+  }
+  if (config.schema_json.empty()) {
+    return absl::InvalidArgumentError(
+        "DPM projection requires a non-empty task schema.");
+  }
+  try {
+    (void)nlohmann::ordered_json::parse(config.schema_json);
+  } catch (const std::exception& e) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("DPM projection schema is not valid JSON: ", e.what()));
+  }
+  ASSIGN_OR_RETURN(std::string event_log, log.GetProjectionEventLog());
+  ASSIGN_OR_RETURN(
+      std::string prompt,
+      litert::lm::CreateProjectionPrompt(
+          event_log, config.schema_id, config.schema_json,
+          config.memory_budget_chars, config.max_event_log_chars,
+          correction_directives));
   return prompt;
 }
 
@@ -219,6 +333,38 @@ absl::StatusOr<std::string> DPMProjector::CreateProjectionPromptForRange(
       litert::lm::CreateProjectionPrompt(
           event_log, config.schema_id, config.schema_json,
           config.memory_budget_chars, config.max_event_log_chars));
+  return prompt;
+}
+
+absl::StatusOr<std::string>
+DPMProjector::CreateProjectionPromptForRangeWithCorrections(
+    const EventSourcedLog& log, uint64_t event_range_start,
+    uint64_t event_range_end, const ProjectionConfig& config,
+    const std::vector<ProjectionCorrectionDirective>& correction_directives)
+    const {
+  if (config.schema_id.empty()) {
+    return absl::InvalidArgumentError(
+        "DPM projection requires a non-empty schema_id.");
+  }
+  if (config.schema_json.empty()) {
+    return absl::InvalidArgumentError(
+        "DPM projection requires a non-empty task schema.");
+  }
+  try {
+    (void)nlohmann::ordered_json::parse(config.schema_json);
+  } catch (const std::exception& e) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("DPM projection schema is not valid JSON: ", e.what()));
+  }
+  ASSIGN_OR_RETURN(std::string event_log,
+                   log.GetProjectionEventLogRange(event_range_start,
+                                                  event_range_end));
+  ASSIGN_OR_RETURN(
+      std::string prompt,
+      litert::lm::CreateProjectionPrompt(
+          event_log, config.schema_id, config.schema_json,
+          config.memory_budget_chars, config.max_event_log_chars,
+          correction_directives));
   return prompt;
 }
 
