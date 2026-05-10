@@ -95,16 +95,21 @@ def _resolve_conditions(raw: str) -> list[Condition]:
     return out
 
 
-def _resolve_test_kinds(raw: str) -> list[TestKind]:
-    out: list[TestKind] = []
-    for v in _parse_csv(raw):
-        try:
-            out.append(TestKind(v))
-        except ValueError:
-            valid = ", ".join(k.value for k in TestKind)
-            raise SystemExit(
-                f"--test_kinds: unknown value {v!r}; valid: {valid}")
-    return out
+_PROBE_KIND_TO_TEST_KIND = {
+    "next_user_intent": TestKind.DECISION,
+    "next_tool_call": TestKind.DECISION,
+    "correction_detection": TestKind.CORRECTION_SAFETY,
+    "handoff": TestKind.HANDOFF,
+}
+
+
+def _test_kind_for_probe(probe: SessionProbe) -> TestKind:
+    """Derive a single TestKind for one cell from probe.kind.
+
+    Replaces the old `_resolve_test_kinds` matrix axis. Falls back to
+    DECISION for unrecognized probe kinds. See validity-fix series
+    note at the --test_kinds CLI flag for rationale."""
+    return _PROBE_KIND_TO_TEST_KIND.get(probe.kind, TestKind.DECISION)
 
 
 def _resolve_budgets(raw: str) -> list[int]:
@@ -366,8 +371,17 @@ def main(argv: list[str]) -> int:
                     help="comma-separated Condition values")
     ap.add_argument("--budget_chars", default=_DEFAULT_BUDGETS,
                     help="comma-separated int budgets")
+    # NOTE: --test_kinds removed from the matrix expansion in the
+    # 2026-05 validity fix series. The previous matrix looped every
+    # probe across decision/handoff/correction_safety, but the agent
+    # was only ever called with (case, probe, budget); test_kind was
+    # a bench-row label, not a distinct experiment. The 162-row
+    # matrix in r3 was 54 distinct cells × 3 relabels. Now each cell
+    # is one (case, probe, condition, budget, repeat); test_kind is
+    # derived from probe.kind. The CLI flag is kept for backward
+    # compat but ignored.
     ap.add_argument("--test_kinds", default=_DEFAULT_TEST_KINDS,
-                    help="comma-separated TestKind values")
+                    help="(IGNORED — kept for back-compat) comma-separated TestKind values")
     ap.add_argument("--repeat", type=int, default=1,
                     help="repeats per cell (default 1)")
     ap.add_argument("--limit_cases", type=int, default=0,
@@ -384,7 +398,6 @@ def main(argv: list[str]) -> int:
 
     conditions = _resolve_conditions(args.conditions)
     budgets = _resolve_budgets(args.budget_chars)
-    test_kinds = _resolve_test_kinds(args.test_kinds)
     repeats = max(1, args.repeat)
     run_id = args.run_id or dt.datetime.now(dt.timezone.utc).strftime(
         "%Y-%m-%dT%H%M%SZ-phase3")
@@ -398,7 +411,10 @@ def main(argv: list[str]) -> int:
         raise SystemExit(
             f"no SessionCase fixtures found under {args.fixtures}")
 
-    # Expand cells.
+    # Expand cells. test_kind is derived per-probe from probe.kind,
+    # NOT looped over: each (case, probe, condition, budget, repeat)
+    # is a single distinct experiment. See note at the
+    # ap.add_argument("--test_kinds", ...) call site.
     cells: list[tuple[Path, SessionCase, SessionProbe, Condition, TestKind,
                       int, int]] = []
     for path, case in cases:
@@ -407,17 +423,17 @@ def main(argv: list[str]) -> int:
                   file=sys.stderr)
             continue
         for probe in case.probes:
+            tk = _test_kind_for_probe(probe)
             for cond in conditions:
-                for tk in test_kinds:
-                    for budget in budgets:
-                        for rep in range(repeats):
-                            cells.append(
-                                (path, case, probe, cond, tk, budget, rep))
+                for budget in budgets:
+                    for rep in range(repeats):
+                        cells.append(
+                            (path, case, probe, cond, tk, budget, rep))
 
     print(f"matrix: {len(cells)} cells "
           f"({len(cases)} cases x {len(conditions)} conditions x "
-          f"{len(budgets)} budgets x {len(test_kinds)} test_kinds x "
-          f"{repeats} repeats), run_id={run_id}")
+          f"{len(budgets)} budgets x {repeats} repeats; "
+          f"test_kind derived per-probe), run_id={run_id}")
     if args.dry_run:
         for path, case, probe, cond, tk, budget, rep in cells[:25]:
             print(
