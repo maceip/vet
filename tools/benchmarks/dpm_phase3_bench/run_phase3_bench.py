@@ -125,6 +125,50 @@ def _resolve_budgets(raw: str) -> list[int]:
     return out
 
 
+def _validate_probe(path: Path, case: SessionCase, probe: SessionProbe) -> list[str]:
+    errors: list[str] = []
+    em = probe.expected_match
+    r = probe.rubric
+    if em.substring is not None and em.substring != "" and not em.substring.strip():
+        errors.append("expected_match.substring is whitespace-only")
+    if em.substring == "":
+        has_other_ground_truth = bool(
+            em.tool_name or em.arg_substring or em.correction_substring
+            or em.must_acknowledge or r.must_include or r.must_not_include
+            or r.must_call_tools or r.must_not_call_tools
+            or r.database_state_must_remain or r.judge_rubric
+        )
+        if not has_other_ground_truth:
+            errors.append("probe has empty expected_match.substring and no rubric")
+    if probe.kind == "next_user_intent" and not em.substring.strip():
+        errors.append("next_user_intent requires a non-empty expected substring")
+    return [
+        f"{path}: case={case.case_id} probe={probe.kind}: {error}"
+        for error in errors
+    ]
+
+
+def _validate_cases(cases: list[tuple[Path, SessionCase]]) -> None:
+    errors: list[str] = []
+    for path, case in cases:
+        if case.n_events != len(case.events):
+            errors.append(
+                f"{path}: case={case.case_id}: n_events={case.n_events} "
+                f"but events has {len(case.events)} entries"
+            )
+        if case.probe_T > case.n_events:
+            errors.append(
+                f"{path}: case={case.case_id}: probe_T={case.probe_T} "
+                f"exceeds n_events={case.n_events}"
+            )
+        for probe in case.probes:
+            errors.extend(_validate_probe(path, case, probe))
+    if errors:
+        joined = "\n  ".join(errors[:25])
+        extra = "" if len(errors) <= 25 else f"\n  ... {len(errors) - 25} more"
+        raise SystemExit(f"invalid SessionCase fixture(s):\n  {joined}{extra}")
+
+
 # ---- Agent loading ---------------------------------------------------
 
 def _load_agent_registry(
@@ -410,6 +454,7 @@ def main(argv: list[str]) -> int:
     if not cases:
         raise SystemExit(
             f"no SessionCase fixtures found under {args.fixtures}")
+    _validate_cases(cases)
 
     # Expand cells. test_kind is derived per-probe from probe.kind,
     # NOT looped over: each (case, probe, condition, budget, repeat)

@@ -6342,7 +6342,7 @@
       "kind": "next_user_intent",
       "question": "Based on the projection, what is the user about to ask?",
       "expected_match": {
-        "substring": ""
+        "substring": "perf suggestions are answered by the paper"
       },
       "rationale": "next_user_at_turn_636",
       "must_include": [
