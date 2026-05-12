@@ -359,6 +359,41 @@ TEST(DPMProjectorTest, ProjectRangeWithCorrectionsRepairsLeakedOldFact) {
   EXPECT_THAT(runner.prompts[1], HasSubstr("[FORBIDDEN SUBSTRINGS]"));
 }
 
+TEST(DPMProjectorTest, ProjectActiveEvidenceViewUsesProvidedView) {
+  ActiveEvidenceView view;
+  view.event_range_start = 0;
+  view.event_range_end = 1;
+  view.active_event_log =
+      R"event([1] {"type":"tool","payload":"REVOKED_BY_CORRECTION"})event";
+  view.revoked_evidence_log =
+      R"event([1] revoked invalidated_facts=transport as main result)event";
+
+  RecordingRunner runner(
+      R"json({"Facts":["credential theft is the main result [1]"],"Reasoning":["revoked evidence marker applied [1]"],"Compliance":["audit retained [1]"]})json");
+  DPMProjector projector(&runner);
+  DPMProjector::ProjectionConfig config;
+  config.schema_id = "incident_response_v1";
+  config.schema_json =
+      R"json({"Facts":["string with [i]"],"Reasoning":["string with [i]"],"Compliance":["string with [i]"]})json";
+  config.model_id = "pinned-test-model";
+  const std::vector<ProjectionCorrectionDirective> directives = {
+      ProjectionCorrectionDirective{
+          .correction_event_id = "corr-transport",
+          .invalidated_facts = {"transport as main result"},
+          .replacement_facts = {"credential theft is the main result [1]"},
+      }};
+
+  ASSERT_OK_AND_ASSIGN(
+      std::string projection,
+      projector.ProjectActiveEvidenceView(view, config, directives));
+
+  EXPECT_THAT(projection, HasSubstr("credential theft is the main result"));
+  ASSERT_EQ(runner.prompts.size(), 1);
+  EXPECT_THAT(runner.prompts[0], HasSubstr("REVOKED_BY_CORRECTION"));
+  EXPECT_THAT(runner.prompts[0],
+              Not(HasSubstr("revoked invalidated_facts")));
+}
+
 TEST(DPMProjectorTest,
      ProjectRangeWithCorrectionsFailsClosedWhenRepairStillLeaks) {
   EventSourcedLog log(TestPath("dpm_projector_correction_fail_closed_test"),

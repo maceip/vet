@@ -132,9 +132,8 @@ LoadOrReplayAuditedProjectionCheckpointForDecision(
                                            replay_end, directives));
   ASSIGN_OR_RETURN(
       std::string projected_memory,
-      projector->ProjectRangeWithCorrections(
-          log, request.replay_event_range_start, replay_end,
-          request.projection, directives));
+      projector->ProjectActiveEvidenceView(active_evidence_view,
+                                           request.projection, directives));
   return CorrectionAwareCheckpointReplay{
       .projected_memory = std::move(projected_memory),
       .gate = std::move(gate),
