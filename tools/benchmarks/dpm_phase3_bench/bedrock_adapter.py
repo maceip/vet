@@ -41,6 +41,7 @@ class BedrockModelAdapter:
     ) -> None:
         try:
             import boto3
+            from botocore.config import Config
         except ImportError as e:
             raise RuntimeError("BedrockModelAdapter requires boto3") from e
         self.model_id = model_id or os.environ.get(
@@ -56,7 +57,10 @@ class BedrockModelAdapter:
         self.max_tokens_cap = int(os.environ.get(
             "BEDROCK_MAX_TOKENS_CAP", str(max_tokens_cap or 8000)))
         self._client = boto3.client(
-            "bedrock-runtime", region_name=self.region_name)
+            "bedrock-runtime",
+            region_name=self.region_name,
+            config=Config(retries={"mode": "adaptive", "max_attempts": 12}),
+        )
 
     def generate(
         self,
