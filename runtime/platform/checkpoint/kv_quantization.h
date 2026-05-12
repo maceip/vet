@@ -125,7 +125,8 @@ absl::StatusOr<EncodedKvBlock> EncodeInt8PerTokenFromFp32(
     KvBlockShape shape, absl::Span<const float> values);
 
 // Decodes back to float32. The reconstruction error per element is bounded
-// by (absmax / 127.0); see DequantizationErrorBound.
+// by DequantizationErrorBound(absmax) when the fp16 transport scale can
+// represent a value at least as large as the source absmax.
 absl::StatusOr<std::vector<float>> DecodeInt8PerTokenToFp32(
     const EncodedKvBlock& block);
 
