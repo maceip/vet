@@ -87,12 +87,18 @@ absl::Status ValidateProjectionCitations(const nlohmann::ordered_json& json) {
 }
 
 absl::StatusOr<std::string> CanonicalizeProjectionJson(
-    absl::string_view raw_projection) {
+    absl::string_view raw_projection, size_t memory_budget_chars) {
   try {
     nlohmann::ordered_json projection =
         nlohmann::ordered_json::parse(std::string(raw_projection));
     RETURN_IF_ERROR(ValidateProjectionCitations(projection));
-    return projection.dump();
+    std::string canonical = projection.dump();
+    if (memory_budget_chars > 0 && canonical.size() > memory_budget_chars) {
+      return absl::ResourceExhaustedError(absl::StrCat(
+          "DPM projection exceeded memory budget (", canonical.size(),
+          " bytes > ", memory_budget_chars, ")."));
+    }
+    return canonical;
   } catch (const std::exception& e) {
     return absl::InvalidArgumentError(absl::StrCat(
         "DPM projection output is not valid JSON: ", e.what(),
@@ -158,7 +164,7 @@ absl::StatusOr<std::string> DPMProjector::Project(
   ASSIGN_OR_RETURN(
       std::string raw_projection,
       runner_->Generate(prompt, InferenceConfigFor(config)));
-  return CanonicalizeProjectionJson(raw_projection);
+  return CanonicalizeProjectionJson(raw_projection, config.memory_budget_chars);
 }
 
 absl::StatusOr<std::string> DPMProjector::ProjectRange(
@@ -177,7 +183,7 @@ absl::StatusOr<std::string> DPMProjector::ProjectRange(
   ASSIGN_OR_RETURN(
       std::string raw_projection,
       runner_->Generate(prompt, InferenceConfigFor(config)));
-  return CanonicalizeProjectionJson(raw_projection);
+  return CanonicalizeProjectionJson(raw_projection, config.memory_budget_chars);
 }
 
 absl::StatusOr<std::string> DPMProjector::ProjectWithCorrections(
@@ -198,7 +204,8 @@ absl::StatusOr<std::string> DPMProjector::ProjectWithCorrections(
       std::string raw_projection,
       runner_->Generate(prompt, InferenceConfigFor(config)));
   ASSIGN_OR_RETURN(std::string projection,
-                   CanonicalizeProjectionJson(raw_projection));
+                   CanonicalizeProjectionJson(raw_projection,
+                                              config.memory_budget_chars));
   std::vector<std::string> invalidated =
       FindInvalidatedFacts(projection, correction_directives);
   for (int attempt = 0;
@@ -209,7 +216,9 @@ absl::StatusOr<std::string> DPMProjector::ProjectWithCorrections(
         runner_->Generate(CreateCorrectionRepairPrompt(
                               projection, invalidated, correction_directives),
                           InferenceConfigFor(config)));
-    ASSIGN_OR_RETURN(projection, CanonicalizeProjectionJson(repaired_raw));
+    ASSIGN_OR_RETURN(projection,
+                     CanonicalizeProjectionJson(repaired_raw,
+                                                config.memory_budget_chars));
     invalidated = FindInvalidatedFacts(projection, correction_directives);
   }
   RETURN_IF_ERROR(
@@ -237,7 +246,8 @@ absl::StatusOr<std::string> DPMProjector::ProjectRangeWithCorrections(
       std::string raw_projection,
       runner_->Generate(prompt, InferenceConfigFor(config)));
   ASSIGN_OR_RETURN(std::string projection,
-                   CanonicalizeProjectionJson(raw_projection));
+                   CanonicalizeProjectionJson(raw_projection,
+                                              config.memory_budget_chars));
   std::vector<std::string> invalidated =
       FindInvalidatedFacts(projection, correction_directives);
   for (int attempt = 0;
@@ -248,7 +258,9 @@ absl::StatusOr<std::string> DPMProjector::ProjectRangeWithCorrections(
         runner_->Generate(CreateCorrectionRepairPrompt(
                               projection, invalidated, correction_directives),
                           InferenceConfigFor(config)));
-    ASSIGN_OR_RETURN(projection, CanonicalizeProjectionJson(repaired_raw));
+    ASSIGN_OR_RETURN(projection,
+                     CanonicalizeProjectionJson(repaired_raw,
+                                                config.memory_budget_chars));
     invalidated = FindInvalidatedFacts(projection, correction_directives);
   }
   RETURN_IF_ERROR(

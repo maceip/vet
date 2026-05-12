@@ -189,6 +189,35 @@ TEST(DPMProjectorTest, RejectsProjectionWithoutOneBasedCitations) {
   EXPECT_FALSE(projector.Project(log, config).ok());
 }
 
+TEST(DPMProjectorTest, RejectsProjectionThatExceedsMemoryBudget) {
+  EventSourcedLog log(TestPath("dpm_projector_budget_test"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-1",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kUser,
+      .payload = "fact A",
+      .timestamp_us = 100,
+  }));
+  RecordingRunner runner(
+      R"json({"Facts":["fact A with a deliberately long retained explanation [1]"],"Reasoning":["because the log said so [1]"],"Compliance":["ok [1]"]})json");
+  DPMProjector projector(&runner);
+  DPMProjector::ProjectionConfig config;
+  config.memory_budget_chars = 48;
+  config.schema_id = "insurance_liability_v2";
+  config.schema_json =
+      R"json({"Facts":["string with [i]"],"Reasoning":["string with [i]"],"Compliance":["string with [i]"]})json";
+  config.model_id = "pinned-test-model";
+
+  absl::StatusOr<std::string> projection = projector.Project(log, config);
+
+  ASSERT_FALSE(projection.ok());
+  EXPECT_EQ(projection.status().code(), absl::StatusCode::kResourceExhausted);
+  EXPECT_THAT(std::string(projection.status().message()),
+              HasSubstr("exceeded memory budget"));
+}
+
 TEST(DPMProjectorTest,
      ProjectRangeWithCorrectionsInjectsBlockingDirectiveAndPassesCleanOutput) {
   EventSourcedLog log(TestPath("dpm_projector_correction_prompt_test"),
