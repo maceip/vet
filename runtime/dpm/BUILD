@@ -27,6 +27,7 @@ licenses(["notice"])
 cc_library(
     name = "dpm",
     srcs = [
+        "active_evidence_view.cc",
         "dpm_projector.cc",
         "engine_inference_runner.cc",
         "event.cc",
@@ -35,6 +36,7 @@ cc_library(
         "stateless_decision_engine.cc",
     ],
     hdrs = [
+        "active_evidence_view.h",
         "dpm_projector.h",
         "engine_inference_runner.h",
         "event.h",
@@ -332,6 +334,17 @@ cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "//runtime/platform/eventlog:event_sink",
+        "//runtime/util:test_utils",
+    ],
+)
+
+cc_test(
+    name = "active_evidence_view_test",
+    srcs = ["active_evidence_view_test.cc"],
+    deps = [
+        ":dpm",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/strings:string_view",
         "//runtime/util:test_utils",
     ],
 )
