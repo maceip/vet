@@ -717,6 +717,7 @@ def _default_adapter():
       BENCH_USE_ANTHROPIC=1 swaps in AnthropicModelAdapter.
       BENCH_USE_CLAUDE_CLI=1 swaps in the local `claude -p` CLI adapter.
       BENCH_USE_BEDROCK=1 swaps in AWS Bedrock Runtime Converse.
+      BENCH_USE_BEDROCK_MANTLE=1 swaps in Bedrock's OpenAI-compatible API.
     """
     import os as _os
     if _os.environ.get("BENCH_USE_ANTHROPIC", "").lower() in ("1", "true", "yes"):
@@ -747,6 +748,18 @@ def _default_adapter():
         except ModuleNotFoundError:
             from bedrock_adapter import BedrockModelAdapter  # type: ignore
         return BedrockModelAdapter()
+    if _os.environ.get("BENCH_USE_BEDROCK_MANTLE", "").lower() in (
+        "1", "true", "yes",
+    ):
+        try:
+            from tools.benchmarks.dpm_phase3_bench.bedrock_mantle_adapter import (
+                BedrockMantleModelAdapter,
+            )
+        except ModuleNotFoundError:
+            from bedrock_mantle_adapter import (  # type: ignore
+                BedrockMantleModelAdapter,
+            )
+        return BedrockMantleModelAdapter()
     return HeuristicModelAdapter()
 
 
