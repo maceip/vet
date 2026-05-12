@@ -416,7 +416,7 @@ class LockedFile {
 #endif
 
 absl::Status ForEachMappedRecord(
-    MemoryMappedFile& mapped_file,
+    MemoryMappedFile& mapped_file, uint64_t max_records,
     absl::FunctionRef<absl::Status(absl::string_view)> callback) {
   if (mapped_file.length() == 0) {
     return absl::OkStatus();
@@ -430,7 +430,11 @@ absl::Status ForEachMappedRecord(
   }
 
   size_t offset = kLogMagic.size();
+  uint64_t emitted = 0;
   while (offset < mapped_file.length()) {
+    if (emitted >= max_records) {
+      return absl::OkStatus();
+    }
     if (mapped_file.length() - offset < sizeof(uint32_t) * 2) {
       return absl::DataLossError(
           "DPM event log has a partial length-prefixed record.");
@@ -447,6 +451,7 @@ absl::Status ForEachMappedRecord(
       return absl::DataLossError("DPM event log has a partial record body.");
     }
     RETURN_IF_ERROR(callback(absl::string_view(data + offset, record_size)));
+    ++emitted;
     offset += record_size;
   }
   return absl::OkStatus();
@@ -687,14 +692,12 @@ absl::Status ForEachRecordImpl(
 
   ASSIGN_OR_RETURN(std::unique_ptr<MemoryMappedFile> mapped_file,
                    MemoryMappedFile::Create(path.string()));
-  return ForEachMappedRecord(*mapped_file,
-                             [&](absl::string_view record) -> absl::Status {
-                               if (emitted >= max_records) {
-                                 return absl::OkStatus();
-                               }
-                               ++emitted;
-                               return callback(record);
-                             });
+  return ForEachMappedRecord(
+      *mapped_file, max_records - emitted,
+      [&](absl::string_view record) -> absl::Status {
+        ++emitted;
+        return callback(record);
+      });
 }
 
 }  // namespace
