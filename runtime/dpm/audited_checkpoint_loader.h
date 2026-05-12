@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "absl/status/statusor.h"  // from @com_google_absl
+#include "runtime/dpm/active_evidence_view.h"
 #include "runtime/dpm/checkpoint_decision_gate.h"
 #include "runtime/dpm/checkpointed_projection.h"
 #include "runtime/dpm/correction_protocol.h"
@@ -66,6 +67,7 @@ struct CorrectionAwareCheckpointReplay {
   CheckpointDecisionGateResult gate;
   bool replayed_from_raw = false;
   std::vector<ProjectionCorrectionDirective> correction_directives;
+  ActiveEvidenceView active_evidence_view;
 };
 
 // Runtime enforcement hook for Phase 3: callers that want to use a checkpoint

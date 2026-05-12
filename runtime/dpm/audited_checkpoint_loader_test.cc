@@ -301,6 +301,20 @@ TEST(AuditedCheckpointLoaderTest,
   ASSERT_EQ(replay.correction_directives.size(), 1);
   EXPECT_EQ(replay.correction_directives[0].invalidated_facts,
             correction.invalidated_facts);
+  EXPECT_EQ(replay.active_evidence_view.event_range_start, 0);
+  EXPECT_EQ(replay.active_evidence_view.event_range_end, 2);
+  ASSERT_EQ(replay.active_evidence_view.revoked_records.size(), 1);
+  EXPECT_EQ(replay.active_evidence_view.revoked_records[0].global_event_index,
+            0);
+  EXPECT_THAT(
+      replay.active_evidence_view.active_event_log,
+      HasSubstr("REVOKED_BY_CORRECTION"));
+  EXPECT_THAT(
+      replay.active_evidence_view.active_event_log,
+      Not(HasSubstr("initial analysis says transport as main result")));
+  EXPECT_THAT(
+      replay.active_evidence_view.revoked_evidence_log,
+      HasSubstr("initial analysis says transport as main result"));
   EXPECT_THAT(replay.projected_memory,
               HasSubstr("credential theft is the main result"));
   EXPECT_THAT(replay.projected_memory,
