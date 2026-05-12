@@ -169,6 +169,11 @@ and handoff-ish sessions without raw private logs.
 - `HeuristicModelAdapter`: deterministic local smoke adapter. Headline runs
   should swap in an API/model-backed adapter through the same `ModelAdapter`
   protocol.
+- `OpenAICompatModelAdapter`: streaming local/OpenAI-compatible adapter for
+  cheap reruns against local servers such as Qwen. Enable with
+  `BENCH_USE_OPENAI_COMPAT=1`, `OPENAI_COMPAT_BASE_URL`, `OPENAI_COMPAT_API_KEY`,
+  and `OPENAI_COMPAT_MODEL_ID`. The adapter streams by default and disables
+  Qwen thinking output with `chat_template_kwargs.enable_thinking=false`.
 
 Smoke the fixture + baseline lane:
 

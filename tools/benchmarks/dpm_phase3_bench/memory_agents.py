@@ -718,6 +718,8 @@ def _default_adapter():
       BENCH_USE_CLAUDE_CLI=1 swaps in the local `claude -p` CLI adapter.
       BENCH_USE_BEDROCK=1 swaps in AWS Bedrock Runtime Converse.
       BENCH_USE_BEDROCK_MANTLE=1 swaps in Bedrock's OpenAI-compatible API.
+      BENCH_USE_OPENAI_COMPAT=1 swaps in a generic streaming local/OpenAI
+      compatible adapter, e.g. Qwen on http://192.168.1.33:8965/v1.
     """
     import os as _os
     if _os.environ.get("BENCH_USE_ANTHROPIC", "").lower() in ("1", "true", "yes"):
@@ -760,6 +762,16 @@ def _default_adapter():
                 BedrockMantleModelAdapter,
             )
         return BedrockMantleModelAdapter()
+    if _os.environ.get("BENCH_USE_OPENAI_COMPAT", "").lower() in (
+        "1", "true", "yes",
+    ):
+        try:
+            from tools.benchmarks.dpm_phase3_bench.openai_compat_adapter import (
+                OpenAICompatModelAdapter,
+            )
+        except ModuleNotFoundError:
+            from openai_compat_adapter import OpenAICompatModelAdapter  # type: ignore
+        return OpenAICompatModelAdapter()
     return HeuristicModelAdapter()
 
 
