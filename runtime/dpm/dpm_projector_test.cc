@@ -235,6 +235,56 @@ TEST(DPMProjectorTest,
   EXPECT_THAT(runner.prompts[0], HasSubstr("transport as main result"));
 }
 
+TEST(DPMProjectorTest, CorrectionAwareReplayMarksRevokedEvidenceBeforePrompt) {
+  EventSourcedLog log(TestPath("dpm_projector_correction_view_test"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-1",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "initial analysis says transport as main result",
+      .timestamp_us = 100,
+  }));
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kCorrection,
+      .payload = "correction: credential theft is the main result",
+      .timestamp_us = 200,
+  }));
+  RecordingRunner runner(
+      R"json({"Facts":["credential theft is the main result [2]"],"Reasoning":["correction supersedes earlier analysis [2]"],"Compliance":["audit trail retained [2]"]})json");
+  DPMProjector projector(&runner);
+  DPMProjector::ProjectionConfig config;
+  config.schema_id = "incident_response_v1";
+  config.schema_json =
+      R"json({"Facts":["string with [i]"],"Reasoning":["string with [i]"],"Compliance":["string with [i]"]})json";
+  config.model_id = "pinned-test-model";
+  const std::vector<ProjectionCorrectionDirective> directives = {
+      ProjectionCorrectionDirective{
+          .correction_event_id = "corr-transport",
+          .correction_event_index = 1,
+          .correction_text = "Transport was not the main result.",
+          .invalidated_facts = {"transport as main result"},
+          .replacement_facts = {"credential theft is the main result [2]"},
+          .scope = ProjectionCorrectionScope::kPriorEvents,
+      }};
+
+  ASSERT_OK_AND_ASSIGN(
+      std::string prompt,
+      projector.CreateProjectionPromptForRangeWithCorrections(
+          log, 0, 2, config, directives));
+
+  EXPECT_THAT(prompt, HasSubstr("[BLOCKING CORRECTIONS]"));
+  EXPECT_THAT(prompt, HasSubstr("invalidated_facts"));
+  EXPECT_THAT(prompt, HasSubstr("transport as main result"));
+  EXPECT_THAT(prompt, HasSubstr("REVOKED_BY_CORRECTION"));
+  EXPECT_THAT(prompt, HasSubstr("corr-transport"));
+  EXPECT_THAT(prompt, Not(HasSubstr(
+                          "initial analysis says transport as main result")));
+  EXPECT_THAT(prompt,
+              HasSubstr("correction: credential theft is the main result"));
+}
+
 TEST(DPMProjectorTest, ProjectRangeWithCorrectionsRepairsLeakedOldFact) {
   EventSourcedLog log(TestPath("dpm_projector_correction_repair_test"),
                       DPMLogIdentity{

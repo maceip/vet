@@ -110,6 +110,117 @@ DPMInferenceConfig InferenceConfigFor(
   };
 }
 
+std::string LowerAscii(absl::string_view text) {
+  std::string out(text);
+  for (char& ch : out) {
+    if (ch >= 'A' && ch <= 'Z') {
+      ch = static_cast<char>(ch - 'A' + 'a');
+    }
+  }
+  return out;
+}
+
+bool CorrectionAppliesToEvent(uint64_t event_index,
+                              const ProjectionCorrectionDirective& directive) {
+  switch (directive.scope) {
+    case ProjectionCorrectionScope::kPriorEvents:
+      return event_index < directive.correction_event_index;
+    case ProjectionCorrectionScope::kCheckpointRange:
+    case ProjectionCorrectionScope::kGlobal:
+      return true;
+  }
+  return true;
+}
+
+std::vector<std::string> InvalidatedFactsForEvent(
+    const Event& event, uint64_t event_index,
+    const std::vector<ProjectionCorrectionDirective>& directives) {
+  std::vector<std::string> hits;
+  if (event.type == Event::Type::kCorrection) return hits;
+  const std::string lowered_payload = LowerAscii(event.payload);
+  for (const ProjectionCorrectionDirective& directive : directives) {
+    if (!CorrectionAppliesToEvent(event_index, directive)) continue;
+    for (const std::string& fact : directive.invalidated_facts) {
+      if (fact.empty()) continue;
+      if (lowered_payload.find(LowerAscii(fact)) == std::string::npos) {
+        continue;
+      }
+      hits.push_back(fact);
+    }
+  }
+  return hits;
+}
+
+std::vector<std::string> CorrectionIdsForEvent(
+    const Event& event, uint64_t event_index,
+    const std::vector<ProjectionCorrectionDirective>& directives) {
+  std::vector<std::string> correction_ids;
+  if (event.type == Event::Type::kCorrection) return correction_ids;
+  const std::string lowered_payload = LowerAscii(event.payload);
+  for (const ProjectionCorrectionDirective& directive : directives) {
+    if (!CorrectionAppliesToEvent(event_index, directive)) continue;
+    bool matched = false;
+    for (const std::string& fact : directive.invalidated_facts) {
+      if (fact.empty()) continue;
+      if (lowered_payload.find(LowerAscii(fact)) != std::string::npos) {
+        matched = true;
+        break;
+      }
+    }
+    if (matched) {
+      correction_ids.push_back(directive.correction_event_id.empty()
+                                   ? "unknown"
+                                   : directive.correction_event_id);
+    }
+  }
+  return correction_ids;
+}
+
+Event RevokedEvidenceEvent(
+    const Event& event, uint64_t event_index,
+    const std::vector<ProjectionCorrectionDirective>& directives) {
+  const std::vector<std::string> facts =
+      InvalidatedFactsForEvent(event, event_index, directives);
+  const std::vector<std::string> correction_ids =
+      CorrectionIdsForEvent(event, event_index, directives);
+  Event revoked = event;
+  revoked.type = Event::Type::kInternal;
+  revoked.payload = absl::StrCat(
+      "REVOKED_BY_CORRECTION: this event contained ", facts.size(),
+      " invalidated fact(s) and is not active evidence for the projection. "
+      "Apply correction_id(s): ",
+      correction_ids.empty() ? "unknown" : absl::StrJoin(correction_ids, ","),
+      ". Do not reconstruct the original revoked wording from this marker.");
+  return revoked;
+}
+
+absl::StatusOr<std::string> GetCorrectionAppliedProjectionEventLogRange(
+    const EventSourcedLog& log, uint64_t event_range_start,
+    uint64_t event_range_end,
+    const std::vector<ProjectionCorrectionDirective>& correction_directives) {
+  if (event_range_end < event_range_start) {
+    return absl::InvalidArgumentError("DPM projection event range is inverted.");
+  }
+  ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
+  if (event_range_end > events.size()) {
+    return absl::InvalidArgumentError(
+        "DPM projection event range exceeds log generation.");
+  }
+  std::string event_log;
+  for (uint64_t i = event_range_start; i < event_range_end; ++i) {
+    if (!event_log.empty()) event_log.push_back('\n');
+    const Event& event = events[static_cast<size_t>(i)];
+    const std::vector<std::string> hits =
+        InvalidatedFactsForEvent(event, i, correction_directives);
+    const Event rendered =
+        hits.empty() ? event
+                     : RevokedEvidenceEvent(event, i, correction_directives);
+    absl::StrAppend(&event_log, "[", i + 1, "] ",
+                    EventToJsonLine(rendered));
+  }
+  return event_log;
+}
+
 std::string CreateCorrectionRepairPrompt(
     absl::string_view previous_projection,
     const std::vector<std::string>& invalidated_facts,
@@ -298,7 +409,11 @@ absl::StatusOr<std::string> DPMProjector::CreateProjectionPromptWithCorrections(
     return absl::InvalidArgumentError(
         absl::StrCat("DPM projection schema is not valid JSON: ", e.what()));
   }
-  ASSIGN_OR_RETURN(std::string event_log, log.GetProjectionEventLog());
+  ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
+  ASSIGN_OR_RETURN(
+      std::string event_log,
+      GetCorrectionAppliedProjectionEventLogRange(
+          log, 0, events.size(), correction_directives));
   ASSIGN_OR_RETURN(
       std::string prompt,
       litert::lm::CreateProjectionPrompt(
@@ -356,9 +471,10 @@ DPMProjector::CreateProjectionPromptForRangeWithCorrections(
     return absl::InvalidArgumentError(
         absl::StrCat("DPM projection schema is not valid JSON: ", e.what()));
   }
-  ASSIGN_OR_RETURN(std::string event_log,
-                   log.GetProjectionEventLogRange(event_range_start,
-                                                  event_range_end));
+  ASSIGN_OR_RETURN(
+      std::string event_log,
+      GetCorrectionAppliedProjectionEventLogRange(
+          log, event_range_start, event_range_end, correction_directives));
   ASSIGN_OR_RETURN(
       std::string prompt,
       litert::lm::CreateProjectionPrompt(

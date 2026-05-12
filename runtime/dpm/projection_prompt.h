@@ -34,7 +34,10 @@ enum class ProjectionCorrectionScope {
 
 // Machine-checkable correction directive injected into a replay projection
 // after the checkpoint gate refuses stale memory. Event indices are zero-based
-// internally and rendered as one-based citations in prompts.
+// internally and rendered as one-based citations in prompts. Correction-aware
+// replay treats these as data: invalidated facts are removed from the active
+// event view before projection and checked again in the projected JSON before
+// decision use.
 struct ProjectionCorrectionDirective {
   std::string correction_event_id;
   uint64_t correction_event_index = 0;
