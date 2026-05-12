@@ -97,6 +97,28 @@ cc_library(
 )
 
 cc_library(
+    name = "phase3_runtime_config",
+    srcs = ["phase3_runtime_config.cc"],
+    hdrs = ["phase3_runtime_config.h"],
+    deps = [
+        ":audited_checkpoint_loader",
+        ":dpm",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "phase3_runtime_config_test",
+    srcs = ["phase3_runtime_config_test.cc"],
+    deps = [
+        ":phase3_runtime_config",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "//runtime/platform/audit:audit_certificate",
+    ],
+)
+
+cc_library(
     name = "checkpoint_policy",
     srcs = ["checkpoint_policy.cc"],
     hdrs = ["checkpoint_policy.h"],
