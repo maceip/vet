@@ -31,6 +31,7 @@ namespace {
 
 using ::testing::HasSubstr;
 using ::testing::Not;
+using ::testing::ElementsAre;
 
 std::filesystem::path TestPath(absl::string_view name) {
   std::filesystem::path path =
@@ -102,6 +103,42 @@ TEST(ActiveEvidenceViewTest, RevokesPriorInvalidatedFactsFromActiveView) {
               HasSubstr("initial analysis says transport as main result"));
   EXPECT_THAT(view.revoked_evidence_log,
               HasSubstr("transport as main result"));
+}
+
+TEST(ActiveEvidenceViewTest, BuildsFromAlreadyLoadedEvents) {
+  EventSourcedLog log(TestPath("active_evidence_loaded_events"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-1",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "initial analysis says transport as main result",
+      .timestamp_us = 100,
+  }));
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kCorrection,
+      .payload = "correction: credential theft is the main result",
+      .timestamp_us = 200,
+  }));
+  ASSERT_OK_AND_ASSIGN(std::vector<Event> events, log.GetAllEvents());
+  const std::vector<ProjectionCorrectionDirective> directives = {
+      ProjectionCorrectionDirective{
+          .correction_event_id = "corr-transport",
+          .correction_event_index = 1,
+          .invalidated_facts = {"transport as main result"},
+          .scope = ProjectionCorrectionScope::kPriorEvents,
+      }};
+
+  ASSERT_OK_AND_ASSIGN(ActiveEvidenceView view,
+                       BuildActiveEvidenceViewFromEvents(events, 0, 2,
+                                                         directives));
+
+  EXPECT_THAT(view.active_event_log, HasSubstr("REVOKED_BY_CORRECTION"));
+  ASSERT_EQ(view.revoked_records.size(), 1);
+  EXPECT_EQ(view.revoked_records[0].global_event_index, 0);
+  EXPECT_THAT(view.revoked_records[0].correction_event_ids,
+              ElementsAre("corr-transport"));
 }
 
 TEST(ActiveEvidenceViewTest, PriorScopeDoesNotRevokeLaterMatchingFacts) {

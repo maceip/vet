@@ -128,8 +128,9 @@ LoadOrReplayAuditedProjectionCheckpointForDecision(
         "correction-aware replay range exceeds log generation.");
   }
   ASSIGN_OR_RETURN(ActiveEvidenceView active_evidence_view,
-                   BuildActiveEvidenceView(log, request.replay_event_range_start,
-                                           replay_end, directives));
+                   BuildActiveEvidenceViewFromEvents(
+                       events, request.replay_event_range_start, replay_end,
+                       directives));
   ASSIGN_OR_RETURN(
       std::string projected_memory,
       projector->ProjectActiveEvidenceView(active_evidence_view,

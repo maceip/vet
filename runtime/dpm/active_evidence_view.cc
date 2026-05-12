@@ -32,6 +32,23 @@
 namespace litert::lm {
 namespace {
 
+struct PreparedInvalidatedFact {
+  std::string original;
+  std::string lowered;
+};
+
+struct PreparedCorrectionDirective {
+  std::string correction_event_id;
+  uint64_t correction_event_index = 0;
+  ProjectionCorrectionScope scope = ProjectionCorrectionScope::kCheckpointRange;
+  std::vector<PreparedInvalidatedFact> invalidated_facts;
+};
+
+struct MatchedRevocation {
+  std::vector<std::string> correction_event_ids;
+  std::vector<std::string> invalidated_facts;
+};
+
 std::string LowerAscii(absl::string_view text) {
   std::string out(text);
   for (char& ch : out) {
@@ -43,7 +60,7 @@ std::string LowerAscii(absl::string_view text) {
 }
 
 bool CorrectionAppliesToEvent(uint64_t event_index,
-                              const ProjectionCorrectionDirective& directive) {
+                              const PreparedCorrectionDirective& directive) {
   switch (directive.scope) {
     case ProjectionCorrectionScope::kPriorEvents:
       return event_index < directive.correction_event_index;
@@ -54,48 +71,54 @@ bool CorrectionAppliesToEvent(uint64_t event_index,
   return true;
 }
 
-std::vector<std::string> InvalidatedFactsForEvent(
-    const Event& event, uint64_t event_index,
+std::vector<PreparedCorrectionDirective> PrepareCorrectionDirectives(
     const std::vector<ProjectionCorrectionDirective>& directives) {
-  std::vector<std::string> hits;
-  if (event.type == Event::Type::kCorrection) return hits;
-  const std::string lowered_payload = LowerAscii(event.payload);
+  std::vector<PreparedCorrectionDirective> prepared;
+  prepared.reserve(directives.size());
   for (const ProjectionCorrectionDirective& directive : directives) {
-    if (!CorrectionAppliesToEvent(event_index, directive)) continue;
+    PreparedCorrectionDirective out{
+        .correction_event_id = directive.correction_event_id.empty()
+                                   ? "unknown"
+                                   : directive.correction_event_id,
+        .correction_event_index = directive.correction_event_index,
+        .scope = directive.scope,
+    };
+    out.invalidated_facts.reserve(directive.invalidated_facts.size());
     for (const std::string& fact : directive.invalidated_facts) {
       if (fact.empty()) continue;
-      if (lowered_payload.find(LowerAscii(fact)) == std::string::npos) {
-        continue;
-      }
-      hits.push_back(fact);
+      out.invalidated_facts.push_back(PreparedInvalidatedFact{
+          .original = fact,
+          .lowered = LowerAscii(fact),
+      });
+    }
+    if (!out.invalidated_facts.empty()) {
+      prepared.push_back(std::move(out));
     }
   }
-  return hits;
+  return prepared;
 }
 
-std::vector<std::string> CorrectionIdsForEvent(
+MatchedRevocation MatchRevocationForEvent(
     const Event& event, uint64_t event_index,
-    const std::vector<ProjectionCorrectionDirective>& directives) {
-  std::vector<std::string> correction_ids;
-  if (event.type == Event::Type::kCorrection) return correction_ids;
+    const std::vector<PreparedCorrectionDirective>& directives) {
+  MatchedRevocation match;
+  if (event.type == Event::Type::kCorrection) return match;
   const std::string lowered_payload = LowerAscii(event.payload);
-  for (const ProjectionCorrectionDirective& directive : directives) {
+  for (const PreparedCorrectionDirective& directive : directives) {
     if (!CorrectionAppliesToEvent(event_index, directive)) continue;
-    bool matched = false;
-    for (const std::string& fact : directive.invalidated_facts) {
-      if (fact.empty()) continue;
-      if (lowered_payload.find(LowerAscii(fact)) != std::string::npos) {
-        matched = true;
-        break;
+    bool matched_directive = false;
+    for (const PreparedInvalidatedFact& fact : directive.invalidated_facts) {
+      if (lowered_payload.find(fact.lowered) == std::string::npos) {
+        continue;
       }
+      match.invalidated_facts.push_back(fact.original);
+      matched_directive = true;
     }
-    if (matched) {
-      correction_ids.push_back(directive.correction_event_id.empty()
-                                   ? "unknown"
-                                   : directive.correction_event_id);
+    if (matched_directive) {
+      match.correction_event_ids.push_back(directive.correction_event_id);
     }
   }
-  return correction_ids;
+  return match;
 }
 
 Event RevokedEvidenceEvent(
@@ -130,24 +153,35 @@ absl::StatusOr<ActiveEvidenceView> BuildActiveEvidenceView(
     const EventSourcedLog& log, uint64_t event_range_start,
     uint64_t event_range_end,
     const std::vector<ProjectionCorrectionDirective>& correction_directives) {
+  ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
+  return BuildActiveEvidenceViewFromEvents(events, event_range_start,
+                                           event_range_end,
+                                           correction_directives);
+}
+
+absl::StatusOr<ActiveEvidenceView> BuildActiveEvidenceViewFromEvents(
+    const std::vector<Event>& events, uint64_t event_range_start,
+    uint64_t event_range_end,
+    const std::vector<ProjectionCorrectionDirective>& correction_directives) {
   if (event_range_end < event_range_start) {
     return absl::InvalidArgumentError("DPM projection event range is inverted.");
   }
-  ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
   if (event_range_end > events.size()) {
     return absl::InvalidArgumentError(
         "DPM projection event range exceeds log generation.");
   }
 
+  const std::vector<PreparedCorrectionDirective> prepared_directives =
+      PrepareCorrectionDirectives(correction_directives);
   ActiveEvidenceView view;
   view.event_range_start = event_range_start;
   view.event_range_end = event_range_end;
   for (uint64_t i = event_range_start; i < event_range_end; ++i) {
     if (!view.active_event_log.empty()) view.active_event_log.push_back('\n');
     const Event& event = events[static_cast<size_t>(i)];
-    const std::vector<std::string> invalidated_facts =
-        InvalidatedFactsForEvent(event, i, correction_directives);
-    if (invalidated_facts.empty()) {
+    const MatchedRevocation revocation =
+        MatchRevocationForEvent(event, i, prepared_directives);
+    if (revocation.invalidated_facts.empty()) {
       absl::StrAppend(&view.active_event_log, "[", i + 1, "] ",
                       EventToJsonLine(event));
       continue;
@@ -155,9 +189,8 @@ absl::StatusOr<ActiveEvidenceView> BuildActiveEvidenceView(
 
     RevokedEvidenceRecord record{
         .global_event_index = i,
-        .correction_event_ids =
-            CorrectionIdsForEvent(event, i, correction_directives),
-        .invalidated_facts = invalidated_facts,
+        .correction_event_ids = revocation.correction_event_ids,
+        .invalidated_facts = revocation.invalidated_facts,
         .original_event_json = EventToJsonLine(event),
     };
     const Event rendered = RevokedEvidenceEvent(event, record);

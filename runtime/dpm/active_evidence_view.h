@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "absl/status/statusor.h"  // from @com_google_absl
+#include "runtime/dpm/event.h"
 #include "runtime/dpm/event_sourced_log.h"
 #include "runtime/dpm/projection_prompt.h"
 
@@ -47,6 +48,11 @@ struct ActiveEvidenceView {
 // revoked_evidence_log for audit/debug paths, not decision prompts.
 absl::StatusOr<ActiveEvidenceView> BuildActiveEvidenceView(
     const EventSourcedLog& log, uint64_t event_range_start,
+    uint64_t event_range_end,
+    const std::vector<ProjectionCorrectionDirective>& correction_directives);
+
+absl::StatusOr<ActiveEvidenceView> BuildActiveEvidenceViewFromEvents(
+    const std::vector<Event>& events, uint64_t event_range_start,
     uint64_t event_range_end,
     const std::vector<ProjectionCorrectionDirective>& correction_directives);
 

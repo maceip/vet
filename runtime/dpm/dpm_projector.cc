@@ -192,7 +192,8 @@ absl::StatusOr<std::string> DPMProjector::ProjectWithCorrections(
   ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
   ASSIGN_OR_RETURN(
       ActiveEvidenceView active_view,
-      BuildActiveEvidenceView(log, 0, events.size(), correction_directives));
+      BuildActiveEvidenceViewFromEvents(events, 0, events.size(),
+                                        correction_directives));
   return ProjectActiveEvidenceView(active_view, config, correction_directives);
 }
 
@@ -315,7 +316,8 @@ absl::StatusOr<std::string> DPMProjector::CreateProjectionPromptWithCorrections(
   ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
   ASSIGN_OR_RETURN(
       ActiveEvidenceView active_view,
-      BuildActiveEvidenceView(log, 0, events.size(), correction_directives));
+      BuildActiveEvidenceViewFromEvents(events, 0, events.size(),
+                                        correction_directives));
   ASSIGN_OR_RETURN(
       std::string prompt,
       litert::lm::CreateProjectionPrompt(
