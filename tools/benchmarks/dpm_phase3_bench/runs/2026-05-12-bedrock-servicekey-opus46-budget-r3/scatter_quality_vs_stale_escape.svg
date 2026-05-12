@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="720" viewBox="0 0 1080 720">
+<rect width="100%" height="100%" fill="#fbfaf7"/>
+<text x="96" y="38" font-family="Inter, Arial" font-size="24" font-weight="700" fill="#111827">Quality vs Stale Memory Escape</text>
+<line x1="96" y1="624.0" x2="820" y2="624.0" stroke="#e5e7eb"/>
+<text x="84" y="628.0" text-anchor="end" font-family="Inter, Arial" font-size="12" fill="#6b7280">0.0</text>
+<line x1="96" y1="513.6" x2="820" y2="513.6" stroke="#e5e7eb"/>
+<text x="84" y="517.6" text-anchor="end" font-family="Inter, Arial" font-size="12" fill="#6b7280">0.2</text>
+<line x1="96" y1="403.2" x2="820" y2="403.2" stroke="#e5e7eb"/>
+<text x="84" y="407.2" text-anchor="end" font-family="Inter, Arial" font-size="12" fill="#6b7280">0.4</text>
+<line x1="96" y1="292.8" x2="820" y2="292.8" stroke="#e5e7eb"/>
+<text x="84" y="296.8" text-anchor="end" font-family="Inter, Arial" font-size="12" fill="#6b7280">0.6</text>
+<line x1="96" y1="182.4" x2="820" y2="182.4" stroke="#e5e7eb"/>
+<text x="84" y="186.4" text-anchor="end" font-family="Inter, Arial" font-size="12" fill="#6b7280">0.8</text>
+<line x1="96" y1="72.0" x2="820" y2="72.0" stroke="#e5e7eb"/>
+<text x="84" y="76.0" text-anchor="end" font-family="Inter, Arial" font-size="12" fill="#6b7280">1.0</text>
+<line x1="96.0" y1="72" x2="96.0" y2="624" stroke="#f3f4f6"/>
+<text x="96.0" y="646" text-anchor="middle" font-family="Inter, Arial" font-size="12" fill="#6b7280">0.0</text>
+<line x1="240.8" y1="72" x2="240.8" y2="624" stroke="#f3f4f6"/>
+<text x="240.8" y="646" text-anchor="middle" font-family="Inter, Arial" font-size="12" fill="#6b7280">0.2</text>
+<line x1="385.6" y1="72" x2="385.6" y2="624" stroke="#f3f4f6"/>
+<text x="385.6" y="646" text-anchor="middle" font-family="Inter, Arial" font-size="12" fill="#6b7280">0.4</text>
+<line x1="530.4" y1="72" x2="530.4" y2="624" stroke="#f3f4f6"/>
+<text x="530.4" y="646" text-anchor="middle" font-family="Inter, Arial" font-size="12" fill="#6b7280">0.6</text>
+<line x1="675.2" y1="72" x2="675.2" y2="624" stroke="#f3f4f6"/>
+<text x="675.2" y="646" text-anchor="middle" font-family="Inter, Arial" font-size="12" fill="#6b7280">0.8</text>
+<line x1="820.0" y1="72" x2="820.0" y2="624" stroke="#f3f4f6"/>
+<text x="820.0" y="646" text-anchor="middle" font-family="Inter, Arial" font-size="12" fill="#6b7280">1.0</text>
+<line x1="96" y1="624" x2="820" y2="624" stroke="#9ca3af"/>
+<line x1="96" y1="72" x2="96" y2="624" stroke="#9ca3af"/>
+<text x="458.0" y="692" text-anchor="middle" font-family="Inter, Arial" font-size="15" fill="#374151">Stale-memory escape rate</text>
+<text x="28" y="348.0" transform="rotate(-90 28 348.0)" text-anchor="middle" font-family="Inter, Arial" font-size="15" fill="#374151">Mean decision score</text>
+<circle cx="96.0" cy="210.0" r="5.0" fill="#059669" fill-opacity="0.95" stroke="#111827" stroke-opacity="0.25"><title>correction-heavy-session | Verified handoff | budget 669 | n=3 | score=0.75</title></circle>
+<circle cx="820.0" cy="256.0" r="7.2" fill="#059669" fill-opacity="0.95" stroke="#111827" stroke-opacity="0.25"><title>correction-heavy-session | Verified handoff | budget 1338 | n=3 | score=0.67</title></circle>
+<circle cx="337.3" cy="164.0" r="9.4" fill="#059669" fill-opacity="0.95" stroke="#111827" stroke-opacity="0.25"><title>correction-heavy-session | Verified handoff | budget 2676 | n=3 | score=0.83</title></circle>
+<circle cx="820.0" cy="210.0" r="5.0" fill="#6b7280" fill-opacity="0.95" stroke="#111827" stroke-opacity="0.25"><title>correction-heavy-session | Full chat history | budget 669 | n=3 | score=0.75</title></circle>
+<circle cx="820.0" cy="210.0" r="7.2" fill="#6b7280" fill-opacity="0.95" stroke="#111827" stroke-opacity="0.25"><title>correction-heavy-session | Full chat history | budget 1338 | n=3 | score=0.75</title></circle>
+<circle cx="820.0" cy="210.0" r="9.4" fill="#6b7280" fill-opacity="0.95" stroke="#111827" stroke-opacity="0.25"><title>correction-heavy-session | Full chat history | budget 2676 | n=3 | score=0.75</title></circle>
+<circle cx="96.0" cy="72.0" r="5.0" fill="#d97706" fill-opacity="0.95" stroke="#111827" stroke-opacity="0.25"><title>correction-heavy-session | Auto-summary | budget 669 | n=3 | score=1.00</title></circle>
+<circle cx="96.0" cy="72.0" r="7.2" fill="#d97706" fill-opacity="0.95" stroke="#111827" stroke-opacity="0.25"><title>correction-heavy-session | Auto-summary | budget 1338 | n=3 | score=1.00</title></circle>
+<circle cx="96.0" cy="72.0" r="9.4" fill="#d97706" fill-opacity="0.95" stroke="#111827" stroke-opacity="0.25"><title>correction-heavy-session | Auto-summary | budget 2676 | n=3 | score=1.00</title></circle>
+<text x="848" y="68" font-family="Inter, Arial" font-size="14" font-weight="700" fill="#111827">Memory mode</text>
+<circle cx="848" cy="96" r="7" fill="#6b7280"/>
+<text x="866" y="101" font-family="Inter, Arial" font-size="13" fill="#374151">Full chat history</text>
+<circle cx="848" cy="124" r="7" fill="#d97706"/>
+<text x="866" y="129" font-family="Inter, Arial" font-size="13" fill="#374151">Auto-summary</text>
+<circle cx="848" cy="152" r="7" fill="#059669"/>
+<text x="866" y="157" font-family="Inter, Arial" font-size="13" fill="#374151">Verified handoff</text>
+<text x="848" y="208" font-family="Inter, Arial" font-size="14" font-weight="700" fill="#111827">Memory budget</text>
+<circle cx="848" cy="236" r="5.0" fill="#9ca3af" fill-opacity="0.55" stroke="#111827" stroke-opacity="0.25"/>
+<text x="866" y="241" font-family="Inter, Arial" font-size="13" fill="#374151">669 chars</text>
+<circle cx="848" cy="264" r="7.2" fill="#9ca3af" fill-opacity="0.55" stroke="#111827" stroke-opacity="0.25"/>
+<text x="866" y="269" font-family="Inter, Arial" font-size="13" fill="#374151">1338 chars</text>
+<circle cx="848" cy="292" r="9.4" fill="#9ca3af" fill-opacity="0.55" stroke="#111827" stroke-opacity="0.25"/>
+<text x="866" y="297" font-family="Inter, Arial" font-size="13" fill="#374151">2676 chars</text>
+<text x="848" y="646" font-family="Inter, Arial" font-size="12" fill="#6b7280">Source: Bedrock Opus 4.6</text>
+<text x="848" y="664" font-family="Inter, Arial" font-size="12" fill="#6b7280">150 scored rows, 50 points</text>
+</svg>

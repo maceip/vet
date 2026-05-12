@@ -1,0 +1,13 @@
+case_id,condition,test_kind,budget_chars,repeat,status
+long-real-session,rolling_summary,decision,2676,0,errored
+long-real-session,rolling_summary,decision,2676,1,errored
+long-real-session,rolling_summary,decision,2676,2,missing
+long-real-session,dpm_phase3_checkpoint,decision,669,0,missing
+long-real-session,dpm_phase3_checkpoint,decision,669,1,missing
+long-real-session,dpm_phase3_checkpoint,decision,669,2,missing
+long-real-session,dpm_phase3_checkpoint,decision,1338,0,missing
+long-real-session,dpm_phase3_checkpoint,decision,1338,1,missing
+long-real-session,dpm_phase3_checkpoint,decision,1338,2,missing
+long-real-session,dpm_phase3_checkpoint,decision,2676,0,missing
+long-real-session,dpm_phase3_checkpoint,decision,2676,1,missing
+long-real-session,dpm_phase3_checkpoint,decision,2676,2,missing
