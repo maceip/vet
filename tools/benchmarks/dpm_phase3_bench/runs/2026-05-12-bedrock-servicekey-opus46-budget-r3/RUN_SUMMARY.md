@@ -16,3 +16,5 @@ Artifacts:
 - `scatter_quality_vs_stale_escape.svg`: quality vs stale-memory escape.
 
 Caveat: Bedrock daily token quota stopped the long-real-session tail. The dataset is plot-ready, but not a fully complete 162-row matrix.
+
+Validity note: `long-real-session` is excluded from the publishable quality readout because its checked-in probe has an empty expected substring. The run keeps the raw rows for auditability, but `results.scored.valid-fixtures.jsonl` and `scatter_aggregates.valid-fixtures.csv` exclude that case.
