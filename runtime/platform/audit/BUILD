@@ -153,3 +153,17 @@ cc_test(
         "//runtime/util:test_utils",
     ],
 )
+
+cc_test(
+    name = "local_filesystem_audit_ledger_test",
+    srcs = ["local_filesystem_audit_ledger_test.cc"],
+    deps = [
+        ":audit_certificate",
+        ":local_filesystem_audit_ledger",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/hash:hasher",
+        "//runtime/util:test_utils",
+    ],
+)

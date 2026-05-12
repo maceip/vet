@@ -16,6 +16,7 @@
 
 #include <array>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -26,6 +27,7 @@
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
+#include "absl/strings/str_split.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "runtime/platform/audit/audit_certificate.h"
 #include "runtime/platform/checkpoint/durable_writer.h"
@@ -37,6 +39,13 @@ namespace {
 
 constexpr std::array<char, 10> kAuditMagic = {'D', 'P', 'M', 'A', 'U',
                                               'D', 'I', 'T', '1', '\n'};
+constexpr absl::string_view kLatestIndexMagic = "DPMAUDIT-LATEST-1";
+
+struct LatestIndexRecord {
+  Hash256 checkpoint_manifest_hash;
+  Hash256 certificate_id;
+  int64_t created_unix_micros = 0;
+};
 
 absl::Status ValidateIdentity(absl::string_view tenant_id,
                               absl::string_view session_id) {
@@ -79,6 +88,45 @@ bool IsZeroHash(const Hash256& hash) {
   return hash == kZero;
 }
 
+std::string EncodeLatestIndex(const AuditCertificate& certificate) {
+  return absl::StrCat(
+      kLatestIndexMagic, "\n",
+      certificate.checkpoint_manifest_hash.ToHex(), "\n",
+      certificate.certificate_id.ToHex(), "\n",
+      certificate.created_unix_micros, "\n");
+}
+
+absl::StatusOr<LatestIndexRecord> DecodeLatestIndex(absl::string_view data) {
+  std::vector<std::string> lines = absl::StrSplit(data, '\n');
+  if (lines.size() < 4 || lines[0] != kLatestIndexMagic) {
+    return absl::DataLossError("audit latest index missing magic header.");
+  }
+  bool ok = false;
+  LatestIndexRecord record;
+  record.checkpoint_manifest_hash = Hash256::FromHex(lines[1], &ok);
+  if (!ok) {
+    return absl::DataLossError(
+        "audit latest index has invalid checkpoint hash.");
+  }
+  record.certificate_id = Hash256::FromHex(lines[2], &ok);
+  if (!ok) {
+    return absl::DataLossError(
+        "audit latest index has invalid certificate hash.");
+  }
+  try {
+    size_t parsed = 0;
+    record.created_unix_micros = std::stoll(lines[3], &parsed);
+    if (parsed != lines[3].size()) {
+      return absl::DataLossError(
+          "audit latest index has invalid created_unix_micros.");
+    }
+  } catch (const std::exception&) {
+    return absl::DataLossError(
+        "audit latest index has invalid created_unix_micros.");
+  }
+  return record;
+}
+
 }  // namespace
 
 LocalFilesystemAuditLedger::LocalFilesystemAuditLedger(
@@ -90,6 +138,14 @@ std::filesystem::path LocalFilesystemAuditLedger::CertificatePathFor(
     const Hash256& certificate_id) const {
   return root_path_ / std::string(tenant_id) / std::string(session_id) /
          "certificates" / (certificate_id.ToHex() + ".dpmaudit");
+}
+
+std::filesystem::path LocalFilesystemAuditLedger::LatestIndexPathFor(
+    absl::string_view tenant_id, absl::string_view session_id,
+    const Hash256& checkpoint_manifest_hash) const {
+  return root_path_ / std::string(tenant_id) / std::string(session_id) /
+         "certificates_by_checkpoint" /
+         (checkpoint_manifest_hash.ToHex() + ".latest");
 }
 
 absl::Status LocalFilesystemAuditLedger::PutCertificate(
@@ -119,7 +175,24 @@ absl::Status LocalFilesystemAuditLedger::PutCertificate(
         "audit certificate ", finalized.certificate_id.ToHex(),
         " already exists with different bytes."));
   }
-  return DurablyWriteFile(path, framed);
+  RETURN_IF_ERROR(DurablyWriteFile(path, framed));
+
+  const std::filesystem::path index_path =
+      LatestIndexPathFor(finalized.tenant_id, finalized.session_id,
+                         finalized.checkpoint_manifest_hash);
+  std::string existing_index;
+  RETURN_IF_ERROR(ReadEntireFileIfExists(index_path, &existing_index));
+  if (!existing_index.empty()) {
+    absl::StatusOr<LatestIndexRecord> existing =
+        DecodeLatestIndex(existing_index);
+    if (existing.ok() &&
+        existing->checkpoint_manifest_hash ==
+            finalized.checkpoint_manifest_hash &&
+        existing->created_unix_micros >= finalized.created_unix_micros) {
+      return absl::OkStatus();
+    }
+  }
+  return DurablyWriteFile(index_path, EncodeLatestIndex(finalized));
 }
 
 absl::StatusOr<AuditCertificate> LocalFilesystemAuditLedger::GetCertificate(
@@ -178,6 +251,24 @@ absl::StatusOr<AuditCertificate>
 LocalFilesystemAuditLedger::LatestForCheckpoint(
     absl::string_view tenant_id, absl::string_view session_id,
     const Hash256& checkpoint_manifest_hash) const {
+  RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
+  std::string index_bytes;
+  RETURN_IF_ERROR(ReadEntireFileIfExists(
+      LatestIndexPathFor(tenant_id, session_id, checkpoint_manifest_hash),
+      &index_bytes));
+  if (!index_bytes.empty()) {
+    absl::StatusOr<LatestIndexRecord> index = DecodeLatestIndex(index_bytes);
+    if (index.ok() &&
+        index->checkpoint_manifest_hash == checkpoint_manifest_hash) {
+      absl::StatusOr<AuditCertificate> indexed =
+          GetCertificate(tenant_id, session_id, index->certificate_id);
+      if (indexed.ok() &&
+          indexed->checkpoint_manifest_hash == checkpoint_manifest_hash) {
+        return indexed;
+      }
+    }
+  }
+
   ASSIGN_OR_RETURN(std::vector<AuditCertificate> certificates,
                    ListForCheckpoint(tenant_id, session_id,
                                      checkpoint_manifest_hash));

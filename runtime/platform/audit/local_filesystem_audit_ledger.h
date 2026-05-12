@@ -49,6 +49,9 @@ class LocalFilesystemAuditLedger : public AuditLedger {
   std::filesystem::path CertificatePathFor(absl::string_view tenant_id,
                                            absl::string_view session_id,
                                            const Hash256& certificate_id) const;
+  std::filesystem::path LatestIndexPathFor(
+      absl::string_view tenant_id, absl::string_view session_id,
+      const Hash256& checkpoint_manifest_hash) const;
 
  private:
   std::filesystem::path root_path_;
