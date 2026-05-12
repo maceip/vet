@@ -92,6 +92,12 @@ LoadOrReplayAuditedProjectionCheckpointForDecision(
     CheckpointStore* store, const AuditLedger& ledger,
     const CorrectionIndex& corrections);
 
+absl::StatusOr<CorrectionAwareCheckpointReplay>
+LoadOrReplayAuditedProjectionCheckpointForDecision(
+    const EventSourcedLog& log, DPMProjector* projector,
+    const CorrectionAwareCheckpointReplayRequest& request,
+    CheckpointStore* store, const AuditLedger& ledger);
+
 }  // namespace litert::lm
 
 #endif  // THIRD_PARTY_ODML_LITERT_LM_RUNTIME_DPM_AUDITED_CHECKPOINT_LOADER_H_

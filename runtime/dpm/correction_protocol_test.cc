@@ -14,10 +14,12 @@
 
 #include "runtime/dpm/correction_protocol.h"
 
+#include <filesystem>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"  // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "runtime/platform/hash/hasher.h"
@@ -27,6 +29,13 @@ namespace litert::lm {
 namespace {
 
 using ::testing::ElementsAre;
+
+std::filesystem::path TestPath(absl::string_view name) {
+  std::filesystem::path path =
+      std::filesystem::path(::testing::TempDir()) / std::string(name);
+  std::filesystem::remove_all(path);
+  return path;
+}
 
 CorrectionPayload BaseCorrection() {
   CorrectionPayload correction;
@@ -115,6 +124,39 @@ TEST(CorrectionProtocolTest,
 
   EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
   EXPECT_THAT(status.message(), testing::HasSubstr("not machine-actionable"));
+}
+
+TEST(CorrectionProtocolTest, AppendCorrectionEventPersistsSidecarIndex) {
+  EventSourcedLog log(TestPath("correction_index_sidecar"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-1",
+                      });
+  CorrectionPayload correction = BaseCorrection();
+  correction.invalidates_checkpoints = {
+      HashBytes(HashAlgorithm::kBlake3, "rollup-parent")};
+  correction.invalidated_facts = {"stale fact"};
+
+  ASSERT_OK(AppendCorrectionEvent(&log, correction));
+
+  ASSERT_OK_AND_ASSIGN(
+      CorrectionIndex target_index,
+      CorrectionIndex::LoadForCheckpoint(
+          log, correction.target_checkpoint_manifest_hash));
+  EXPECT_TRUE(target_index.HasBlockingCorrectionFor(
+      correction.target_checkpoint_manifest_hash));
+  EXPECT_EQ(target_index
+                .BlockingCorrectionsFor(
+                    correction.target_checkpoint_manifest_hash)
+                .size(),
+            1);
+
+  ASSERT_OK_AND_ASSIGN(
+      CorrectionIndex ancestor_index,
+      CorrectionIndex::LoadForCheckpoint(
+          log, correction.invalidates_checkpoints.front()));
+  EXPECT_TRUE(ancestor_index.HasBlockingCorrectionFor(
+      correction.invalidates_checkpoints.front()));
 }
 
 }  // namespace

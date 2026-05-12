@@ -163,6 +163,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@nlohmann_json//:json",
+        "//runtime/platform/checkpoint:durable_writer",
         "//runtime/platform/hash:hasher",
         "//runtime/util:litert_status_util",
     ],
@@ -173,7 +174,9 @@ cc_test(
     srcs = ["correction_protocol_test.cc"],
     deps = [
         ":correction_protocol",
+        ":dpm",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "//runtime/platform/hash:hasher",
         "//runtime/util:test_utils",
@@ -407,6 +410,24 @@ cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "//runtime/util:test_utils",
+    ],
+)
+
+cc_test(
+    name = "dpm_perf_smoke_test",
+    srcs = ["dpm_perf_smoke_test.cc"],
+    deps = [
+        ":checkpoint_decision_gate",
+        ":correction_protocol",
+        ":dpm",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "//runtime/platform/eventlog:posix_event_sink",
+        "//runtime/platform/hash:hasher",
         "//runtime/util:test_utils",
     ],
 )

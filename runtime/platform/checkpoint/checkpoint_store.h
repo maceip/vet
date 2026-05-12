@@ -113,6 +113,20 @@ class CheckpointStore {
 
   virtual absl::StatusOr<std::vector<Hash256>> ListManifests(
       absl::string_view tenant_id, absl::string_view session_id) const = 0;
+
+  // Returns manifests that directly depend on `parent_manifest_hash`.
+  // Backends with a sidecar parent->children index can answer this in O(children
+  // of parent). Backends that do not implement it may return Unimplemented;
+  // callers can fall back to ListManifests()+GetManifest() scans.
+  virtual absl::StatusOr<std::vector<Hash256>> ListDependentManifests(
+      absl::string_view tenant_id, absl::string_view session_id,
+      const Hash256& parent_manifest_hash) const {
+    (void)tenant_id;
+    (void)session_id;
+    (void)parent_manifest_hash;
+    return absl::UnimplementedError(
+        "CheckpointStore::ListDependentManifests is not implemented.");
+  }
 };
 
 }  // namespace litert::lm

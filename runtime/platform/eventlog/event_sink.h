@@ -91,6 +91,29 @@ class EventSink {
     return absl::OkStatus();
   }
 
+  // Iterates records in the half-open global range [start, end). Backends
+  // should stop reading once `end` is reached; the default implementation is
+  // correctness-first and may scan the full stream.
+  virtual absl::Status ForEachRecordRange(
+      absl::string_view tenant_id, absl::string_view session_id,
+      uint64_t start, uint64_t end,
+      absl::FunctionRef<absl::Status(absl::string_view)> callback) const {
+    if (end < start) {
+      return absl::InvalidArgumentError("EventSink record range is inverted.");
+    }
+    uint64_t index = 0;
+    return ForEachRecord(
+        tenant_id, session_id,
+        [&](absl::string_view record) -> absl::Status {
+          if (index >= start && index < end) {
+            absl::Status status = callback(record);
+            if (!status.ok()) return status;
+          }
+          ++index;
+          return absl::OkStatus();
+        });
+  }
+
   // Generation token that consumers can use to invalidate decoded-record
   // caches without re-reading the underlying records. Treat the pair as an
   // opaque cache key: implementations may populate record_count when it is

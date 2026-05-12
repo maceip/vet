@@ -147,26 +147,15 @@ void AppendRevokedEvidenceLogRecord(const RevokedEvidenceRecord& record,
       " original=", record.original_event_json);
 }
 
-}  // namespace
-
-absl::StatusOr<ActiveEvidenceView> BuildActiveEvidenceView(
-    const EventSourcedLog& log, uint64_t event_range_start,
-    uint64_t event_range_end,
-    const std::vector<ProjectionCorrectionDirective>& correction_directives) {
-  ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
-  return BuildActiveEvidenceViewFromEvents(events, event_range_start,
-                                           event_range_end,
-                                           correction_directives);
-}
-
-absl::StatusOr<ActiveEvidenceView> BuildActiveEvidenceViewFromEvents(
-    const std::vector<Event>& events, uint64_t event_range_start,
-    uint64_t event_range_end,
+absl::StatusOr<ActiveEvidenceView> BuildActiveEvidenceViewFromEventsInternal(
+    const std::vector<Event>& events, uint64_t events_base_index,
+    uint64_t event_range_start, uint64_t event_range_end,
     const std::vector<ProjectionCorrectionDirective>& correction_directives) {
   if (event_range_end < event_range_start) {
     return absl::InvalidArgumentError("DPM projection event range is inverted.");
   }
-  if (event_range_end > events.size()) {
+  if (event_range_start < events_base_index ||
+      event_range_end > events_base_index + events.size()) {
     return absl::InvalidArgumentError(
         "DPM projection event range exceeds log generation.");
   }
@@ -178,7 +167,8 @@ absl::StatusOr<ActiveEvidenceView> BuildActiveEvidenceViewFromEvents(
   view.event_range_end = event_range_end;
   for (uint64_t i = event_range_start; i < event_range_end; ++i) {
     if (!view.active_event_log.empty()) view.active_event_log.push_back('\n');
-    const Event& event = events[static_cast<size_t>(i)];
+    const Event& event =
+        events[static_cast<size_t>(i - events_base_index)];
     const MatchedRevocation revocation =
         MatchRevocationForEvent(event, i, prepared_directives);
     if (revocation.invalidated_facts.empty()) {
@@ -200,6 +190,28 @@ absl::StatusOr<ActiveEvidenceView> BuildActiveEvidenceViewFromEvents(
     view.revoked_records.push_back(std::move(record));
   }
   return view;
+}
+
+}  // namespace
+
+absl::StatusOr<ActiveEvidenceView> BuildActiveEvidenceView(
+    const EventSourcedLog& log, uint64_t event_range_start,
+    uint64_t event_range_end,
+    const std::vector<ProjectionCorrectionDirective>& correction_directives) {
+  ASSIGN_OR_RETURN(std::vector<Event> events,
+                   log.GetEventRange(event_range_start, event_range_end));
+  return BuildActiveEvidenceViewFromEventsInternal(
+      events, event_range_start, event_range_start, event_range_end,
+      correction_directives);
+}
+
+absl::StatusOr<ActiveEvidenceView> BuildActiveEvidenceViewFromEvents(
+    const std::vector<Event>& events, uint64_t event_range_start,
+    uint64_t event_range_end,
+    const std::vector<ProjectionCorrectionDirective>& correction_directives) {
+  return BuildActiveEvidenceViewFromEventsInternal(
+      events, /*events_base_index=*/0, event_range_start, event_range_end,
+      correction_directives);
 }
 
 }  // namespace litert::lm

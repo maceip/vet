@@ -135,7 +135,7 @@ absl::Status LinkAuditCertificateToDag(
       });
 }
 
-absl::StatusOr<std::vector<Hash256>> InvalidatedCheckpointClosure(
+absl::StatusOr<std::vector<Hash256>> InvalidatedCheckpointClosureByManifestScan(
     const DPMLogIdentity& identity, const Hash256& checkpoint_manifest_hash,
     const CheckpointStore& store) {
   std::vector<Hash256> all_manifests;
@@ -160,6 +160,32 @@ absl::StatusOr<std::vector<Hash256>> InvalidatedCheckpointClosure(
                     manifest.parent_hashes.end(), current) !=
           manifest.parent_hashes.end()) {
         invalidated.push_back(candidate);
+      }
+    }
+  }
+  std::sort(invalidated.begin(), invalidated.end());
+  return invalidated;
+}
+
+absl::StatusOr<std::vector<Hash256>> InvalidatedCheckpointClosure(
+    const DPMLogIdentity& identity, const Hash256& checkpoint_manifest_hash,
+    const CheckpointStore& store) {
+  std::vector<Hash256> invalidated{checkpoint_manifest_hash};
+  for (size_t cursor = 0; cursor < invalidated.size(); ++cursor) {
+    absl::StatusOr<std::vector<Hash256>> children =
+        store.ListDependentManifests(identity.tenant_id, identity.session_id,
+                                     invalidated[cursor]);
+    if (!children.ok()) {
+      if (children.status().code() == absl::StatusCode::kUnimplemented) {
+        return InvalidatedCheckpointClosureByManifestScan(
+            identity, checkpoint_manifest_hash, store);
+      }
+      return children.status();
+    }
+    for (const Hash256& child : *children) {
+      if (std::find(invalidated.begin(), invalidated.end(), child) ==
+          invalidated.end()) {
+        invalidated.push_back(child);
       }
     }
   }

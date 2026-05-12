@@ -85,6 +85,9 @@ class CorrectionIndex {
  public:
   static absl::StatusOr<CorrectionIndex> Build(
       const std::vector<Event>& events);
+  static absl::StatusOr<CorrectionIndex> Build(const EventSourcedLog& log);
+  static absl::StatusOr<CorrectionIndex> LoadForCheckpoint(
+      const EventSourcedLog& log, const Hash256& checkpoint_manifest_hash);
 
   bool HasBlockingCorrectionFor(const Hash256& checkpoint_manifest_hash) const;
   std::vector<CorrectionPayload> BlockingCorrectionsFor(

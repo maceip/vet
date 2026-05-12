@@ -710,6 +710,28 @@ absl::Status PosixEventSink::ForEachRecord(
                            /*max_records=*/UINT64_MAX, callback);
 }
 
+absl::Status PosixEventSink::ForEachRecordRange(
+    absl::string_view tenant_id, absl::string_view session_id, uint64_t start,
+    uint64_t end,
+    absl::FunctionRef<absl::Status(absl::string_view)> callback) const {
+  RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
+  if (end < start) {
+    return absl::InvalidArgumentError("DPM event record range is inverted.");
+  }
+  if (start == end) {
+    return absl::OkStatus();
+  }
+  uint64_t seen = 0;
+  return ForEachRecordImpl(
+      *this, tenant_id, session_id, /*depth=*/0, /*max_records=*/end,
+      [&](absl::string_view record) -> absl::Status {
+        if (seen++ < start) {
+          return absl::OkStatus();
+        }
+        return callback(record);
+      });
+}
+
 absl::StatusOr<EventSink::Generation> PosixEventSink::ProbeGeneration(
     absl::string_view tenant_id, absl::string_view session_id) const {
   RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));

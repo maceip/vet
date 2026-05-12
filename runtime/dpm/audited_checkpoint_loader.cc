@@ -144,4 +144,17 @@ LoadOrReplayAuditedProjectionCheckpointForDecision(
   };
 }
 
+absl::StatusOr<CorrectionAwareCheckpointReplay>
+LoadOrReplayAuditedProjectionCheckpointForDecision(
+    const EventSourcedLog& log, DPMProjector* projector,
+    const CorrectionAwareCheckpointReplayRequest& request,
+    CheckpointStore* store, const AuditLedger& ledger) {
+  ASSIGN_OR_RETURN(
+      CorrectionIndex corrections,
+      CorrectionIndex::LoadForCheckpoint(
+          log, request.checkpoint.checkpoint_manifest_hash));
+  return LoadOrReplayAuditedProjectionCheckpointForDecision(
+      log, projector, request, store, ledger, corrections);
+}
+
 }  // namespace litert::lm
