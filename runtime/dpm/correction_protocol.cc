@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <exception>
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,6 +24,7 @@
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
+#include "absl/strings/strip.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/dpm/event.h"
@@ -69,6 +71,44 @@ bool MentionsCheckpoint(const CorrectionPayload& correction,
     if (invalidated == checkpoint_manifest_hash) return true;
   }
   return false;
+}
+
+std::string LowerAscii(absl::string_view text) {
+  std::string out(text);
+  for (char& ch : out) {
+    if (ch >= 'A' && ch <= 'Z') {
+      ch = static_cast<char>(ch - 'A' + 'a');
+    }
+  }
+  return out;
+}
+
+std::vector<std::string> NormalizeFactList(
+    const std::vector<std::string>& facts) {
+  std::vector<std::string> out;
+  std::vector<std::string> seen_keys;
+  for (const std::string& fact : facts) {
+    const std::string trimmed(absl::StripAsciiWhitespace(fact));
+    if (trimmed.empty()) continue;
+    const std::string key = LowerAscii(trimmed);
+    if (std::find(seen_keys.begin(), seen_keys.end(), key) !=
+        seen_keys.end()) {
+      continue;
+    }
+    seen_keys.push_back(key);
+    out.push_back(trimmed);
+  }
+  return out;
+}
+
+std::vector<std::string> ReplacementFactsFor(
+    const CorrectionPayload& correction) {
+  std::vector<std::string> replacement_facts =
+      NormalizeFactList(correction.replacement_facts);
+  if (!replacement_facts.empty() || correction.replacement_projection.empty()) {
+    return replacement_facts;
+  }
+  return NormalizeFactList({correction.replacement_projection});
 }
 
 }  // namespace
@@ -221,12 +261,24 @@ absl::StatusOr<CorrectionPayload> CorrectionPayloadFromJson(
   }
 }
 
-std::vector<ProjectionCorrectionDirective> BuildProjectionCorrectionDirectives(
+absl::StatusOr<std::vector<ProjectionCorrectionDirective>>
+CompileProjectionCorrectionDirectives(
     const std::vector<CorrectionPayload>& corrections) {
   std::vector<ProjectionCorrectionDirective> directives;
   directives.reserve(corrections.size());
   for (const CorrectionPayload& correction : corrections) {
     if (correction.severity != CorrectionSeverity::kBlocking) continue;
+    std::vector<std::string> invalidated_facts =
+        NormalizeFactList(correction.invalidated_facts);
+    std::vector<std::string> replacement_facts =
+        ReplacementFactsFor(correction);
+    if (correction.must_interrupt_before_next_predict &&
+        invalidated_facts.empty() && replacement_facts.empty()) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "blocking correction ", correction.correction_id,
+          " is not machine-actionable; expected invalidated_facts, "
+          "replacement_facts, or replacement_projection."));
+    }
     ProjectionCorrectionDirective directive;
     directive.correction_event_id = correction.correction_id;
     directive.correction_event_index =
@@ -236,12 +288,19 @@ std::vector<ProjectionCorrectionDirective> BuildProjectionCorrectionDirectives(
     directive.correction_text =
         correction.correction_text.empty() ? correction.reason_code
                                            : correction.correction_text;
-    directive.invalidated_facts = correction.invalidated_facts;
-    directive.replacement_facts = correction.replacement_facts;
+    directive.invalidated_facts = std::move(invalidated_facts);
+    directive.replacement_facts = std::move(replacement_facts);
     directive.scope = correction.scope;
     directives.push_back(std::move(directive));
   }
   return directives;
+}
+
+std::vector<ProjectionCorrectionDirective> BuildProjectionCorrectionDirectives(
+    const std::vector<CorrectionPayload>& corrections) {
+  auto compiled = CompileProjectionCorrectionDirectives(corrections);
+  if (compiled.ok()) return *std::move(compiled);
+  return {};
 }
 
 absl::Status AppendCorrectionEvent(EventSourcedLog* log,

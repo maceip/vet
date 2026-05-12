@@ -115,8 +115,9 @@ LoadOrReplayAuditedProjectionCheckpointForDecision(
         absl::StrCat("checkpoint cannot be used for decision: ",
                      gate.reason));
   }
-  std::vector<ProjectionCorrectionDirective> directives =
-      BuildProjectionCorrectionDirectives(barrier.blocking_corrections);
+  ASSIGN_OR_RETURN(std::vector<ProjectionCorrectionDirective> directives,
+                   CompileProjectionCorrectionDirectives(
+                       barrier.blocking_corrections));
   ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
   const uint64_t replay_end =
       request.replay_event_range_end == 0 ? events.size()

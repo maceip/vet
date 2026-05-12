@@ -146,6 +146,18 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "correction_protocol_test",
+    srcs = ["correction_protocol_test.cc"],
+    deps = [
+        ":correction_protocol",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "//runtime/platform/hash:hasher",
+        "//runtime/util:test_utils",
+    ],
+)
+
 cc_library(
     name = "checkpoint_decision_gate",
     srcs = ["checkpoint_decision_gate.cc"],

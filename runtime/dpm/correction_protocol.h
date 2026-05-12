@@ -64,6 +64,17 @@ std::string CorrectionPayloadToJson(const CorrectionPayload& payload);
 absl::StatusOr<CorrectionPayload> CorrectionPayloadFromJson(
     absl::string_view json);
 
+// Compiles persisted correction events into the machine-actionable replay
+// directives consumed by the projector. Blocking corrections that interrupt
+// prediction must carry either invalidated facts, replacement facts, or a
+// replacement projection; otherwise replay would be prompt-only policy text and
+// the caller should fail closed.
+absl::StatusOr<std::vector<ProjectionCorrectionDirective>>
+CompileProjectionCorrectionDirectives(
+    const std::vector<CorrectionPayload>& corrections);
+
+// Compatibility shim for older call sites/tests that only need best-effort
+// rendering. Decision-time replay should use CompileProjectionCorrectionDirectives.
 std::vector<ProjectionCorrectionDirective> BuildProjectionCorrectionDirectives(
     const std::vector<CorrectionPayload>& corrections);
 
