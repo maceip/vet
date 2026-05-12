@@ -713,9 +713,10 @@ def _default_adapter():
     Default: HeuristicModelAdapter (deterministic, no API calls). This
     is the right default for CI smoke runs.
 
-    Opt-in: set BENCH_USE_ANTHROPIC=1 (or =true) to swap in
-    AnthropicModelAdapter. ANTHROPIC_API_KEY must be set; the adapter
-    raises with a clear message otherwise.
+    Opt-in:
+      BENCH_USE_ANTHROPIC=1 swaps in AnthropicModelAdapter.
+      BENCH_USE_CLAUDE_CLI=1 swaps in the local `claude -p` CLI adapter.
+      BENCH_USE_BEDROCK=1 swaps in AWS Bedrock Runtime Converse.
     """
     import os as _os
     if _os.environ.get("BENCH_USE_ANTHROPIC", "").lower() in ("1", "true", "yes"):
@@ -726,6 +727,26 @@ def _default_adapter():
         except ModuleNotFoundError:
             from anthropic_adapter import AnthropicModelAdapter  # type: ignore
         return AnthropicModelAdapter()
+    if _os.environ.get("BENCH_USE_CLAUDE_CLI", "").lower() in (
+        "1", "true", "yes",
+    ):
+        try:
+            from tools.benchmarks.dpm_phase3_bench.claude_cli_adapter import (
+                ClaudeCliModelAdapter,
+            )
+        except ModuleNotFoundError:
+            from claude_cli_adapter import ClaudeCliModelAdapter  # type: ignore
+        return ClaudeCliModelAdapter()
+    if _os.environ.get("BENCH_USE_BEDROCK", "").lower() in (
+        "1", "true", "yes",
+    ):
+        try:
+            from tools.benchmarks.dpm_phase3_bench.bedrock_adapter import (
+                BedrockModelAdapter,
+            )
+        except ModuleNotFoundError:
+            from bedrock_adapter import BedrockModelAdapter  # type: ignore
+        return BedrockModelAdapter()
     return HeuristicModelAdapter()
 
 
