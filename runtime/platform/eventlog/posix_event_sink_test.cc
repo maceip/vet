@@ -244,6 +244,48 @@ TEST(PosixEventSinkTest, BranchAtZeroRecordsYieldsEmptyParentSlice) {
   EXPECT_EQ(branch_records[0], "b0");
 }
 
+TEST(PosixEventSinkTest, BranchReadStopsAtForkPoint) {
+  PosixEventSink sink(TestRoot("posix_event_sink_branch_stops_at_fork"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p0"));
+  ASSERT_OK(sink.CreateBranch("tenant-a", "session-1",
+                              "tenant-a", "branch-cut", 1));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p1"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "branch-cut", "b0"));
+
+  std::ofstream file(sink.PathFor("tenant-a", "session-1"),
+                     std::ios::out | std::ios::app | std::ios::binary);
+  file.put('\1');
+  file.close();
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::string> branch_records,
+                       sink.ReadRecords("tenant-a", "branch-cut"));
+  ASSERT_EQ(branch_records.size(), 2);
+  EXPECT_EQ(branch_records[0], "p0");
+  EXPECT_EQ(branch_records[1], "b0");
+  EXPECT_FALSE(sink.ReadRecords("tenant-a", "session-1").ok());
+}
+
+TEST(PosixEventSinkTest, ForEachRecordRangeReadsVisibleHalfOpenSlice) {
+  PosixEventSink sink(TestRoot("posix_event_sink_range"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p0"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p1"));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "session-1", "p2"));
+  ASSERT_OK(sink.CreateBranch("tenant-a", "session-1",
+                              "tenant-a", "branch-range", 2));
+  ASSERT_OK(sink.AppendRecord("tenant-a", "branch-range", "b0"));
+
+  std::vector<std::string> records;
+  ASSERT_OK(sink.ForEachRecordRange(
+      "tenant-a", "branch-range", 1, 3,
+      [&records](absl::string_view record) -> absl::Status {
+        records.emplace_back(record);
+        return absl::OkStatus();
+      }));
+  ASSERT_EQ(records.size(), 2);
+  EXPECT_EQ(records[0], "p1");
+  EXPECT_EQ(records[1], "b0");
+}
+
 TEST(PosixEventSinkTest, BranchOfBranchSeesGrandparentSlice) {
   PosixEventSink sink(TestRoot("posix_event_sink_branch_of_branch"));
   ASSERT_OK(sink.AppendRecord("tenant-a", "root", "g0"));

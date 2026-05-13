@@ -25,7 +25,9 @@
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
+#include "absl/strings/str_split.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
+#include "runtime/platform/checkpoint/canonical_manifest.h"
 #include "runtime/platform/checkpoint/checkpoint_store.h"
 #include "runtime/platform/checkpoint/durable_writer.h"
 #include "runtime/platform/hash/hasher.h"
@@ -93,6 +95,42 @@ absl::Status ValidateIdentity(absl::string_view tenant_id,
   return absl::OkStatus();
 }
 
+absl::Status MaybePersistDependentManifestIndex(
+    const LocalFilesystemCheckpointStore& store,
+    absl::string_view tenant_id,
+    absl::string_view session_id,
+    const Hash256& manifest_hash,
+    absl::string_view abi_bytes) {
+  absl::StatusOr<CanonicalManifestInput> manifest =
+      DecodeCanonicalManifest(abi_bytes);
+  if (!manifest.ok()) {
+    return absl::OkStatus();
+  }
+  for (const Hash256& parent : manifest->parent_hashes) {
+    const std::filesystem::path path =
+        store.DependentManifestIndexPathFor(tenant_id, session_id, parent);
+    const std::string child_hex = manifest_hash.ToHex();
+    std::string existing;
+    RETURN_IF_ERROR(ReadEntireFileIfExists(path, &existing));
+    std::vector<std::string> children;
+    if (!existing.empty()) {
+      children = absl::StrSplit(existing, '\n', absl::SkipEmpty());
+      if (std::find(children.begin(), children.end(), child_hex) !=
+          children.end()) {
+        continue;
+      }
+    }
+    children.push_back(child_hex);
+    std::sort(children.begin(), children.end());
+    std::string body;
+    for (const std::string& child : children) {
+      absl::StrAppend(&body, child, "\n");
+    }
+    RETURN_IF_ERROR(DurablyWriteFile(path, body));
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 LocalFilesystemCheckpointStore::LocalFilesystemCheckpointStore(
@@ -111,6 +149,14 @@ std::filesystem::path LocalFilesystemCheckpointStore::ManifestPathFor(
     const Hash256& manifest_hash) const {
   return root_path_ / std::string(tenant_id) / std::string(session_id) /
          "manifests" / (manifest_hash.ToHex() + ".dpmmanifest");
+}
+
+std::filesystem::path
+LocalFilesystemCheckpointStore::DependentManifestIndexPathFor(
+    absl::string_view tenant_id, absl::string_view session_id,
+    const Hash256& parent_manifest_hash) const {
+  return root_path_ / std::string(tenant_id) / std::string(session_id) /
+         "deps" / (parent_manifest_hash.ToHex() + ".idx");
 }
 
 // ----------------------------------------------------------------------
@@ -224,13 +270,16 @@ absl::Status LocalFilesystemCheckpointStore::PutManifest(
   RETURN_IF_ERROR(ReadEntireFileIfExists(path, &existing));
   if (!existing.empty()) {
     if (existing == framed) {
-      return absl::OkStatus();
+      return MaybePersistDependentManifestIndex(*this, tenant_id, session_id,
+                                                manifest_hash, abi_bytes);
     }
     return absl::DataLossError(absl::StrCat(
         "checkpoint store: manifest at ", manifest_hash.ToHex(),
         " already exists with different bytes; refusing to overwrite."));
   }
-  return DurablyWriteFile(path, framed);
+  RETURN_IF_ERROR(DurablyWriteFile(path, framed));
+  return MaybePersistDependentManifestIndex(*this, tenant_id, session_id,
+                                            manifest_hash, abi_bytes);
 }
 
 absl::StatusOr<CheckpointStore::ManifestRecord>
@@ -308,6 +357,27 @@ LocalFilesystemCheckpointStore::ListManifests(
         &ok);
     if (!ok) continue;
     out.push_back(addr);
+  }
+  return out;
+}
+
+absl::StatusOr<std::vector<Hash256>>
+LocalFilesystemCheckpointStore::ListDependentManifests(
+    absl::string_view tenant_id, absl::string_view session_id,
+    const Hash256& parent_manifest_hash) const {
+  RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
+  const std::filesystem::path dir =
+      DependentManifestIndexPathFor(tenant_id, session_id,
+                                    parent_manifest_hash);
+  std::vector<Hash256> out;
+  std::string bytes;
+  RETURN_IF_ERROR(ReadEntireFileIfExists(dir, &bytes));
+  if (bytes.empty()) return out;
+  for (absl::string_view line :
+       absl::StrSplit(bytes, '\n', absl::SkipEmpty())) {
+    bool ok = false;
+    Hash256 child = Hash256::FromHex(line, &ok);
+    if (ok) out.push_back(child);
   }
   return out;
 }

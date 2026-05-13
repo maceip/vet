@@ -73,6 +73,9 @@ class LocalFilesystemCheckpointStore : public CheckpointStore {
   absl::StatusOr<std::vector<Hash256>> ListManifests(
       absl::string_view tenant_id,
       absl::string_view session_id) const override;
+  absl::StatusOr<std::vector<Hash256>> ListDependentManifests(
+      absl::string_view tenant_id, absl::string_view session_id,
+      const Hash256& parent_manifest_hash) const override;
 
   std::filesystem::path PayloadPathFor(absl::string_view tenant_id,
                                        absl::string_view session_id,
@@ -80,6 +83,9 @@ class LocalFilesystemCheckpointStore : public CheckpointStore {
   std::filesystem::path ManifestPathFor(absl::string_view tenant_id,
                                         absl::string_view session_id,
                                         const Hash256& manifest_hash) const;
+  std::filesystem::path DependentManifestIndexPathFor(
+      absl::string_view tenant_id, absl::string_view session_id,
+      const Hash256& parent_manifest_hash) const;
 
  private:
   std::filesystem::path root_path_;

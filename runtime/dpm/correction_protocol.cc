@@ -14,8 +14,10 @@
 
 #include "runtime/dpm/correction_protocol.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,11 +25,13 @@
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
+#include "absl/strings/strip.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/dpm/event.h"
 #include "runtime/dpm/event_sourced_log.h"
 #include "runtime/dpm/projection_prompt.h"
+#include "runtime/platform/checkpoint/durable_writer.h"
 #include "runtime/platform/hash/hasher.h"
 #include "runtime/util/status_macros.h"
 
@@ -69,6 +73,85 @@ bool MentionsCheckpoint(const CorrectionPayload& correction,
     if (invalidated == checkpoint_manifest_hash) return true;
   }
   return false;
+}
+
+std::string LowerAscii(absl::string_view text) {
+  std::string out(text);
+  for (char& ch : out) {
+    if (ch >= 'A' && ch <= 'Z') {
+      ch = static_cast<char>(ch - 'A' + 'a');
+    }
+  }
+  return out;
+}
+
+std::vector<std::string> NormalizeFactList(
+    const std::vector<std::string>& facts) {
+  std::vector<std::string> out;
+  std::vector<std::string> seen_keys;
+  for (const std::string& fact : facts) {
+    const std::string trimmed(absl::StripAsciiWhitespace(fact));
+    if (trimmed.empty()) continue;
+    const std::string key = LowerAscii(trimmed);
+    if (std::find(seen_keys.begin(), seen_keys.end(), key) !=
+        seen_keys.end()) {
+      continue;
+    }
+    seen_keys.push_back(key);
+    out.push_back(trimmed);
+  }
+  return out;
+}
+
+std::vector<std::string> ReplacementFactsFor(
+    const CorrectionPayload& correction) {
+  std::vector<std::string> replacement_facts =
+      NormalizeFactList(correction.replacement_facts);
+  if (!replacement_facts.empty() || correction.replacement_projection.empty()) {
+    return replacement_facts;
+  }
+  return NormalizeFactList({correction.replacement_projection});
+}
+
+std::vector<Hash256> MentionedCheckpoints(const CorrectionPayload& correction) {
+  std::vector<Hash256> hashes;
+  hashes.push_back(correction.target_checkpoint_manifest_hash);
+  for (const Hash256& hash : correction.invalidates_checkpoints) {
+    if (std::find(hashes.begin(), hashes.end(), hash) == hashes.end()) {
+      hashes.push_back(hash);
+    }
+  }
+  return hashes;
+}
+
+std::filesystem::path CorrectionIndexRootFor(const EventSourcedLog& log) {
+  const std::filesystem::path event_log_path = log.path();
+  if (event_log_path.empty()) return {};
+  return event_log_path.parent_path() / "correction_index";
+}
+
+std::string CorrectionIndexFileNameFor(const CorrectionPayload& payload) {
+  return HashBytes(HashAlgorithm::kBlake3, payload.correction_id).ToHex() +
+         ".json";
+}
+
+absl::Status PersistCorrectionIndexSidecar(
+    const EventSourcedLog& log, const CorrectionPayload& payload) {
+  const std::filesystem::path root = CorrectionIndexRootFor(log);
+  if (root.empty()) return absl::OkStatus();
+  const std::string body = CorrectionPayloadToJson(payload) + "\n";
+  const std::string file_name = CorrectionIndexFileNameFor(payload);
+  for (const Hash256& checkpoint_hash : MentionedCheckpoints(payload)) {
+    const std::filesystem::path dir = root / checkpoint_hash.ToHex();
+    std::error_code error;
+    std::filesystem::create_directories(dir, error);
+    if (error) {
+      return absl::InternalError(absl::StrCat(
+          "failed to create correction index directory: ", error.message()));
+    }
+    RETURN_IF_ERROR(DurablyWriteFile(dir / file_name, body));
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -221,12 +304,24 @@ absl::StatusOr<CorrectionPayload> CorrectionPayloadFromJson(
   }
 }
 
-std::vector<ProjectionCorrectionDirective> BuildProjectionCorrectionDirectives(
+absl::StatusOr<std::vector<ProjectionCorrectionDirective>>
+CompileProjectionCorrectionDirectives(
     const std::vector<CorrectionPayload>& corrections) {
   std::vector<ProjectionCorrectionDirective> directives;
   directives.reserve(corrections.size());
   for (const CorrectionPayload& correction : corrections) {
     if (correction.severity != CorrectionSeverity::kBlocking) continue;
+    std::vector<std::string> invalidated_facts =
+        NormalizeFactList(correction.invalidated_facts);
+    std::vector<std::string> replacement_facts =
+        ReplacementFactsFor(correction);
+    if (correction.must_interrupt_before_next_predict &&
+        invalidated_facts.empty() && replacement_facts.empty()) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "blocking correction ", correction.correction_id,
+          " is not machine-actionable; expected invalidated_facts, "
+          "replacement_facts, or replacement_projection."));
+    }
     ProjectionCorrectionDirective directive;
     directive.correction_event_id = correction.correction_id;
     directive.correction_event_index =
@@ -236,12 +331,19 @@ std::vector<ProjectionCorrectionDirective> BuildProjectionCorrectionDirectives(
     directive.correction_text =
         correction.correction_text.empty() ? correction.reason_code
                                            : correction.correction_text;
-    directive.invalidated_facts = correction.invalidated_facts;
-    directive.replacement_facts = correction.replacement_facts;
+    directive.invalidated_facts = std::move(invalidated_facts);
+    directive.replacement_facts = std::move(replacement_facts);
     directive.scope = correction.scope;
     directives.push_back(std::move(directive));
   }
   return directives;
+}
+
+std::vector<ProjectionCorrectionDirective> BuildProjectionCorrectionDirectives(
+    const std::vector<CorrectionPayload>& corrections) {
+  auto compiled = CompileProjectionCorrectionDirectives(corrections);
+  if (compiled.ok()) return *std::move(compiled);
+  return {};
 }
 
 absl::Status AppendCorrectionEvent(EventSourcedLog* log,
@@ -250,11 +352,12 @@ absl::Status AppendCorrectionEvent(EventSourcedLog* log,
     return absl::InvalidArgumentError("EventSourcedLog is required.");
   }
   RETURN_IF_ERROR(ValidateCorrectionPayload(payload));
-  return log->Append(Event{
+  RETURN_IF_ERROR(log->Append(Event{
       .type = Event::Type::kCorrection,
       .payload = CorrectionPayloadToJson(payload),
       .timestamp_us = payload.created_unix_micros,
-  });
+  }));
+  return PersistCorrectionIndexSidecar(*log, payload);
 }
 
 absl::StatusOr<CorrectionIndex> CorrectionIndex::Build(
@@ -265,6 +368,70 @@ absl::StatusOr<CorrectionIndex> CorrectionIndex::Build(
     ASSIGN_OR_RETURN(CorrectionPayload payload,
                      CorrectionPayloadFromJson(event.payload));
     index.corrections_.push_back(std::move(payload));
+  }
+  return index;
+}
+
+absl::StatusOr<CorrectionIndex> CorrectionIndex::Build(
+    const EventSourcedLog& log) {
+  const std::filesystem::path root = CorrectionIndexRootFor(log);
+  if (root.empty() || !std::filesystem::exists(root)) {
+    ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
+    return Build(events);
+  }
+  CorrectionIndex index;
+  std::vector<std::filesystem::path> files;
+  for (const auto& checkpoint_dir : std::filesystem::directory_iterator(root)) {
+    if (!checkpoint_dir.is_directory()) continue;
+    for (const auto& entry :
+         std::filesystem::directory_iterator(checkpoint_dir.path())) {
+      if (entry.is_regular_file()) files.push_back(entry.path());
+    }
+  }
+  std::sort(files.begin(), files.end());
+  std::vector<std::string> seen_correction_ids;
+  for (const std::filesystem::path& path : files) {
+    std::string bytes;
+    RETURN_IF_ERROR(ReadEntireFileIfExists(path, &bytes));
+    if (bytes.empty()) continue;
+    ASSIGN_OR_RETURN(CorrectionPayload payload,
+                     CorrectionPayloadFromJson(bytes));
+    if (std::find(seen_correction_ids.begin(), seen_correction_ids.end(),
+                  payload.correction_id) != seen_correction_ids.end()) {
+      continue;
+    }
+    seen_correction_ids.push_back(payload.correction_id);
+    index.corrections_.push_back(std::move(payload));
+  }
+  return index;
+}
+
+absl::StatusOr<CorrectionIndex> CorrectionIndex::LoadForCheckpoint(
+    const EventSourcedLog& log, const Hash256& checkpoint_manifest_hash) {
+  const std::filesystem::path root = CorrectionIndexRootFor(log);
+  if (root.empty() || !std::filesystem::exists(root)) {
+    ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
+    return Build(events);
+  }
+  CorrectionIndex index;
+  const std::filesystem::path dir = root / checkpoint_manifest_hash.ToHex();
+  if (!std::filesystem::exists(dir)) {
+    return index;
+  }
+  std::vector<std::filesystem::path> files;
+  for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+    if (entry.is_regular_file()) files.push_back(entry.path());
+  }
+  std::sort(files.begin(), files.end());
+  for (const std::filesystem::path& path : files) {
+    std::string bytes;
+    RETURN_IF_ERROR(ReadEntireFileIfExists(path, &bytes));
+    if (bytes.empty()) continue;
+    ASSIGN_OR_RETURN(CorrectionPayload payload,
+                     CorrectionPayloadFromJson(bytes));
+    if (MentionsCheckpoint(payload, checkpoint_manifest_hash)) {
+      index.corrections_.push_back(std::move(payload));
+    }
   }
   return index;
 }

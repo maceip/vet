@@ -21,6 +21,7 @@
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
+#include "runtime/dpm/active_evidence_view.h"
 #include "runtime/dpm/checkpoint_decision_gate.h"
 #include "runtime/dpm/checkpointed_projection.h"
 #include "runtime/dpm/correction_protocol.h"
@@ -115,8 +116,9 @@ LoadOrReplayAuditedProjectionCheckpointForDecision(
         absl::StrCat("checkpoint cannot be used for decision: ",
                      gate.reason));
   }
-  std::vector<ProjectionCorrectionDirective> directives =
-      BuildProjectionCorrectionDirectives(barrier.blocking_corrections);
+  ASSIGN_OR_RETURN(std::vector<ProjectionCorrectionDirective> directives,
+                   CompileProjectionCorrectionDirectives(
+                       barrier.blocking_corrections));
   ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
   const uint64_t replay_end =
       request.replay_event_range_end == 0 ? events.size()
@@ -125,17 +127,34 @@ LoadOrReplayAuditedProjectionCheckpointForDecision(
     return absl::InvalidArgumentError(
         "correction-aware replay range exceeds log generation.");
   }
+  ASSIGN_OR_RETURN(ActiveEvidenceView active_evidence_view,
+                   BuildActiveEvidenceViewFromEvents(
+                       events, request.replay_event_range_start, replay_end,
+                       directives));
   ASSIGN_OR_RETURN(
       std::string projected_memory,
-      projector->ProjectRangeWithCorrections(
-          log, request.replay_event_range_start, replay_end,
-          request.projection, directives));
+      projector->ProjectActiveEvidenceView(active_evidence_view,
+                                           request.projection, directives));
   return CorrectionAwareCheckpointReplay{
       .projected_memory = std::move(projected_memory),
       .gate = std::move(gate),
       .replayed_from_raw = true,
       .correction_directives = std::move(directives),
+      .active_evidence_view = std::move(active_evidence_view),
   };
+}
+
+absl::StatusOr<CorrectionAwareCheckpointReplay>
+LoadOrReplayAuditedProjectionCheckpointForDecision(
+    const EventSourcedLog& log, DPMProjector* projector,
+    const CorrectionAwareCheckpointReplayRequest& request,
+    CheckpointStore* store, const AuditLedger& ledger) {
+  ASSIGN_OR_RETURN(
+      CorrectionIndex corrections,
+      CorrectionIndex::LoadForCheckpoint(
+          log, request.checkpoint.checkpoint_manifest_hash));
+  return LoadOrReplayAuditedProjectionCheckpointForDecision(
+      log, projector, request, store, ledger, corrections);
 }
 
 }  // namespace litert::lm

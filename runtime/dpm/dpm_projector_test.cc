@@ -189,6 +189,35 @@ TEST(DPMProjectorTest, RejectsProjectionWithoutOneBasedCitations) {
   EXPECT_FALSE(projector.Project(log, config).ok());
 }
 
+TEST(DPMProjectorTest, RejectsProjectionThatExceedsMemoryBudget) {
+  EventSourcedLog log(TestPath("dpm_projector_budget_test"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-1",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kUser,
+      .payload = "fact A",
+      .timestamp_us = 100,
+  }));
+  RecordingRunner runner(
+      R"json({"Facts":["fact A with a deliberately long retained explanation [1]"],"Reasoning":["because the log said so [1]"],"Compliance":["ok [1]"]})json");
+  DPMProjector projector(&runner);
+  DPMProjector::ProjectionConfig config;
+  config.memory_budget_chars = 48;
+  config.schema_id = "insurance_liability_v2";
+  config.schema_json =
+      R"json({"Facts":["string with [i]"],"Reasoning":["string with [i]"],"Compliance":["string with [i]"]})json";
+  config.model_id = "pinned-test-model";
+
+  absl::StatusOr<std::string> projection = projector.Project(log, config);
+
+  ASSERT_FALSE(projection.ok());
+  EXPECT_EQ(projection.status().code(), absl::StatusCode::kResourceExhausted);
+  EXPECT_THAT(std::string(projection.status().message()),
+              HasSubstr("exceeded memory budget"));
+}
+
 TEST(DPMProjectorTest,
      ProjectRangeWithCorrectionsInjectsBlockingDirectiveAndPassesCleanOutput) {
   EventSourcedLog log(TestPath("dpm_projector_correction_prompt_test"),
@@ -235,6 +264,56 @@ TEST(DPMProjectorTest,
   EXPECT_THAT(runner.prompts[0], HasSubstr("transport as main result"));
 }
 
+TEST(DPMProjectorTest, CorrectionAwareReplayMarksRevokedEvidenceBeforePrompt) {
+  EventSourcedLog log(TestPath("dpm_projector_correction_view_test"),
+                      DPMLogIdentity{
+                          .tenant_id = "tenant-a",
+                          .session_id = "session-1",
+                      });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "initial analysis says transport as main result",
+      .timestamp_us = 100,
+  }));
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kCorrection,
+      .payload = "correction: credential theft is the main result",
+      .timestamp_us = 200,
+  }));
+  RecordingRunner runner(
+      R"json({"Facts":["credential theft is the main result [2]"],"Reasoning":["correction supersedes earlier analysis [2]"],"Compliance":["audit trail retained [2]"]})json");
+  DPMProjector projector(&runner);
+  DPMProjector::ProjectionConfig config;
+  config.schema_id = "incident_response_v1";
+  config.schema_json =
+      R"json({"Facts":["string with [i]"],"Reasoning":["string with [i]"],"Compliance":["string with [i]"]})json";
+  config.model_id = "pinned-test-model";
+  const std::vector<ProjectionCorrectionDirective> directives = {
+      ProjectionCorrectionDirective{
+          .correction_event_id = "corr-transport",
+          .correction_event_index = 1,
+          .correction_text = "Transport was not the main result.",
+          .invalidated_facts = {"transport as main result"},
+          .replacement_facts = {"credential theft is the main result [2]"},
+          .scope = ProjectionCorrectionScope::kPriorEvents,
+      }};
+
+  ASSERT_OK_AND_ASSIGN(
+      std::string prompt,
+      projector.CreateProjectionPromptForRangeWithCorrections(
+          log, 0, 2, config, directives));
+
+  EXPECT_THAT(prompt, HasSubstr("[BLOCKING CORRECTIONS]"));
+  EXPECT_THAT(prompt, HasSubstr("invalidated_facts"));
+  EXPECT_THAT(prompt, HasSubstr("transport as main result"));
+  EXPECT_THAT(prompt, HasSubstr("REVOKED_BY_CORRECTION"));
+  EXPECT_THAT(prompt, HasSubstr("corr-transport"));
+  EXPECT_THAT(prompt, Not(HasSubstr(
+                          "initial analysis says transport as main result")));
+  EXPECT_THAT(prompt,
+              HasSubstr("correction: credential theft is the main result"));
+}
+
 TEST(DPMProjectorTest, ProjectRangeWithCorrectionsRepairsLeakedOldFact) {
   EventSourcedLog log(TestPath("dpm_projector_correction_repair_test"),
                       DPMLogIdentity{
@@ -278,6 +357,41 @@ TEST(DPMProjectorTest, ProjectRangeWithCorrectionsRepairsLeakedOldFact) {
   ASSERT_EQ(runner.prompts.size(), 2);
   EXPECT_THAT(runner.prompts[1], HasSubstr("CORRECTION REPAIR"));
   EXPECT_THAT(runner.prompts[1], HasSubstr("[FORBIDDEN SUBSTRINGS]"));
+}
+
+TEST(DPMProjectorTest, ProjectActiveEvidenceViewUsesProvidedView) {
+  ActiveEvidenceView view;
+  view.event_range_start = 0;
+  view.event_range_end = 1;
+  view.active_event_log =
+      R"event([1] {"type":"tool","payload":"REVOKED_BY_CORRECTION"})event";
+  view.revoked_evidence_log =
+      R"event([1] revoked invalidated_facts=transport as main result)event";
+
+  RecordingRunner runner(
+      R"json({"Facts":["credential theft is the main result [1]"],"Reasoning":["revoked evidence marker applied [1]"],"Compliance":["audit retained [1]"]})json");
+  DPMProjector projector(&runner);
+  DPMProjector::ProjectionConfig config;
+  config.schema_id = "incident_response_v1";
+  config.schema_json =
+      R"json({"Facts":["string with [i]"],"Reasoning":["string with [i]"],"Compliance":["string with [i]"]})json";
+  config.model_id = "pinned-test-model";
+  const std::vector<ProjectionCorrectionDirective> directives = {
+      ProjectionCorrectionDirective{
+          .correction_event_id = "corr-transport",
+          .invalidated_facts = {"transport as main result"},
+          .replacement_facts = {"credential theft is the main result [1]"},
+      }};
+
+  ASSERT_OK_AND_ASSIGN(
+      std::string projection,
+      projector.ProjectActiveEvidenceView(view, config, directives));
+
+  EXPECT_THAT(projection, HasSubstr("credential theft is the main result"));
+  ASSERT_EQ(runner.prompts.size(), 1);
+  EXPECT_THAT(runner.prompts[0], HasSubstr("REVOKED_BY_CORRECTION"));
+  EXPECT_THAT(runner.prompts[0],
+              Not(HasSubstr("revoked invalidated_facts")));
 }
 
 TEST(DPMProjectorTest,

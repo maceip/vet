@@ -26,6 +26,7 @@
 #include "absl/strings/str_join.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
+#include "runtime/dpm/active_evidence_view.h"
 #include "runtime/dpm/event.h"
 #include "runtime/dpm/event_sourced_log.h"
 #include "runtime/dpm/projection_prompt.h"
@@ -86,12 +87,18 @@ absl::Status ValidateProjectionCitations(const nlohmann::ordered_json& json) {
 }
 
 absl::StatusOr<std::string> CanonicalizeProjectionJson(
-    absl::string_view raw_projection) {
+    absl::string_view raw_projection, size_t memory_budget_chars) {
   try {
     nlohmann::ordered_json projection =
         nlohmann::ordered_json::parse(std::string(raw_projection));
     RETURN_IF_ERROR(ValidateProjectionCitations(projection));
-    return projection.dump();
+    std::string canonical = projection.dump();
+    if (memory_budget_chars > 0 && canonical.size() > memory_budget_chars) {
+      return absl::ResourceExhaustedError(absl::StrCat(
+          "DPM projection exceeded memory budget (", canonical.size(),
+          " bytes > ", memory_budget_chars, ")."));
+    }
+    return canonical;
   } catch (const std::exception& e) {
     return absl::InvalidArgumentError(absl::StrCat(
         "DPM projection output is not valid JSON: ", e.what(),
@@ -157,7 +164,7 @@ absl::StatusOr<std::string> DPMProjector::Project(
   ASSIGN_OR_RETURN(
       std::string raw_projection,
       runner_->Generate(prompt, InferenceConfigFor(config)));
-  return CanonicalizeProjectionJson(raw_projection);
+  return CanonicalizeProjectionJson(raw_projection, config.memory_budget_chars);
 }
 
 absl::StatusOr<std::string> DPMProjector::ProjectRange(
@@ -176,50 +183,35 @@ absl::StatusOr<std::string> DPMProjector::ProjectRange(
   ASSIGN_OR_RETURN(
       std::string raw_projection,
       runner_->Generate(prompt, InferenceConfigFor(config)));
-  return CanonicalizeProjectionJson(raw_projection);
+  return CanonicalizeProjectionJson(raw_projection, config.memory_budget_chars);
 }
 
 absl::StatusOr<std::string> DPMProjector::ProjectWithCorrections(
     const EventSourcedLog& log, const ProjectionConfig& config,
     const std::vector<ProjectionCorrectionDirective>& correction_directives) {
-  if (runner_ == nullptr) {
-    return absl::FailedPreconditionError("DPM projector runner is null.");
-  }
-  if (config.model_id.empty()) {
-    return absl::InvalidArgumentError(
-        "DPM projection requires a pinned model_id.");
-  }
+  ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
   ASSIGN_OR_RETURN(
-      std::string prompt,
-      CreateProjectionPromptWithCorrections(log, config,
-                                            correction_directives));
-  ASSIGN_OR_RETURN(
-      std::string raw_projection,
-      runner_->Generate(prompt, InferenceConfigFor(config)));
-  ASSIGN_OR_RETURN(std::string projection,
-                   CanonicalizeProjectionJson(raw_projection));
-  std::vector<std::string> invalidated =
-      FindInvalidatedFacts(projection, correction_directives);
-  for (int attempt = 0;
-       !invalidated.empty() && attempt < config.correction_repair_attempts;
-       ++attempt) {
-    ASSIGN_OR_RETURN(
-        std::string repaired_raw,
-        runner_->Generate(CreateCorrectionRepairPrompt(
-                              projection, invalidated, correction_directives),
-                          InferenceConfigFor(config)));
-    ASSIGN_OR_RETURN(projection, CanonicalizeProjectionJson(repaired_raw));
-    invalidated = FindInvalidatedFacts(projection, correction_directives);
-  }
-  RETURN_IF_ERROR(
-      ValidateNoInvalidatedFacts(projection, correction_directives));
-  return projection;
+      ActiveEvidenceView active_view,
+      BuildActiveEvidenceViewFromEvents(events, 0, events.size(),
+                                        correction_directives));
+  return ProjectActiveEvidenceView(active_view, config, correction_directives);
 }
 
 absl::StatusOr<std::string> DPMProjector::ProjectRangeWithCorrections(
     const EventSourcedLog& log, uint64_t event_range_start,
     uint64_t event_range_end, const ProjectionConfig& config,
     const std::vector<ProjectionCorrectionDirective>& correction_directives) {
+  ASSIGN_OR_RETURN(
+      ActiveEvidenceView active_view,
+      BuildActiveEvidenceView(log, event_range_start, event_range_end,
+                              correction_directives));
+  return ProjectActiveEvidenceView(active_view, config, correction_directives);
+}
+
+absl::StatusOr<std::string> DPMProjector::ProjectActiveEvidenceView(
+    const ActiveEvidenceView& active_evidence_view,
+    const ProjectionConfig& config,
+    const std::vector<ProjectionCorrectionDirective>& correction_directives) {
   if (runner_ == nullptr) {
     return absl::FailedPreconditionError("DPM projector runner is null.");
   }
@@ -227,16 +219,37 @@ absl::StatusOr<std::string> DPMProjector::ProjectRangeWithCorrections(
     return absl::InvalidArgumentError(
         "DPM projection requires a pinned model_id.");
   }
+  if (config.schema_id.empty()) {
+    return absl::InvalidArgumentError(
+        "DPM projection requires a non-empty schema_id.");
+  }
+  if (config.schema_json.empty()) {
+    return absl::InvalidArgumentError(
+        "DPM projection requires a non-empty task schema.");
+  }
+  try {
+    (void)nlohmann::ordered_json::parse(config.schema_json);
+  } catch (const std::exception& e) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("DPM projection schema is not valid JSON: ", e.what()));
+  }
+  if (active_evidence_view.event_range_end <=
+      active_evidence_view.event_range_start) {
+    return absl::InvalidArgumentError(
+        "DPM active evidence view must cover a non-empty half-open range.");
+  }
   ASSIGN_OR_RETURN(
       std::string prompt,
-      CreateProjectionPromptForRangeWithCorrections(
-          log, event_range_start, event_range_end, config,
-          correction_directives));
+      litert::lm::CreateProjectionPrompt(
+          active_evidence_view.active_event_log, config.schema_id,
+          config.schema_json, config.memory_budget_chars,
+          config.max_event_log_chars, correction_directives));
   ASSIGN_OR_RETURN(
       std::string raw_projection,
       runner_->Generate(prompt, InferenceConfigFor(config)));
   ASSIGN_OR_RETURN(std::string projection,
-                   CanonicalizeProjectionJson(raw_projection));
+                   CanonicalizeProjectionJson(raw_projection,
+                                              config.memory_budget_chars));
   std::vector<std::string> invalidated =
       FindInvalidatedFacts(projection, correction_directives);
   for (int attempt = 0;
@@ -247,7 +260,9 @@ absl::StatusOr<std::string> DPMProjector::ProjectRangeWithCorrections(
         runner_->Generate(CreateCorrectionRepairPrompt(
                               projection, invalidated, correction_directives),
                           InferenceConfigFor(config)));
-    ASSIGN_OR_RETURN(projection, CanonicalizeProjectionJson(repaired_raw));
+    ASSIGN_OR_RETURN(projection,
+                     CanonicalizeProjectionJson(repaired_raw,
+                                                config.memory_budget_chars));
     invalidated = FindInvalidatedFacts(projection, correction_directives);
   }
   RETURN_IF_ERROR(
@@ -298,11 +313,15 @@ absl::StatusOr<std::string> DPMProjector::CreateProjectionPromptWithCorrections(
     return absl::InvalidArgumentError(
         absl::StrCat("DPM projection schema is not valid JSON: ", e.what()));
   }
-  ASSIGN_OR_RETURN(std::string event_log, log.GetProjectionEventLog());
+  ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
+  ASSIGN_OR_RETURN(
+      ActiveEvidenceView active_view,
+      BuildActiveEvidenceViewFromEvents(events, 0, events.size(),
+                                        correction_directives));
   ASSIGN_OR_RETURN(
       std::string prompt,
       litert::lm::CreateProjectionPrompt(
-          event_log, config.schema_id, config.schema_json,
+          active_view.active_event_log, config.schema_id, config.schema_json,
           config.memory_budget_chars, config.max_event_log_chars,
           correction_directives));
   return prompt;
@@ -356,13 +375,14 @@ DPMProjector::CreateProjectionPromptForRangeWithCorrections(
     return absl::InvalidArgumentError(
         absl::StrCat("DPM projection schema is not valid JSON: ", e.what()));
   }
-  ASSIGN_OR_RETURN(std::string event_log,
-                   log.GetProjectionEventLogRange(event_range_start,
-                                                  event_range_end));
+  ASSIGN_OR_RETURN(
+      ActiveEvidenceView active_view,
+      BuildActiveEvidenceView(log, event_range_start, event_range_end,
+                              correction_directives));
   ASSIGN_OR_RETURN(
       std::string prompt,
       litert::lm::CreateProjectionPrompt(
-          event_log, config.schema_id, config.schema_json,
+          active_view.active_event_log, config.schema_id, config.schema_json,
           config.memory_budget_chars, config.max_event_log_chars,
           correction_directives));
   return prompt;

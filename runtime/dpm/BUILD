@@ -27,6 +27,7 @@ licenses(["notice"])
 cc_library(
     name = "dpm",
     srcs = [
+        "active_evidence_view.cc",
         "dpm_projector.cc",
         "engine_inference_runner.cc",
         "event.cc",
@@ -35,6 +36,7 @@ cc_library(
         "stateless_decision_engine.cc",
     ],
     hdrs = [
+        "active_evidence_view.h",
         "dpm_projector.h",
         "engine_inference_runner.h",
         "event.h",
@@ -95,6 +97,28 @@ cc_library(
 )
 
 cc_library(
+    name = "phase3_runtime_config",
+    srcs = ["phase3_runtime_config.cc"],
+    hdrs = ["phase3_runtime_config.h"],
+    deps = [
+        ":audited_checkpoint_loader",
+        ":dpm",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "phase3_runtime_config_test",
+    srcs = ["phase3_runtime_config_test.cc"],
+    deps = [
+        ":phase3_runtime_config",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "//runtime/platform/audit:audit_certificate",
+    ],
+)
+
+cc_library(
     name = "checkpoint_policy",
     srcs = ["checkpoint_policy.cc"],
     hdrs = ["checkpoint_policy.h"],
@@ -139,8 +163,23 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@nlohmann_json//:json",
+        "//runtime/platform/checkpoint:durable_writer",
         "//runtime/platform/hash:hasher",
         "//runtime/util:litert_status_util",
+    ],
+)
+
+cc_test(
+    name = "correction_protocol_test",
+    srcs = ["correction_protocol_test.cc"],
+    deps = [
+        ":correction_protocol",
+        ":dpm",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "//runtime/platform/hash:hasher",
+        "//runtime/util:test_utils",
     ],
 )
 
@@ -337,6 +376,17 @@ cc_test(
 )
 
 cc_test(
+    name = "active_evidence_view_test",
+    srcs = ["active_evidence_view_test.cc"],
+    deps = [
+        ":dpm",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/util:test_utils",
+    ],
+)
+
+cc_test(
     name = "dpm_projector_test",
     srcs = ["dpm_projector_test.cc"],
     deps = [
@@ -360,6 +410,24 @@ cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "//runtime/util:test_utils",
+    ],
+)
+
+cc_test(
+    name = "dpm_perf_smoke_test",
+    srcs = ["dpm_perf_smoke_test.cc"],
+    deps = [
+        ":checkpoint_decision_gate",
+        ":correction_protocol",
+        ":dpm",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "//runtime/platform/eventlog:posix_event_sink",
+        "//runtime/platform/hash:hasher",
         "//runtime/util:test_utils",
     ],
 )

@@ -126,6 +126,7 @@ cc_library(
     srcs = ["local_filesystem_checkpoint_store.cc"],
     hdrs = ["local_filesystem_checkpoint_store.h"],
     deps = [
+        ":canonical_manifest",
         ":checkpoint_store",
         ":durable_writer",
         "@com_google_absl//absl/status",
@@ -141,6 +142,7 @@ cc_test(
     name = "local_filesystem_checkpoint_store_test",
     srcs = ["local_filesystem_checkpoint_store_test.cc"],
     deps = [
+        ":canonical_manifest",
         ":local_filesystem_checkpoint_store",
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/strings:string_view",
@@ -160,6 +162,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "//runtime/platform/hash:hasher",
+        "//runtime/util:litert_status_util",
     ],
 )
 

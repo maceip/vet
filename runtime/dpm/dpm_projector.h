@@ -22,6 +22,7 @@
 
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
+#include "runtime/dpm/active_evidence_view.h"
 #include "runtime/dpm/event_sourced_log.h"
 #include "runtime/dpm/projection_prompt.h"
 #include "runtime/proto/sampler_params.pb.h"
@@ -74,6 +75,10 @@ class DPMProjector {
   absl::StatusOr<std::string> ProjectRangeWithCorrections(
       const EventSourcedLog& log, uint64_t event_range_start,
       uint64_t event_range_end, const ProjectionConfig& config,
+      const std::vector<ProjectionCorrectionDirective>& correction_directives);
+  absl::StatusOr<std::string> ProjectActiveEvidenceView(
+      const ActiveEvidenceView& active_evidence_view,
+      const ProjectionConfig& config,
       const std::vector<ProjectionCorrectionDirective>& correction_directives);
   absl::StatusOr<std::string> CreateProjectionPrompt(
       const EventSourcedLog& log, const ProjectionConfig& config) const;
