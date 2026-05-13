@@ -15,6 +15,7 @@
 #ifndef THIRD_PARTY_ODML_LITERT_LM_RUNTIME_PLATFORM_EVENTLOG_POSIX_EVENT_SINK_H_
 #define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_PLATFORM_EVENTLOG_POSIX_EVENT_SINK_H_
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -68,6 +69,12 @@ class PosixEventSink : public EventSink {
 
   absl::Status ForEachRecord(
       absl::string_view tenant_id, absl::string_view session_id,
+      absl::FunctionRef<absl::Status(absl::string_view)> callback)
+      const override;
+
+  absl::Status ForEachRecordRange(
+      absl::string_view tenant_id, absl::string_view session_id,
+      uint64_t start, uint64_t end,
       absl::FunctionRef<absl::Status(absl::string_view)> callback)
       const override;
 

@@ -15,11 +15,13 @@
 #include "runtime/platform/checkpoint/durable_writer.h"
 
 #include <atomic>
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -53,10 +55,23 @@ std::string UniqueTempSuffix() {
 
 #ifdef _WIN32
 
+std::wstring ToWin32Path(const std::filesystem::path& path) {
+  std::wstring out = std::filesystem::absolute(path).wstring();
+  std::replace(out.begin(), out.end(), L'/', L'\\');
+  if (out.rfind(L"\\\\?\\", 0) == 0) {
+    return out;
+  }
+  if (out.rfind(L"\\\\", 0) == 0) {
+    return L"\\\\?\\UNC\\" + out.substr(2);
+  }
+  return L"\\\\?\\" + out;
+}
+
 absl::Status WriteAndSyncToTemp(const std::filesystem::path& tmp_path,
                                 absl::string_view bytes) {
+  const std::wstring tmp_win_path = ToWin32Path(tmp_path);
   HANDLE handle = CreateFileW(
-      tmp_path.wstring().c_str(), GENERIC_WRITE,
+      tmp_win_path.c_str(), GENERIC_WRITE,
       /*share=*/0, /*sa=*/nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
       /*template=*/nullptr);
   if (handle == INVALID_HANDLE_VALUE) {
@@ -87,7 +102,9 @@ absl::Status WriteAndSyncToTemp(const std::filesystem::path& tmp_path,
 absl::Status ReplaceTempWithTarget(const std::filesystem::path& tmp_path,
                                    const std::filesystem::path& target_path) {
   // MoveFileEx with MOVEFILE_REPLACE_EXISTING is atomic on the same volume.
-  if (!MoveFileExW(tmp_path.wstring().c_str(), target_path.wstring().c_str(),
+  const std::wstring tmp_win_path = ToWin32Path(tmp_path);
+  const std::wstring target_win_path = ToWin32Path(target_path);
+  if (!MoveFileExW(tmp_win_path.c_str(), target_win_path.c_str(),
                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
     return absl::InternalError(
         absl::StrCat("DurablyWriteFile: MoveFileExW failed: ",
@@ -201,7 +218,9 @@ absl::Status DurablyCreateNewFile(const std::filesystem::path& target_path,
   }
 
 #ifdef _WIN32
-  if (!MoveFileExW(tmp_path.wstring().c_str(), target_path.wstring().c_str(),
+  const std::wstring tmp_win_path = ToWin32Path(tmp_path);
+  const std::wstring target_win_path = ToWin32Path(target_path);
+  if (!MoveFileExW(tmp_win_path.c_str(), target_win_path.c_str(),
                    MOVEFILE_WRITE_THROUGH)) {
     const DWORD err = GetLastError();
     std::filesystem::remove(tmp_path, error);
@@ -244,6 +263,61 @@ absl::Status DurablyCreateNewFile(const std::filesystem::path& target_path,
 
 absl::Status ReadEntireFileIfExists(const std::filesystem::path& path,
                                     std::string* out) {
+#ifdef _WIN32
+  out->clear();
+  const std::wstring win_path = ToWin32Path(path);
+  HANDLE handle = CreateFileW(
+      win_path.c_str(), GENERIC_READ,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+      /*sa=*/nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
+      /*template=*/nullptr);
+  if (handle == INVALID_HANDLE_VALUE) {
+    const DWORD err = GetLastError();
+    if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) {
+      return absl::OkStatus();
+    }
+    return absl::InternalError(absl::StrCat(
+        "ReadEntireFileIfExists: CreateFileW failed (err=", err,
+        ") for ", path.string()));
+  }
+
+  LARGE_INTEGER size;
+  if (!GetFileSizeEx(handle, &size)) {
+    CloseHandle(handle);
+    return absl::InternalError("ReadEntireFileIfExists: GetFileSizeEx failed.");
+  }
+  if (size.QuadPart < 0) {
+    CloseHandle(handle);
+    return absl::DataLossError("ReadEntireFileIfExists: negative file size.");
+  }
+  const uint64_t file_size = static_cast<uint64_t>(size.QuadPart);
+  if (file_size > std::numeric_limits<size_t>::max()) {
+    CloseHandle(handle);
+    return absl::ResourceExhaustedError(
+        "ReadEntireFileIfExists: file too large for memory buffer.");
+  }
+
+  out->resize(static_cast<size_t>(file_size));
+  size_t offset = 0;
+  while (offset < out->size()) {
+    const size_t remaining = out->size() - offset;
+    DWORD chunk = static_cast<DWORD>(
+        remaining < (1u << 20) ? remaining : (1u << 20));
+    DWORD read = 0;
+    if (!ReadFile(handle, out->data() + offset, chunk, &read, nullptr)) {
+      CloseHandle(handle);
+      return absl::InternalError("ReadEntireFileIfExists: ReadFile failed.");
+    }
+    if (read == 0) {
+      CloseHandle(handle);
+      return absl::DataLossError(
+          "ReadEntireFileIfExists: unexpected EOF while reading file.");
+    }
+    offset += read;
+  }
+  CloseHandle(handle);
+  return absl::OkStatus();
+#else
   if (!std::filesystem::exists(path)) {
     out->clear();
     return absl::OkStatus();
@@ -257,6 +331,7 @@ absl::Status ReadEntireFileIfExists(const std::filesystem::path& path,
   buf << in.rdbuf();
   *out = buf.str();
   return absl::OkStatus();
+#endif
 }
 
 }  // namespace litert::lm

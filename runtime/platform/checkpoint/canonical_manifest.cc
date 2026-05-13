@@ -16,12 +16,17 @@
 
 #include <array>
 #include <cstdint>
+#include <cstring>
+#include <limits>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "runtime/platform/hash/hasher.h"
+#include "runtime/util/status_macros.h"
 
 namespace litert::lm {
 namespace {
@@ -53,6 +58,51 @@ void AppendLpStr(absl::string_view s, std::string* out) {
 
 void AppendHash(const Hash256& h, std::string* out) {
   out->append(reinterpret_cast<const char*>(h.bytes.data()), h.bytes.size());
+}
+
+absl::StatusOr<uint32_t> ReadU32(absl::string_view* view) {
+  if (view->size() < 4) return absl::DataLossError("manifest truncated u32.");
+  const unsigned char* p =
+      reinterpret_cast<const unsigned char*>(view->data());
+  uint32_t v = 0;
+  for (int i = 0; i < 4; ++i) {
+    v |= static_cast<uint32_t>(p[i]) << (i * 8);
+  }
+  view->remove_prefix(4);
+  return v;
+}
+
+absl::StatusOr<uint64_t> ReadU64(absl::string_view* view) {
+  if (view->size() < 8) return absl::DataLossError("manifest truncated u64.");
+  const unsigned char* p =
+      reinterpret_cast<const unsigned char*>(view->data());
+  uint64_t v = 0;
+  for (int i = 0; i < 8; ++i) {
+    v |= static_cast<uint64_t>(p[i]) << (i * 8);
+  }
+  view->remove_prefix(8);
+  return v;
+}
+
+absl::StatusOr<int64_t> ReadI64(absl::string_view* view) {
+  ASSIGN_OR_RETURN(uint64_t v, ReadU64(view));
+  return static_cast<int64_t>(v);
+}
+
+absl::StatusOr<std::string> ReadLpStr(absl::string_view* view) {
+  ASSIGN_OR_RETURN(uint32_t size, ReadU32(view));
+  if (view->size() < size) return absl::DataLossError("manifest truncated str.");
+  std::string out(view->data(), size);
+  view->remove_prefix(size);
+  return out;
+}
+
+absl::StatusOr<Hash256> ReadHash(absl::string_view* view) {
+  if (view->size() < 32) return absl::DataLossError("manifest truncated hash.");
+  Hash256 hash;
+  std::memcpy(hash.bytes.data(), view->data(), hash.bytes.size());
+  view->remove_prefix(hash.bytes.size());
+  return hash;
 }
 
 }  // namespace
@@ -89,6 +139,8 @@ absl::StatusOr<std::string> EncodeCanonicalManifest(
   // Model binding.
   AppendHash(input.model_artifact_hash, &out);
   AppendLpStr(input.model_id, &out);
+  AppendLpStr(input.schema_id, &out);
+  AppendHash(input.schema_hash, &out);
   AppendU32(input.model_class, &out);
   AppendU32(input.num_layers, &out);
   AppendU32(input.num_kv_heads, &out);
@@ -98,12 +150,74 @@ absl::StatusOr<std::string> EncodeCanonicalManifest(
   AppendU32(input.kv_dtype, &out);
 
   // Coverage / body.
+  AppendU64(input.event_range_start, &out);
+  AppendU64(input.event_range_end, &out);
   AppendU64(input.base_event_index, &out);
   AppendHash(input.body_hash, &out);
   AppendU32(input.body_size_bytes, &out);
   AppendI64(input.created_unix_micros, &out);
 
   return out;
+}
+
+absl::StatusOr<CanonicalManifestInput> DecodeCanonicalManifest(
+    absl::string_view bytes) {
+  if (bytes.size() < kManifestMagic.size() ||
+      bytes.substr(0, kManifestMagic.size()) !=
+          absl::string_view(kManifestMagic.data(), kManifestMagic.size())) {
+    return absl::DataLossError("manifest missing magic header.");
+  }
+  bytes.remove_prefix(kManifestMagic.size());
+  ASSIGN_OR_RETURN(uint32_t version, ReadU32(&bytes));
+  if (version != kCanonicalManifestVersion) {
+    return absl::DataLossError("unsupported canonical manifest version.");
+  }
+
+  CanonicalManifestInput input;
+  ASSIGN_OR_RETURN(input.tenant_id, ReadLpStr(&bytes));
+  ASSIGN_OR_RETURN(input.session_id, ReadLpStr(&bytes));
+  ASSIGN_OR_RETURN(input.branch_id, ReadLpStr(&bytes));
+
+  ASSIGN_OR_RETURN(input.level, ReadU32(&bytes));
+  ASSIGN_OR_RETURN(input.compaction_interval, ReadU32(&bytes));
+
+  ASSIGN_OR_RETURN(uint32_t parent_count, ReadU32(&bytes));
+  if (parent_count >
+      std::numeric_limits<uint32_t>::max() / sizeof(Hash256)) {
+    return absl::ResourceExhaustedError("manifest parent count is too large.");
+  }
+  input.parent_hashes.reserve(parent_count);
+  for (uint32_t i = 0; i < parent_count; ++i) {
+    ASSIGN_OR_RETURN(Hash256 parent, ReadHash(&bytes));
+    input.parent_hashes.push_back(parent);
+  }
+
+  ASSIGN_OR_RETURN(input.architecture_tag, ReadLpStr(&bytes));
+  ASSIGN_OR_RETURN(input.producer_id, ReadLpStr(&bytes));
+  ASSIGN_OR_RETURN(input.runtime_version, ReadLpStr(&bytes));
+
+  ASSIGN_OR_RETURN(input.model_artifact_hash, ReadHash(&bytes));
+  ASSIGN_OR_RETURN(input.model_id, ReadLpStr(&bytes));
+  ASSIGN_OR_RETURN(input.schema_id, ReadLpStr(&bytes));
+  ASSIGN_OR_RETURN(input.schema_hash, ReadHash(&bytes));
+  ASSIGN_OR_RETURN(input.model_class, ReadU32(&bytes));
+  ASSIGN_OR_RETURN(input.num_layers, ReadU32(&bytes));
+  ASSIGN_OR_RETURN(input.num_kv_heads, ReadU32(&bytes));
+  ASSIGN_OR_RETURN(input.head_dim, ReadU32(&bytes));
+
+  ASSIGN_OR_RETURN(input.kv_dtype, ReadU32(&bytes));
+
+  ASSIGN_OR_RETURN(input.event_range_start, ReadU64(&bytes));
+  ASSIGN_OR_RETURN(input.event_range_end, ReadU64(&bytes));
+  ASSIGN_OR_RETURN(input.base_event_index, ReadU64(&bytes));
+  ASSIGN_OR_RETURN(input.body_hash, ReadHash(&bytes));
+  ASSIGN_OR_RETURN(input.body_size_bytes, ReadU32(&bytes));
+  ASSIGN_OR_RETURN(input.created_unix_micros, ReadI64(&bytes));
+
+  if (!bytes.empty()) {
+    return absl::DataLossError("manifest trailing bytes.");
+  }
+  return input;
 }
 
 absl::StatusOr<Hash256> ComputeManifestHash(

@@ -1,0 +1,68 @@
+{
+  "hooksConfig": {
+    "enabled": true,
+    "notifications": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "name": "dpm-gate-session",
+            "type": "command",
+            "command": "python tools/agent_hooks/dpm_gate.py --agent gemini"
+          }
+        ]
+      }
+    ],
+    "BeforeAgent": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "dpm-gate-context",
+            "type": "command",
+            "command": "python tools/agent_hooks/dpm_gate.py --agent gemini"
+          }
+        ]
+      }
+    ],
+    "BeforeTool": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "dpm-gate-tool",
+            "type": "command",
+            "command": "python tools/agent_hooks/dpm_gate.py --agent gemini"
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "dpm-gate-ledger",
+            "type": "command",
+            "command": "python tools/agent_hooks/dpm_gate.py --agent gemini"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "exit",
+        "hooks": [
+          {
+            "name": "dpm-gate-close",
+            "type": "command",
+            "command": "python tools/agent_hooks/dpm_gate.py --agent gemini"
+          }
+        ]
+      }
+    ]
+  }
+}

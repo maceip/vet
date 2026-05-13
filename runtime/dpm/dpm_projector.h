@@ -16,11 +16,15 @@
 #define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_DPM_DPM_PROJECTOR_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
+#include "runtime/dpm/active_evidence_view.h"
 #include "runtime/dpm/event_sourced_log.h"
+#include "runtime/dpm/projection_prompt.h"
 #include "runtime/proto/sampler_params.pb.h"
 
 namespace litert::lm {
@@ -54,14 +58,42 @@ class DPMProjector {
     int seed = 42;
     float temperature = 0.0f;
     std::string model_id;
+    int correction_repair_attempts = 1;
   };
 
   explicit DPMProjector(DPMInferenceRunner* runner);
 
   absl::StatusOr<std::string> Project(const EventSourcedLog& log,
                                       const ProjectionConfig& config);
+  absl::StatusOr<std::string> ProjectRange(const EventSourcedLog& log,
+                                           uint64_t event_range_start,
+                                           uint64_t event_range_end,
+                                           const ProjectionConfig& config);
+  absl::StatusOr<std::string> ProjectWithCorrections(
+      const EventSourcedLog& log, const ProjectionConfig& config,
+      const std::vector<ProjectionCorrectionDirective>& correction_directives);
+  absl::StatusOr<std::string> ProjectRangeWithCorrections(
+      const EventSourcedLog& log, uint64_t event_range_start,
+      uint64_t event_range_end, const ProjectionConfig& config,
+      const std::vector<ProjectionCorrectionDirective>& correction_directives);
+  absl::StatusOr<std::string> ProjectActiveEvidenceView(
+      const ActiveEvidenceView& active_evidence_view,
+      const ProjectionConfig& config,
+      const std::vector<ProjectionCorrectionDirective>& correction_directives);
   absl::StatusOr<std::string> CreateProjectionPrompt(
       const EventSourcedLog& log, const ProjectionConfig& config) const;
+  absl::StatusOr<std::string> CreateProjectionPromptForRange(
+      const EventSourcedLog& log, uint64_t event_range_start,
+      uint64_t event_range_end, const ProjectionConfig& config) const;
+  absl::StatusOr<std::string> CreateProjectionPromptWithCorrections(
+      const EventSourcedLog& log, const ProjectionConfig& config,
+      const std::vector<ProjectionCorrectionDirective>& correction_directives)
+      const;
+  absl::StatusOr<std::string> CreateProjectionPromptForRangeWithCorrections(
+      const EventSourcedLog& log, uint64_t event_range_start,
+      uint64_t event_range_end, const ProjectionConfig& config,
+      const std::vector<ProjectionCorrectionDirective>& correction_directives)
+      const;
 
  private:
   DPMInferenceRunner* runner_;

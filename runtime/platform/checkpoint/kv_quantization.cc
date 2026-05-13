@@ -120,6 +120,14 @@ float Fp16ToFp32(uint16_t bits) {
   return out;
 }
 
+uint16_t Fp32ToCeilFp16Positive(float value) {
+  uint16_t bits = Fp32ToFp16(value);
+  if (Fp16ToFp32(bits) < value && bits < 0x7BFF) {
+    ++bits;
+  }
+  return bits;
+}
+
 absl::Status ValidateShape(const KvBlockShape& shape) {
   if (shape.num_tokens == 0 || shape.num_heads == 0 || shape.head_dim == 0) {
     return absl::InvalidArgumentError(
@@ -241,13 +249,18 @@ absl::StatusOr<EncodedKvBlock> EncodeInt8PerTokenFromFp32(
       const float a = std::fabs(v);
       if (a > absmax) absmax = a;
     }
-    scales_out[g] = Fp32ToFp16(absmax);
+    scales_out[g] = Fp32ToCeilFp16Positive(absmax);
     int8_t* dst = int8_out + g * group_size;
     if (absmax == 0.0f) {
       for (size_t i = 0; i < group_size; ++i) dst[i] = 0;
       continue;
     }
-    const float inv_scale = 127.0f / absmax;
+    const float stored_absmax = Fp16ToFp32(scales_out[g]);
+    if (!std::isfinite(stored_absmax) || stored_absmax <= 0.0f) {
+      return absl::InvalidArgumentError(
+          "EncodeInt8PerTokenFromFp32 requires fp16-representable scale.");
+    }
+    const float inv_scale = 127.0f / stored_absmax;
     for (size_t i = 0; i < group_size; ++i) {
       const float scaled = src[i] * inv_scale;
       // Round half-to-even. Matches TensorFlow / PyTorch quantization.

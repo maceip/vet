@@ -18,8 +18,6 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -133,9 +131,9 @@ absl::Status LocalMerkleDagStore::Put(absl::string_view tenant_id,
   // the bytes we are about to write. A "same hash, same content" claim
   // without a content check would mask any earlier torn-write artifact or
   // off-line mutation.
-  if (std::filesystem::exists(path)) {
-    std::string existing;
-    RETURN_IF_ERROR(ReadEntireFileIfExists(path, &existing));
+  std::string existing;
+  RETURN_IF_ERROR(ReadEntireFileIfExists(path, &existing));
+  if (!existing.empty()) {
     if (existing == body) {
       return absl::OkStatus();
     }
@@ -151,18 +149,12 @@ absl::StatusOr<MerkleDagNode> LocalMerkleDagStore::Get(
     const Hash256& hash) const {
   RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
   const std::filesystem::path path = PathFor(tenant_id, session_id, hash);
-  if (!std::filesystem::exists(path)) {
+  std::string data;
+  RETURN_IF_ERROR(ReadEntireFileIfExists(path, &data));
+  if (data.empty()) {
     return absl::NotFoundError(
         absl::StrCat("dag node not found: ", hash.ToHex()));
   }
-  std::ifstream in(path, std::ios::in | std::ios::binary);
-  if (!in.is_open()) {
-    return absl::InternalError(
-        absl::StrCat("dag store: failed to open ", path.string()));
-  }
-  std::stringstream buffer;
-  buffer << in.rdbuf();
-  std::string data = buffer.str();
   absl::string_view view = data;
   if (view.size() < kDagMagic.size() ||
       std::memcmp(view.data(), kDagMagic.data(), kDagMagic.size()) != 0) {
@@ -210,7 +202,10 @@ absl::StatusOr<bool> LocalMerkleDagStore::Exists(absl::string_view tenant_id,
                                                  absl::string_view session_id,
                                                  const Hash256& hash) const {
   RETURN_IF_ERROR(ValidateIdentity(tenant_id, session_id));
-  return std::filesystem::exists(PathFor(tenant_id, session_id, hash));
+  std::string existing;
+  RETURN_IF_ERROR(ReadEntireFileIfExists(PathFor(tenant_id, session_id, hash),
+                                         &existing));
+  return !existing.empty();
 }
 
 }  // namespace litert::lm

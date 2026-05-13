@@ -14,6 +14,7 @@
 
 #include "runtime/dpm/checkpointed_projection.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -22,11 +23,13 @@
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "runtime/dpm/dpm_projector.h"
 #include "runtime/dpm/event.h"
 #include "runtime/dpm/event_sourced_log.h"
 #include "runtime/platform/checkpoint/canonical_manifest.h"
 #include "runtime/platform/checkpoint/checkpoint_store.h"
+#include "runtime/platform/checkpoint/rollup_manifest.h"
 #include "runtime/platform/hash/hasher.h"
 #include "runtime/platform/provenance/merkle_dag_store.h"
 #include "runtime/util/status_macros.h"
@@ -67,12 +70,22 @@ absl::Status ValidateConfig(const ProjectionCheckpointConfig& config) {
   return absl::OkStatus();
 }
 
+absl::Status ValidateEventRange(uint64_t event_range_start,
+                                uint64_t event_range_end) {
+  if (event_range_end <= event_range_start) {
+    return absl::InvalidArgumentError(
+        "Projection checkpoint requires a non-empty half-open event range.");
+  }
+  return absl::OkStatus();
+}
+
 CanonicalManifestInput BuildManifestInput(
-    const EventSourcedLog& log, const ProjectionCheckpointConfig& config,
-    uint64_t event_count, const Hash256& body_hash, uint32_t body_size_bytes) {
+    const DPMLogIdentity& identity, const ProjectionCheckpointConfig& config,
+    uint64_t event_range_start, uint64_t event_range_end,
+    const Hash256& body_hash, uint32_t body_size_bytes) {
   CanonicalManifestInput input;
-  input.tenant_id = log.identity().tenant_id;
-  input.session_id = log.identity().session_id;
+  input.tenant_id = identity.tenant_id;
+  input.session_id = identity.session_id;
   input.branch_id = config.branch_id;
   input.level = config.level;
   input.compaction_interval = config.compaction_interval;
@@ -82,16 +95,74 @@ CanonicalManifestInput BuildManifestInput(
   input.runtime_version = config.runtime_version;
   input.model_artifact_hash = config.model_artifact_hash;
   input.model_id = config.projection.model_id;
+  input.schema_id = config.projection.schema_id;
+  input.schema_hash =
+      HashBytes(HashAlgorithm::kBlake3, config.projection.schema_json);
   input.model_class = config.model_class;
   input.num_layers = config.num_layers;
   input.num_kv_heads = config.num_kv_heads;
   input.head_dim = config.head_dim;
   input.kv_dtype = config.kv_dtype;
-  input.base_event_index = event_count;
+  input.event_range_start = event_range_start;
+  input.event_range_end = event_range_end;
+  input.base_event_index = event_range_end;
   input.body_hash = body_hash;
   input.body_size_bytes = body_size_bytes;
   input.created_unix_micros = config.created_unix_micros;
   return input;
+}
+
+absl::StatusOr<ProjectionCheckpoint> StoreProjectedMemoryCheckpointInternal(
+    const DPMLogIdentity& identity, const ProjectionCheckpointConfig& config,
+    uint64_t event_range_start, uint64_t event_range_end,
+    absl::string_view projected_memory, CheckpointStore* store,
+    MerkleDagStore* dag) {
+  if (store == nullptr) {
+    return absl::InvalidArgumentError("CheckpointStore is required.");
+  }
+  if (dag == nullptr) {
+    return absl::InvalidArgumentError("MerkleDagStore is required.");
+  }
+  RETURN_IF_ERROR(ValidateConfig(config));
+  RETURN_IF_ERROR(ValidateEventRange(event_range_start, event_range_end));
+
+  ASSIGN_OR_RETURN(Hash256 body_hash,
+                   store->PutPayload(identity.tenant_id, identity.session_id,
+                                     projected_memory,
+                                     HashAlgorithm::kBlake3));
+  const uint32_t body_size_bytes =
+      static_cast<uint32_t>(projected_memory.size());
+  CanonicalManifestInput manifest_input =
+      BuildManifestInput(identity, config, event_range_start, event_range_end,
+                         body_hash, body_size_bytes);
+  ASSIGN_OR_RETURN(Hash256 manifest_hash,
+                   ComputeManifestHash(HashAlgorithm::kBlake3,
+                                       manifest_input));
+  ASSIGN_OR_RETURN(std::string abi_bytes,
+                   EncodeCanonicalManifest(manifest_input));
+  RETURN_IF_ERROR(store->PutManifest(identity.tenant_id, identity.session_id,
+                                     manifest_hash, abi_bytes, body_hash));
+  RETURN_IF_ERROR(dag->Put(
+      identity.tenant_id, identity.session_id,
+      MerkleDagNode{
+          .hash = manifest_hash,
+          .parent_hashes = config.parent_manifest_hashes,
+          .created_unix_micros = config.created_unix_micros,
+          .annotations = absl::StrCat(
+              "projection_checkpoint;branch=", config.branch_id,
+              ";event_range=[", event_range_start, ",", event_range_end,
+              ")"),
+      }));
+
+  return ProjectionCheckpoint{
+      .manifest_hash = manifest_hash,
+      .body_hash = body_hash,
+      .event_range_start = event_range_start,
+      .event_range_end = event_range_end,
+      .event_count = event_range_end,
+      .body_size_bytes = body_size_bytes,
+      .projected_memory = std::string(projected_memory),
+  };
 }
 
 }  // namespace
@@ -112,43 +183,66 @@ absl::StatusOr<ProjectionCheckpoint> CreateProjectionCheckpoint(
   RETURN_IF_ERROR(ValidateConfig(config));
 
   ASSIGN_OR_RETURN(std::vector<Event> events, log.GetAllEvents());
+  const uint64_t event_range_start = config.event_range_start;
+  const uint64_t event_range_end =
+      config.event_range_end == 0 ? events.size() : config.event_range_end;
+  if (event_range_end > events.size()) {
+    return absl::InvalidArgumentError(
+        "Projection checkpoint event range exceeds log generation.");
+  }
   ASSIGN_OR_RETURN(std::string projected_memory,
-                   projector->Project(log, config.projection));
-  ASSIGN_OR_RETURN(Hash256 body_hash,
-                   store->PutPayload(log.identity().tenant_id,
-                                     log.identity().session_id,
-                                     projected_memory, HashAlgorithm::kBlake3));
-  const uint32_t body_size_bytes =
-      static_cast<uint32_t>(projected_memory.size());
-  CanonicalManifestInput manifest_input =
-      BuildManifestInput(log, config, events.size(), body_hash,
-                         body_size_bytes);
-  ASSIGN_OR_RETURN(Hash256 manifest_hash,
-                   ComputeManifestHash(HashAlgorithm::kBlake3,
-                                       manifest_input));
-  ASSIGN_OR_RETURN(std::string abi_bytes,
-                   EncodeCanonicalManifest(manifest_input));
-  RETURN_IF_ERROR(store->PutManifest(log.identity().tenant_id,
-                                     log.identity().session_id, manifest_hash,
-                                     abi_bytes, body_hash));
-  RETURN_IF_ERROR(dag->Put(
-      log.identity().tenant_id, log.identity().session_id,
-      MerkleDagNode{
-          .hash = manifest_hash,
-          .parent_hashes = config.parent_manifest_hashes,
-          .created_unix_micros = config.created_unix_micros,
-          .annotations = absl::StrCat("projection_checkpoint;branch=",
-                                      config.branch_id,
-                                      ";base_event_index=", events.size()),
-      }));
+                   projector->ProjectRange(log, event_range_start,
+                                           event_range_end,
+                                           config.projection));
 
-  return ProjectionCheckpoint{
-      .manifest_hash = manifest_hash,
-      .body_hash = body_hash,
-      .event_count = static_cast<uint64_t>(events.size()),
-      .body_size_bytes = body_size_bytes,
-      .projected_memory = std::move(projected_memory),
-  };
+  return StoreProjectedMemoryCheckpointInternal(
+      log.identity(), config, event_range_start, event_range_end,
+      projected_memory, store, dag);
+}
+
+absl::StatusOr<ProjectionCheckpoint> StoreProjectedMemoryCheckpoint(
+    const DPMLogIdentity& identity, const ProjectionCheckpointConfig& config,
+    uint64_t event_range_start, uint64_t event_range_end,
+    absl::string_view projected_memory, CheckpointStore* store,
+    MerkleDagStore* dag) {
+  return StoreProjectedMemoryCheckpointInternal(identity, config,
+                                               event_range_start,
+                                               event_range_end,
+                                               projected_memory, store, dag);
+}
+
+absl::StatusOr<ProjectionCheckpoint> StoreRollupProjectionCheckpoint(
+    const DPMLogIdentity& identity, ProjectionCheckpointConfig config,
+    uint64_t event_range_start, uint64_t event_range_end,
+    absl::string_view projected_memory,
+    const std::vector<RollupChildRef>& children, CheckpointStore* store,
+    MerkleDagStore* dag) {
+  if (config.level == 0) {
+    return absl::InvalidArgumentError(
+        "Rollup projection checkpoints must have level > 0.");
+  }
+  RETURN_IF_ERROR(ValidateRollupChildrenForWrite(
+      event_range_start, event_range_end, config.projection.schema_id,
+      config.projection.model_id, children));
+
+  std::vector<RollupChildRef> sorted_children = children;
+  std::sort(sorted_children.begin(), sorted_children.end(),
+            [](const RollupChildRef& a, const RollupChildRef& b) {
+              if (a.event_range_start != b.event_range_start) {
+                return a.event_range_start < b.event_range_start;
+              }
+              return a.event_range_end < b.event_range_end;
+            });
+  config.parent_manifest_hashes.clear();
+  config.parent_manifest_hashes.reserve(sorted_children.size());
+  for (const RollupChildRef& child : sorted_children) {
+    config.parent_manifest_hashes.push_back(child.manifest_hash);
+  }
+
+  return StoreProjectedMemoryCheckpointInternal(identity, config,
+                                               event_range_start,
+                                               event_range_end,
+                                               projected_memory, store, dag);
 }
 
 absl::StatusOr<std::string> LoadProjectionCheckpoint(

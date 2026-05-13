@@ -14,6 +14,7 @@
 
 #include "runtime/platform/checkpoint/local_filesystem_checkpoint_store.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -21,6 +22,7 @@
 
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "gtest/gtest.h"
+#include "runtime/platform/checkpoint/canonical_manifest.h"
 #include "runtime/platform/checkpoint/checkpoint_store.h"
 #include "runtime/platform/hash/hasher.h"
 #include "runtime/util/test_utils.h"
@@ -37,6 +39,30 @@ std::filesystem::path TestRoot(absl::string_view name) {
 
 Hash256 ManifestHashOf(absl::string_view label) {
   return HashBytes(HashAlgorithm::kBlake3, label);
+}
+
+CanonicalManifestInput CanonicalManifestFor(
+    absl::string_view tenant_id, absl::string_view session_id,
+    absl::string_view branch_id, const Hash256& body_hash,
+    std::vector<Hash256> parent_hashes = {}) {
+  CanonicalManifestInput input;
+  input.tenant_id = std::string(tenant_id);
+  input.session_id = std::string(session_id);
+  input.branch_id = std::string(branch_id);
+  input.parent_hashes = std::move(parent_hashes);
+  input.architecture_tag = "x86_64";
+  input.producer_id = "local_filesystem_checkpoint_store_test";
+  input.runtime_version = "test";
+  input.model_artifact_hash = ManifestHashOf("model");
+  input.model_id = "test-model";
+  input.schema_id = "test-schema";
+  input.schema_hash = ManifestHashOf("schema");
+  input.event_range_end = 1;
+  input.base_event_index = 1;
+  input.body_hash = body_hash;
+  input.body_size_bytes = 4;
+  input.created_unix_micros = 1;
+  return input;
 }
 
 TEST(LocalFilesystemCheckpointStoreTest, PayloadPutGetRoundTripBlake3) {
@@ -133,6 +159,37 @@ TEST(LocalFilesystemCheckpointStoreTest, ListManifestsReturnsBoth) {
   ASSERT_EQ(all.size(), 2);
   EXPECT_TRUE((all[0] == m1 && all[1] == m2) ||
               (all[0] == m2 && all[1] == m1));
+}
+
+TEST(LocalFilesystemCheckpointStoreTest, ListsDependentManifestsByParent) {
+  LocalFilesystemCheckpointStore store(TestRoot("ckpt_dependents"));
+  const Hash256 parent_body = HashBytes(HashAlgorithm::kBlake3, "body");
+  CanonicalManifestInput parent =
+      CanonicalManifestFor("t", "s", "main", parent_body);
+  ASSERT_OK_AND_ASSIGN(std::string parent_abi,
+                       EncodeCanonicalManifest(parent));
+  ASSERT_OK_AND_ASSIGN(Hash256 parent_hash,
+                       ComputeManifestHash(HashAlgorithm::kBlake3, parent));
+  ASSERT_OK(store.PutManifest("t", "s", parent_hash, parent_abi,
+                              parent_body));
+
+  const Hash256 child_body = HashBytes(HashAlgorithm::kBlake3, "body2");
+  CanonicalManifestInput child =
+      CanonicalManifestFor("t", "s", "main", child_body, {parent_hash});
+  child.event_range_start = 1;
+  child.event_range_end = 2;
+  child.base_event_index = 2;
+  ASSERT_OK_AND_ASSIGN(std::string child_abi,
+                       EncodeCanonicalManifest(child));
+  ASSERT_OK_AND_ASSIGN(Hash256 child_hash,
+                       ComputeManifestHash(HashAlgorithm::kBlake3, child));
+  ASSERT_OK(store.PutManifest("t", "s", child_hash, child_abi, child_body));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Hash256> dependents,
+                       store.ListDependentManifests("t", "s", parent_hash));
+  EXPECT_EQ(dependents.size(), 1);
+  EXPECT_NE(std::find(dependents.begin(), dependents.end(), child_hash),
+            dependents.end());
 }
 
 TEST(LocalFilesystemCheckpointStoreTest, GetMissingPayloadIsNotFound) {

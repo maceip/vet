@@ -70,6 +70,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "//runtime/platform/hash:hasher",
+        "//runtime/util:litert_status_util",
     ],
 )
 
@@ -96,10 +97,36 @@ cc_library(
 )
 
 cc_library(
+    name = "rollup_manifest",
+    srcs = ["rollup_manifest.cc"],
+    hdrs = ["rollup_manifest.h"],
+    deps = [
+        ":canonical_manifest",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "//runtime/platform/hash:hasher",
+    ],
+)
+
+cc_test(
+    name = "rollup_manifest_test",
+    srcs = ["rollup_manifest_test.cc"],
+    deps = [
+        ":canonical_manifest",
+        ":rollup_manifest",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "//runtime/platform/hash:hasher",
+    ],
+)
+
+cc_library(
     name = "local_filesystem_checkpoint_store",
     srcs = ["local_filesystem_checkpoint_store.cc"],
     hdrs = ["local_filesystem_checkpoint_store.h"],
     deps = [
+        ":canonical_manifest",
         ":checkpoint_store",
         ":durable_writer",
         "@com_google_absl//absl/status",
@@ -115,6 +142,7 @@ cc_test(
     name = "local_filesystem_checkpoint_store_test",
     srcs = ["local_filesystem_checkpoint_store_test.cc"],
     deps = [
+        ":canonical_manifest",
         ":local_filesystem_checkpoint_store",
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/strings:string_view",
@@ -134,6 +162,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "//runtime/platform/hash:hasher",
+        "//runtime/util:litert_status_util",
     ],
 )
 
@@ -181,5 +210,64 @@ cc_test(
         ":kv_quantization",
         "@com_google_googletest//:gtest_main",
         "//runtime/util:test_utils",
+    ],
+)
+
+cc_library(
+    name = "session_case_loader",
+    testonly = True,
+    srcs = ["testing/session_case_loader.cc"],
+    hdrs = ["testing/session_case_loader.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@nlohmann_json//:json",
+    ],
+)
+
+cc_test(
+    name = "phase2_substrate_property_test",
+    srcs = ["phase2_substrate_property_test.cc"],
+    deps = [
+        ":canonical_manifest",
+        ":checkpoint_store",
+        ":durable_writer",
+        ":local_filesystem_checkpoint_store",
+        "//runtime/dpm:dpm",
+        "//runtime/platform/hash:hasher",
+        "//runtime/platform/provenance:local_merkle_dag_store",
+        "//runtime/platform/provenance:merkle_dag_store",
+        "//runtime/platform/provenance:provenance_query",
+        "//runtime/util:test_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "phase2_session_case_property_test",
+    srcs = ["phase2_session_case_property_test.cc"],
+    data = ["testing/golden/curated_session_cases.json"],
+    deps = [
+        ":canonical_manifest",
+        ":checkpoint_store",
+        ":durable_writer",
+        ":local_filesystem_checkpoint_store",
+        ":session_case_loader",
+        "//runtime/dpm:dpm",
+        "//runtime/platform/hash:hasher",
+        "//runtime/platform/provenance:local_merkle_dag_store",
+        "//runtime/platform/provenance:merkle_dag_store",
+        "//runtime/platform/provenance:provenance_query",
+        "//runtime/util:test_utils",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )

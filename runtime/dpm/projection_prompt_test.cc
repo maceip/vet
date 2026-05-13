@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "gmock/gmock.h"
@@ -26,6 +27,7 @@ namespace litert::lm {
 namespace {
 
 using ::testing::HasSubstr;
+using ::testing::Not;
 using ::testing::StartsWith;
 
 constexpr absl::string_view kSchemaJson =
@@ -80,6 +82,51 @@ TEST(ProjectionPromptTest, ComposeEqualsLegacyFullPrompt) {
                                               kSchemaJson, 1338, 1 << 20));
   EXPECT_EQ(parts.Compose(), full);
   EXPECT_THAT(full, StartsWith(parts.cacheable_prefix));
+}
+
+TEST(ProjectionPromptTest, BlockingCorrectionsStayInSuffix) {
+  const std::vector<ProjectionCorrectionDirective> directives = {
+      ProjectionCorrectionDirective{
+          .correction_event_id = "corr-1",
+          .correction_event_index = 4,
+          .correction_text = "Transport was not the main result.",
+          .invalidated_facts = {"transport as main result"},
+          .replacement_facts = {"credential theft as main result [5]"},
+          .scope = ProjectionCorrectionScope::kGlobal,
+      }};
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionPromptParts p1,
+      CreateProjectionPromptParts("evt-A", "schema-A", kSchemaJson, 1338,
+                                  1 << 20, directives));
+  ASSERT_OK_AND_ASSIGN(
+      ProjectionPromptParts p2,
+      CreateProjectionPromptParts("evt-B", "schema-A", kSchemaJson, 1338,
+                                  1 << 20, directives));
+
+  EXPECT_EQ(p1.cacheable_prefix, p2.cacheable_prefix);
+  EXPECT_THAT(p1.cacheable_prefix, Not(HasSubstr("BLOCKING CORRECTIONS")));
+  EXPECT_THAT(p1.event_log_suffix, HasSubstr("[BLOCKING CORRECTIONS]"));
+  EXPECT_THAT(p1.event_log_suffix, HasSubstr("corr-1"));
+  EXPECT_THAT(p1.event_log_suffix, HasSubstr("correction_event: [5]"));
+  EXPECT_THAT(p1.event_log_suffix, HasSubstr("transport as main result"));
+  EXPECT_THAT(p1.event_log_suffix,
+              HasSubstr("credential theft as main result [5]"));
+}
+
+TEST(ProjectionPromptTest, InvalidatedFactGuardIsCaseInsensitive) {
+  const std::vector<ProjectionCorrectionDirective> directives = {
+      ProjectionCorrectionDirective{
+          .invalidated_facts = {"Transport As Main Result"},
+      }};
+
+  EXPECT_THAT(FindInvalidatedFacts(
+                  R"json({"Facts":["transport as main result [1]"]})json",
+                  directives),
+              ::testing::ElementsAre("Transport As Main Result"));
+  EXPECT_TRUE(ValidateNoInvalidatedFacts(
+                  R"json({"Facts":["credential theft [2]"]})json",
+                  directives)
+                  .ok());
 }
 
 TEST(ProjectionPromptTest, RejectsEmptySchemaAndZeroBudget) {

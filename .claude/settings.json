@@ -1,0 +1,133 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PROJECT_DIR}/tools/agent_hooks/invoke_dpm_gate.ps1",
+              "-Agent",
+              "claude"
+            ],
+            "timeout": 5,
+            "statusMessage": "Loading DPM verified context"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PROJECT_DIR}/tools/agent_hooks/invoke_dpm_gate.ps1",
+              "-Agent",
+              "claude"
+            ],
+            "timeout": 5,
+            "statusMessage": "Checking prompt against DPM correction ledger"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PROJECT_DIR}/tools/agent_hooks/invoke_dpm_gate.ps1",
+              "-Agent",
+              "claude"
+            ],
+            "timeout": 5,
+            "statusMessage": "DPM gate checking tool input"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PROJECT_DIR}/tools/agent_hooks/invoke_dpm_gate.ps1",
+              "-Agent",
+              "claude"
+            ],
+            "timeout": 5,
+            "statusMessage": "Appending tool result to DPM demo ledger"
+          }
+        ]
+      }
+    ],
+    "PostToolBatch": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PROJECT_DIR}/tools/agent_hooks/invoke_dpm_gate.ps1",
+              "-Agent",
+              "claude"
+            ],
+            "timeout": 5,
+            "statusMessage": "Refreshing DPM verified context"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PROJECT_DIR}/tools/agent_hooks/invoke_dpm_gate.ps1",
+              "-Agent",
+              "claude"
+            ],
+            "timeout": 5,
+            "statusMessage": "Checkpointing DPM context before compaction"
+          }
+        ]
+      }
+    ]
+  }
+}

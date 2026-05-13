@@ -16,12 +16,54 @@
 #define THIRD_PARTY_ODML_LITERT_LM_RUNTIME_DPM_PROJECTION_PROMPT_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
+#include <vector>
 
+#include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 
 namespace litert::lm {
+
+enum class ProjectionCorrectionScope {
+  kPriorEvents,
+  kCheckpointRange,
+  kGlobal,
+};
+
+// Machine-checkable correction directive injected into a replay projection
+// after the checkpoint gate refuses stale memory. Event indices are zero-based
+// internally and rendered as one-based citations in prompts. Correction-aware
+// replay treats these as data: invalidated facts are removed from the active
+// event view before projection and checked again in the projected JSON before
+// decision use.
+struct ProjectionCorrectionDirective {
+  std::string correction_event_id;
+  uint64_t correction_event_index = 0;
+  std::string correction_text;
+  std::vector<std::string> invalidated_facts;
+  std::vector<std::string> replacement_facts;
+  ProjectionCorrectionScope scope =
+      ProjectionCorrectionScope::kCheckpointRange;
+};
+
+absl::string_view ProjectionCorrectionScopeToString(
+    ProjectionCorrectionScope scope);
+
+absl::StatusOr<ProjectionCorrectionScope> ProjectionCorrectionScopeFromString(
+    absl::string_view scope);
+
+std::string FormatProjectionCorrectionDirectives(
+    const std::vector<ProjectionCorrectionDirective>& directives);
+
+std::vector<std::string> FindInvalidatedFacts(
+    absl::string_view text,
+    const std::vector<ProjectionCorrectionDirective>& directives);
+
+absl::Status ValidateNoInvalidatedFacts(
+    absl::string_view text,
+    const std::vector<ProjectionCorrectionDirective>& directives);
 
 // Two-part rendering of a DPM projection prompt:
 //
@@ -55,12 +97,24 @@ absl::StatusOr<ProjectionPromptParts> CreateProjectionPromptParts(
     absl::string_view schema_json, size_t memory_budget_chars,
     size_t max_event_log_chars);
 
+absl::StatusOr<ProjectionPromptParts> CreateProjectionPromptParts(
+    absl::string_view event_log, absl::string_view schema_id,
+    absl::string_view schema_json, size_t memory_budget_chars,
+    size_t max_event_log_chars,
+    const std::vector<ProjectionCorrectionDirective>& correction_directives);
+
 // Convenience: returns Compose() of the parts. Equivalent in bytes to the
 // pre-merge implementation.
 absl::StatusOr<std::string> CreateProjectionPrompt(
     absl::string_view event_log, absl::string_view schema_id,
     absl::string_view schema_json, size_t memory_budget_chars,
     size_t max_event_log_chars);
+
+absl::StatusOr<std::string> CreateProjectionPrompt(
+    absl::string_view event_log, absl::string_view schema_id,
+    absl::string_view schema_json, size_t memory_budget_chars,
+    size_t max_event_log_chars,
+    const std::vector<ProjectionCorrectionDirective>& correction_directives);
 
 std::string CreateDeciderPrompt(absl::string_view projected_memory,
                                 absl::string_view case_id,

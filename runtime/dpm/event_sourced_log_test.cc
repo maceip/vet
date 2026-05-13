@@ -14,6 +14,7 @@
 
 #include "runtime/dpm/event_sourced_log.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -194,6 +195,24 @@ class ProbeEventSink : public EventSink {
     return absl::OkStatus();
   }
 
+  absl::Status ForEachRecordRange(
+      absl::string_view tenant_id, absl::string_view session_id,
+      uint64_t start, uint64_t end,
+      absl::FunctionRef<absl::Status(absl::string_view)> callback)
+      const override {
+    ++for_each_range_calls;
+    absl::StatusOr<std::vector<std::string>> records =
+        ReadRecords(tenant_id, session_id);
+    if (!records.ok()) {
+      return records.status();
+    }
+    for (uint64_t i = start; i < end && i < records->size(); ++i) {
+      absl::Status status = callback((*records)[static_cast<size_t>(i)]);
+      if (!status.ok()) return status;
+    }
+    return absl::OkStatus();
+  }
+
   absl::StatusOr<EventSink::Generation> ProbeGeneration(
       absl::string_view tenant_id,
       absl::string_view session_id) const override {
@@ -203,6 +222,7 @@ class ProbeEventSink : public EventSink {
   }
 
   mutable int for_each_calls = 0;
+  mutable int for_each_range_calls = 0;
 
  private:
   mutable std::map<std::string, std::vector<std::string>> records_;
@@ -324,6 +344,38 @@ TEST(EventSourcedLogTest, ProjectionEventLogIsPaperIndexedAndCompact) {
   EXPECT_NE(event_log.find("\"payload\":\"first\""), std::string::npos);
   EXPECT_EQ(event_log.find("\"payload\": \"first\""), std::string::npos);
   EXPECT_NE(event_log.find('\n'), std::string::npos);
+}
+
+TEST(EventSourcedLogTest, ProjectionRangeUsesRangeIterator) {
+  ProbeEventSink sink;
+  EventSourcedLog log(&sink, DPMLogIdentity{
+                                 .tenant_id = "tenant-a",
+                                 .session_id = "session-1",
+                             });
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kUser,
+      .payload = "first",
+      .timestamp_us = 100,
+  }));
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kTool,
+      .payload = "second",
+      .timestamp_us = 200,
+  }));
+  ASSERT_OK(log.Append(Event{
+      .type = Event::Type::kModel,
+      .payload = "third",
+      .timestamp_us = 300,
+  }));
+
+  ASSERT_OK_AND_ASSIGN(std::string event_log,
+                       log.GetProjectionEventLogRange(1, 2));
+  EXPECT_EQ(sink.for_each_calls, 0);
+  EXPECT_EQ(sink.for_each_range_calls, 1);
+  EXPECT_EQ(event_log.find("[1] "), std::string::npos);
+  EXPECT_NE(event_log.find("[2] "), std::string::npos);
+  EXPECT_EQ(event_log.find("[3] "), std::string::npos);
+  EXPECT_NE(event_log.find("\"payload\":\"second\""), std::string::npos);
 }
 
 }  // namespace

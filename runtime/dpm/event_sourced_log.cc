@@ -177,6 +177,45 @@ absl::StatusOr<std::vector<Event>> EventSourcedLog::GetAllEvents() const {
   return LoadEventsLocked();
 }
 
+absl::StatusOr<std::vector<Event>> EventSourcedLog::GetEventRange(
+    uint64_t event_range_start, uint64_t event_range_end) const {
+  if (event_range_end < event_range_start) {
+    return absl::InvalidArgumentError("DPM event range is inverted.");
+  }
+  if (sink_ == nullptr) {
+    return absl::FailedPreconditionError(
+        "DPM EventSourcedLog has no event sink bound.");
+  }
+  RETURN_IF_ERROR(ValidateIdentity());
+  std::lock_guard<std::mutex> lock(mutex_);
+  std::vector<Event> events;
+  events.reserve(static_cast<size_t>(event_range_end - event_range_start));
+  uint64_t observed = event_range_start;
+  RETURN_IF_ERROR(sink_->ForEachRecordRange(
+      identity_.tenant_id, identity_.session_id, event_range_start,
+      event_range_end, [&](absl::string_view record) -> absl::Status {
+        absl::StatusOr<Event> event = EventFromJsonLine(record);
+        if (!event.ok()) {
+          return absl::DataLossError(absl::StrCat(
+              "DPM event log record ", observed, " failed to parse: ",
+              event.status().message()));
+        }
+        if (event->tenant_id != identity_.tenant_id ||
+            event->session_id != identity_.session_id) {
+          return absl::DataLossError(
+              "DPM event log contains a cross-tenant or cross-session event.");
+        }
+        events.push_back(std::move(*event));
+        ++observed;
+        return absl::OkStatus();
+      }));
+  if (events.size() != event_range_end - event_range_start) {
+    return absl::InvalidArgumentError(
+        "DPM event range exceeds log generation.");
+  }
+  return events;
+}
+
 absl::StatusOr<std::string> EventSourcedLog::GetProjectionEventLog() const {
   if (sink_ == nullptr) {
     return absl::FailedPreconditionError(
@@ -237,6 +276,45 @@ absl::StatusOr<std::string> EventSourcedLog::GetProjectionEventLog() const {
       probe.ok() ? probe->opaque_token : records_fingerprint;
   projection_cache_loaded_ = true;
   return cached_projection_event_log_;
+}
+
+absl::StatusOr<std::string> EventSourcedLog::GetProjectionEventLogRange(
+    uint64_t event_range_start, uint64_t event_range_end) const {
+  if (event_range_end < event_range_start) {
+    return absl::InvalidArgumentError("DPM projection event range is inverted.");
+  }
+  if (sink_ == nullptr) {
+    return absl::FailedPreconditionError(
+        "DPM EventSourcedLog has no event sink bound.");
+  }
+  RETURN_IF_ERROR(ValidateIdentity());
+  std::lock_guard<std::mutex> lock(mutex_);
+  std::string event_log;
+  uint64_t observed = event_range_start;
+  RETURN_IF_ERROR(sink_->ForEachRecordRange(
+      identity_.tenant_id, identity_.session_id, event_range_start,
+      event_range_end, [&](absl::string_view record) -> absl::Status {
+        absl::StatusOr<Event> event = EventFromJsonLine(record);
+        if (!event.ok()) {
+          return absl::DataLossError(absl::StrCat(
+              "DPM event log record ", observed, " failed to parse: ",
+              event.status().message()));
+        }
+        if (event->tenant_id != identity_.tenant_id ||
+            event->session_id != identity_.session_id) {
+          return absl::DataLossError(
+              "DPM event log contains a cross-tenant or cross-session event.");
+        }
+        if (!event_log.empty()) event_log.push_back('\n');
+        absl::StrAppend(&event_log, "[", observed + 1, "] ", record);
+        ++observed;
+        return absl::OkStatus();
+      }));
+  if (observed != event_range_end) {
+    return absl::InvalidArgumentError(
+        "DPM projection event range exceeds log generation.");
+  }
+  return event_log;
 }
 
 absl::StatusOr<std::vector<Event>> EventSourcedLog::GetEventsSince(

@@ -37,11 +37,15 @@ CanonicalManifestInput Baseline() {
   in.model_artifact_hash =
       HashBytes(HashAlgorithm::kBlake3, "model-bundle-bytes");
   in.model_id = "gemma-3-test";
+  in.schema_id = "incident_response_v1";
+  in.schema_hash = HashBytes(HashAlgorithm::kBlake3, "schema-json");
   in.model_class = 2;  // GQA
   in.num_layers = 24;
   in.num_kv_heads = 8;
   in.head_dim = 128;
   in.kv_dtype = 2;  // int8 per token
+  in.event_range_start = 20;
+  in.event_range_end = 100;
   in.base_event_index = 100;
   in.body_hash = HashBytes(HashAlgorithm::kBlake3, "payload-bytes");
   in.body_size_bytes = 12345;
@@ -53,6 +57,35 @@ TEST(CanonicalManifestTest, EncodingIsByteDeterministic) {
   ASSERT_OK_AND_ASSIGN(std::string a, EncodeCanonicalManifest(Baseline()));
   ASSERT_OK_AND_ASSIGN(std::string b, EncodeCanonicalManifest(Baseline()));
   EXPECT_EQ(a, b);
+}
+
+TEST(CanonicalManifestTest, DecodeRoundTripsCoverageAndHashInputs) {
+  CanonicalManifestInput input = Baseline();
+  input.parent_hashes = {
+      HashBytes(HashAlgorithm::kBlake3, "parent-1"),
+      HashBytes(HashAlgorithm::kBlake3, "parent-2"),
+  };
+  ASSERT_OK_AND_ASSIGN(std::string bytes, EncodeCanonicalManifest(input));
+  ASSERT_OK_AND_ASSIGN(CanonicalManifestInput decoded,
+                       DecodeCanonicalManifest(bytes));
+
+  EXPECT_EQ(decoded.tenant_id, input.tenant_id);
+  EXPECT_EQ(decoded.session_id, input.session_id);
+  EXPECT_EQ(decoded.branch_id, input.branch_id);
+  EXPECT_EQ(decoded.parent_hashes, input.parent_hashes);
+  EXPECT_EQ(decoded.schema_id, input.schema_id);
+  EXPECT_EQ(decoded.schema_hash, input.schema_hash);
+  EXPECT_EQ(decoded.event_range_start, input.event_range_start);
+  EXPECT_EQ(decoded.event_range_end, input.event_range_end);
+  EXPECT_EQ(decoded.base_event_index, input.base_event_index);
+  EXPECT_EQ(decoded.body_hash, input.body_hash);
+  EXPECT_EQ(decoded.body_size_bytes, input.body_size_bytes);
+  EXPECT_EQ(decoded.created_unix_micros, input.created_unix_micros);
+  ASSERT_OK_AND_ASSIGN(Hash256 original_hash,
+                       ComputeManifestHash(HashAlgorithm::kBlake3, input));
+  ASSERT_OK_AND_ASSIGN(Hash256 decoded_hash,
+                       ComputeManifestHash(HashAlgorithm::kBlake3, decoded));
+  EXPECT_EQ(decoded_hash, original_hash);
 }
 
 TEST(CanonicalManifestTest, ManifestHashCoversIdentityFields) {
@@ -83,6 +116,11 @@ TEST(CanonicalManifestTest, ManifestHashCoversModelAndBackendFields) {
                  HashBytes(HashAlgorithm::kBlake3, "different-model");
            },
            [](auto& x) { x.model_id = "phi-4"; },
+           [](auto& x) { x.schema_id = "claim_review_v2"; },
+           [](auto& x) {
+             x.schema_hash =
+                 HashBytes(HashAlgorithm::kBlake3, "different-schema");
+           },
            [](auto& x) { x.model_class = 3; },
            [](auto& x) { x.num_kv_heads = 16; },
            [](auto& x) { x.head_dim = 64; },
@@ -129,6 +167,26 @@ TEST(CanonicalManifestTest, ManifestHashCoversParentHashesAndBody) {
   diff_body.body_hash = HashBytes(HashAlgorithm::kBlake3, "different-body");
   ASSERT_OK_AND_ASSIGN(Hash256 h2,
                        ComputeManifestHash(HashAlgorithm::kBlake3, diff_body));
+  EXPECT_NE(h2, base);
+}
+
+TEST(CanonicalManifestTest, ManifestHashCoversGlobalHalfOpenEventRange) {
+  ASSERT_OK_AND_ASSIGN(Hash256 base,
+                       ComputeManifestHash(HashAlgorithm::kBlake3, Baseline()));
+
+  CanonicalManifestInput different_start = Baseline();
+  different_start.event_range_start = 21;
+  ASSERT_OK_AND_ASSIGN(Hash256 h1,
+                       ComputeManifestHash(HashAlgorithm::kBlake3,
+                                           different_start));
+  EXPECT_NE(h1, base);
+
+  CanonicalManifestInput different_end = Baseline();
+  different_end.event_range_end = 101;
+  different_end.base_event_index = 101;
+  ASSERT_OK_AND_ASSIGN(Hash256 h2,
+                       ComputeManifestHash(HashAlgorithm::kBlake3,
+                                           different_end));
   EXPECT_NE(h2, base);
 }
 
