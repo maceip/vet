@@ -1,12 +1,12 @@
 [features]
-codex_hooks = true
+hooks = true
 
 [[hooks.SessionStart]]
 matcher = "startup|resume|clear"
 
 [[hooks.SessionStart.hooks]]
 type = "command"
-command = "python tools/agent_hooks/dpm_gate.py --agent codex"
+command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/agent_hooks/invoke_dpm_gate.ps1 -Agent codex"
 timeout = 5
 statusMessage = "Loading DPM gate context"
 
@@ -14,7 +14,7 @@ statusMessage = "Loading DPM gate context"
 
 [[hooks.UserPromptSubmit.hooks]]
 type = "command"
-command = "python tools/agent_hooks/dpm_gate.py --agent codex"
+command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/agent_hooks/invoke_dpm_gate.ps1 -Agent codex"
 timeout = 5
 statusMessage = "Checking prompt against DPM corrections"
 
@@ -23,7 +23,7 @@ matcher = "Bash|apply_patch|Edit|Write|mcp__.*"
 
 [[hooks.PreToolUse.hooks]]
 type = "command"
-command = "python tools/agent_hooks/dpm_gate.py --agent codex"
+command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/agent_hooks/invoke_dpm_gate.ps1 -Agent codex"
 timeout = 5
 statusMessage = "DPM gate checking tool input"
 
@@ -32,7 +32,7 @@ matcher = "Bash|apply_patch|Edit|Write|mcp__.*"
 
 [[hooks.PermissionRequest.hooks]]
 type = "command"
-command = "python tools/agent_hooks/dpm_gate.py --agent codex"
+command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/agent_hooks/invoke_dpm_gate.ps1 -Agent codex"
 timeout = 5
 statusMessage = "DPM gate checking approval request"
 
@@ -41,7 +41,7 @@ matcher = "Bash|apply_patch|Edit|Write|mcp__.*"
 
 [[hooks.PostToolUse.hooks]]
 type = "command"
-command = "python tools/agent_hooks/dpm_gate.py --agent codex"
+command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/agent_hooks/invoke_dpm_gate.ps1 -Agent codex"
 timeout = 5
 statusMessage = "Appending tool result to DPM gate ledger"
 
@@ -49,6 +49,6 @@ statusMessage = "Appending tool result to DPM gate ledger"
 
 [[hooks.Stop.hooks]]
 type = "command"
-command = "python tools/agent_hooks/dpm_gate.py --agent codex"
+command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/agent_hooks/invoke_dpm_gate.ps1 -Agent codex"
 timeout = 5
 statusMessage = "Closing DPM gate turn"

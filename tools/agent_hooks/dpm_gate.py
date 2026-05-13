@@ -29,12 +29,11 @@ CORRECTION_HINTS = (
     "instead",
     "replace",
     "forget",
-    "do not use",
-    "don't use",
     "ignore the prior",
+    "ignore prior",
+    "ignore previous",
     "invalid",
     "stale",
-    "not ",
 )
 
 DECISION_TOOLS = {
@@ -205,7 +204,19 @@ def active_corrections(state: dict[str, Any]) -> list[dict[str, Any]]:
 
 def is_correction_prompt(prompt: str) -> bool:
     lowered = prompt.lower()
-    return any(hint in lowered for hint in CORRECTION_HINTS)
+    if not any(hint in lowered for hint in CORRECTION_HINTS):
+        return False
+    if re.search(r"\breplace\s+.+\s+with\s+.+", prompt, flags=re.IGNORECASE):
+        return True
+    if re.search(r".+\s*(?:->|=>)\s*.+", prompt):
+        return True
+    if re.search(
+        r"\b(?:forget|ignore|do not use|don't use)\s+(?:the\s+)?(?:old|prior|previous|stale|invalidated)\b",
+        prompt,
+        flags=re.IGNORECASE,
+    ):
+        return True
+    return "correction" in lowered or "correcting" in lowered
 
 
 def extract_correction(prompt: str) -> dict[str, Any]:
@@ -239,7 +250,7 @@ def extract_correction(prompt: str) -> dict[str, Any]:
             replacements.append(clean_fact(not_match.group(2)))
 
     forget_match = re.search(
-        r"\b(?:forget|do not use|don't use|ignore)\s+['\"]?(.{3,160}?)['\"]?(?:[.\n]|$)",
+        r"\b(?:forget|do not use|don't use|ignore)\s+(?:the\s+)?(?:old|prior|previous|stale|invalidated)\s+['\"]?(.{3,160}?)['\"]?(?:[.\n]|$)",
         prompt,
         flags=re.IGNORECASE,
     )
@@ -457,13 +468,23 @@ def hook_response(
     return output
 
 
-def deny_pretool(agent: str, reason: str) -> dict[str, Any]:
+def deny_pretool(agent: str, event_name: str, reason: str) -> dict[str, Any]:
     if agent == "gemini":
         return {"decision": "deny", "reason": reason, "systemMessage": reason}
     if agent == "copilot":
         return {"behavior": "deny", "message": reason, "interrupt": False}
     if agent == "cursor":
         return {"decision": "deny", "reason": reason}
+    if event_name == "PermissionRequest":
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PermissionRequest",
+                "decision": {
+                    "behavior": "deny",
+                    "message": reason,
+                },
+            }
+        }
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -532,10 +553,15 @@ def handle_hook(
         if hits:
             return deny_pretool(
                 agent,
+                event_name,
                 "DPM gate blocked this tool call because its input still contains "
                 f"invalidated fact(s): {', '.join(hits)}. Re-read "
                 f"{active_context_path(root)} and retry with the corrected memory."
             )
+        if agent == "codex" and event_name == "PreToolUse":
+            # Codex currently supports reliable PreToolUse denial, while
+            # allow/additionalContext on this event is parsed but not acted on.
+            return None
         if active_corrections(state) and is_decision_boundary(event):
             return allow_pretool(
                 agent,

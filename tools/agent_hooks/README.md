@@ -45,3 +45,10 @@ python tools/agent_hooks/cursor_agent_gate.py --prompt "make a harmless change"
 
 That wrapper runs the prompt through `cursor-agent -p --output-format stream-json`
 and records the stream in the same DPM demo ledger.
+
+## Local Codex user-hook setup
+
+Some Codex builds do not load repo-local hooks in non-interactive `exec` until
+the project layer is trusted. For the local Windows demo, point
+`%USERPROFILE%\.codex\hooks.json` at `codex_user_hook.ps1`. The wrapper exits
+quietly outside this repository, so it will not gate other workspaces.
