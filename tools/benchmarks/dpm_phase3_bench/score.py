@@ -66,12 +66,12 @@ from typing import Any
 try:
     from tools.benchmarks.dpm_phase3_bench.agent_protocol import AgentResult
     from tools.benchmarks.dpm_phase3_bench.bench_schema import (
-        Condition, ScoreStatus,
+        Condition, ScoreStatus, condition_uses_dpm_gate,
     )
     from tools.benchmarks.dpm_phase3_bench.session_case import SessionProbe
 except ModuleNotFoundError:
     from agent_protocol import AgentResult  # type: ignore
-    from bench_schema import Condition, ScoreStatus  # type: ignore
+    from bench_schema import Condition, ScoreStatus, condition_uses_dpm_gate  # type: ignore
     from session_case import SessionProbe  # type: ignore
 
 
@@ -321,7 +321,7 @@ def _detect_stale_escape(
     # said may_use=True. The substrate's contract is that a non-empty
     # blocking_corrections set must NOT result in gate_may_use=True; if
     # it does, the row is an escape regardless of the answer.
-    if (result.condition == Condition.DPM_PHASE3_CHECKPOINT
+    if (condition_uses_dpm_gate(result.condition)
             and result.blocking_corrections
             and result.gate_may_use is True):
         return True
@@ -352,7 +352,7 @@ def _audit_pass(result: AgentResult) -> bool | None:
     """For DPM rows, audit_pass = (gate_may_use is True). For non-DPM,
     audit_pass is null (rolling memory has no audit primitive; reading
     that as False would be a category error)."""
-    if result.condition != Condition.DPM_PHASE3_CHECKPOINT:
+    if not condition_uses_dpm_gate(result.condition):
         return None
     return bool(result.gate_may_use is True)
 

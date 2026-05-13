@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -406,6 +407,159 @@ class DpmPhase3CheckpointAgent:
         return result
 
 
+class RollingSummaryPlusDpmGateAgent:
+    """Adoption-oriented hybrid: rolling memory wrapped by DPM gate.
+
+    This is the product shape we expect agent engineers to understand:
+    keep the familiar rolling summary for broad task quality, but refuse
+    or repair decision memory when a typed correction invalidates prior
+    state. It is intentionally not "DPM beats rolling"; it asks whether
+    the safety gate can make rolling memory revocable.
+    """
+
+    def __init__(
+        self,
+        model: ModelAdapter,
+        *,
+        window_size_events: int = 8,
+        schema_id: str = "phase3-session-handoff-v1",
+        auditor_model_id: str = "dpm-exact-replay-auditor-v1",
+        audit_policy_version: str = "rolling-plus-dpm-gate-v1",
+    ):
+        if window_size_events <= 0:
+            raise ValueError("window_size_events must be positive")
+        self.model = model
+        self.window_size_events = window_size_events
+        self.schema_id = schema_id
+        self.auditor_model_id = auditor_model_id
+        self.audit_policy_version = audit_policy_version
+
+    @property
+    def condition(self) -> Condition:
+        return Condition.ROLLING_SUMMARY_PLUS_DPM_GATE
+
+    def run(
+        self,
+        case: SessionCase,
+        probe: SessionProbe | None = None,
+        budget_chars: int = 1338,
+    ) -> AgentResult:
+        task = render_task(case, probe)
+        events = events_up_to_probe(case)
+        full_end = event_range_end(events)
+        responses: list[ModelResponse] = []
+
+        summary = ""
+        for window in _windows(events, self.window_size_events):
+            prompt = build_summary_prompt(summary, render_events(window), task)
+            response = self.model.generate(
+                prompt,
+                purpose="rolling_summary",
+                max_output_chars=budget_chars,
+            )
+            responses.append(response)
+            summary = _clip(response.text, budget_chars)
+
+        directive = first_correction_directive(case)
+        correction = (
+            events[directive.event_idx]
+            if directive is not None and 0 <= directive.event_idx < len(events)
+            else None
+        )
+        invalidated_facts = list(directive.invalidated_facts) if directive else []
+
+        gate_may_use = True
+        gate_reason = ""
+        audit_verdict = AuditVerdict.PASS
+        drift_score = 0.0
+        blocking_corrections: list[str] = []
+        checkpoint_summary = summary
+        memory_for_decision = summary
+
+        if correction is not None:
+            gate_may_use = False
+            gate_reason = (
+                "blocking correction invalidates rolling summary checkpoint; "
+                "rolling memory repaired with DPM correction overlay"
+            )
+            audit_verdict = AuditVerdict.CORRECTION_EMITTED
+            drift_score = 1.0
+            blocking_corrections = [correction_id_for(case, correction)]
+
+            checkpoint_summary = summary
+            safe_summary = strip_invalidated_facts(summary, invalidated_facts)
+            overlay_prompt = build_projection_prompt(
+                render_events(events),
+                task,
+                budget_chars,
+                correction=correction,
+                invalidated_facts=invalidated_facts,
+            )
+            overlay = self.model.generate(
+                overlay_prompt,
+                purpose="dpm_projection",
+                max_output_chars=budget_chars,
+            )
+            responses.append(overlay)
+            memory_for_decision = build_hybrid_memory(
+                rolling_summary=safe_summary,
+                correction_overlay=overlay.text,
+                invalidated_facts=invalidated_facts,
+                budget_chars=budget_chars,
+            )
+
+        checkpoint_body_hash = sha256_hex(checkpoint_summary)
+        checkpoint_manifest_hash = checkpoint_manifest_id(
+            case=case,
+            body_hash=checkpoint_body_hash,
+            range_start=0,
+            range_end=full_end,
+            schema_id=self.schema_id,
+            projection_model_id=self.model.model_id,
+            audit_policy_version=self.audit_policy_version,
+        )
+        audit_certificate_id = audit_certificate_id_for(
+            checkpoint_manifest_hash,
+            audit_verdict,
+            blocking_corrections,
+        )
+
+        answer = self.model.generate(
+            build_decision_prompt(memory_for_decision, task),
+            purpose="decision",
+            max_output_chars=budget_chars,
+        )
+        responses.append(answer)
+
+        notes = (
+            "rolling summary accepted by DPM gate"
+            if gate_may_use
+            else "rolling summary repaired by DPM correction gate"
+        )
+        result = _result(
+            condition=self.condition,
+            memory_bytes=memory_for_decision,
+            answer_bytes=answer.text,
+            responses=responses,
+            notes=notes,
+        )
+        result.projection_model_id = self.model.model_id
+        result.auditor_model_id = self.auditor_model_id
+        result.audit_policy_version = self.audit_policy_version
+        result.event_range_start = 0
+        result.event_range_end = full_end
+        result.log_generation = full_end
+        result.checkpoint_manifest_hash = checkpoint_manifest_hash
+        result.checkpoint_body_hash = checkpoint_body_hash
+        result.audit_certificate_id = audit_certificate_id
+        result.audit_verdict = audit_verdict
+        result.drift_score = drift_score
+        result.gate_may_use = gate_may_use
+        result.gate_reason = gate_reason
+        result.blocking_corrections = blocking_corrections
+        return result
+
+
 def load_session_cases(path: str | Path) -> list[SessionCase]:
     return _load_typed_session_cases(path)
 
@@ -561,6 +715,47 @@ def build_decision_prompt(memory: str, task: str) -> str:
         f"TASK:\n{task}\n\n"
         "Return the answer only."
     )
+
+
+def strip_invalidated_facts(memory: str, invalidated_facts: list[str]) -> str:
+    """Remove literal stale facts before a rolling summary is reused.
+
+    This is the hybrid gate's deterministic safety step. The correction
+    overlay tells the model what replaced the old state; this filter
+    prevents the old literal from remaining in the memory artifact.
+    """
+    safe = memory
+    for fact in invalidated_facts:
+        if not fact:
+            continue
+        safe = re.sub(
+            re.escape(fact),
+            "[REVOKED_BY_DPM_GATE]",
+            safe,
+            flags=re.IGNORECASE,
+        )
+    return safe
+
+
+def build_hybrid_memory(
+    *,
+    rolling_summary: str,
+    correction_overlay: str,
+    invalidated_facts: list[str],
+    budget_chars: int,
+) -> str:
+    safe_overlay = strip_invalidated_facts(correction_overlay, invalidated_facts)
+    memory = (
+        "DPM SAFETY GATE: blocking correction detected.\n"
+        "The correction overlay is authoritative over rolling memory.\n\n"
+        f"REVOCATION FILTER: removed {len([f for f in invalidated_facts if f])} "
+        "invalidated fact(s) from decision memory.\n\n"
+        "CORRECTION OVERLAY:\n"
+        f"{safe_overlay}\n\n"
+        "ROLLING MEMORY AFTER REVOCATION FILTER:\n"
+        f"{rolling_summary}"
+    )
+    return _clip(memory, budget_chars)
 
 
 def estimate_tokens(text: str) -> int:
@@ -781,6 +976,9 @@ AGENT_REGISTRY = {
     Condition.DPM_PHASE3_CHECKPOINT: lambda: DpmPhase3CheckpointAgent(
         _default_adapter()
     ),
+    Condition.ROLLING_SUMMARY_PLUS_DPM_GATE: lambda: (
+        RollingSummaryPlusDpmGateAgent(_default_adapter())
+    ),
 }
 
 
@@ -800,6 +998,7 @@ def _selftest() -> int:
     raw = RawOracleAgent(model)
     rolling = RollingSummaryAgent(model, window_size_events=4)
     dpm = DpmPhase3CheckpointAgent(model)
+    hybrid = RollingSummaryPlusDpmGateAgent(model, window_size_events=4)
 
     failures = 0
     for case in cases:
@@ -811,6 +1010,7 @@ def _selftest() -> int:
         raw_result = raw.run(case, probe, budget_chars=1338)
         rolling_result = rolling.run(case, probe, budget_chars=1338)
         dpm_result = dpm.run(case, probe, budget_chars=1338)
+        hybrid_result = hybrid.run(case, probe, budget_chars=1338)
         if raw_result.condition != Condition.RAW_ORACLE:
             print(f"FAIL {case.case_id}: raw condition={raw_result.condition}")
             failures += 1
@@ -837,6 +1037,15 @@ def _selftest() -> int:
             failures += 1
         if not dpm_result.checkpoint_manifest_hash:
             print(f"FAIL {case.case_id}: DPM missing manifest hash")
+            failures += 1
+        if hybrid_result.condition != Condition.ROLLING_SUMMARY_PLUS_DPM_GATE:
+            print(
+                f"FAIL {case.case_id}: hybrid condition="
+                f"{hybrid_result.condition}"
+            )
+            failures += 1
+        if not hybrid_result.checkpoint_manifest_hash:
+            print(f"FAIL {case.case_id}: hybrid missing manifest hash")
             failures += 1
         if not dpm_result.audit_certificate_id:
             print(f"FAIL {case.case_id}: DPM missing audit certificate id")

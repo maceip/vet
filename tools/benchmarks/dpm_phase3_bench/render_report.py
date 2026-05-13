@@ -16,6 +16,7 @@ try:
         Condition,
         ScoreStatus,
         TestKind,
+        condition_uses_dpm_gate,
     )
     from tools.benchmarks.dpm_phase3_bench.charts import (
         Bar,
@@ -31,6 +32,7 @@ except ModuleNotFoundError:  # Allows running from this directory directly.
         Condition,
         ScoreStatus,
         TestKind,
+        condition_uses_dpm_gate,
     )
     from charts import Bar, condition_color, write_bar_chart  # type: ignore
 
@@ -78,11 +80,13 @@ def _guard_report_inputs(rows: Iterable[BenchRow]) -> None:
             raise SystemExit(
                 f"{row.case_id}/{row.condition.value}: needs_judge row carried "
                 "a decision_score. Missing judge is never zero.")
-        if row.condition == Condition.DPM_PHASE3_CHECKPOINT:
+        if condition_uses_dpm_gate(row.condition):
             if row.gate_may_use is None:
-                raise SystemExit(f"{row.case_id}: DPM row missing gate_may_use")
+                raise SystemExit(
+                    f"{row.case_id}: DPM-gated row missing gate_may_use")
             if row.gate_may_use and not row.audit_certificate_id:
-                raise SystemExit(f"{row.case_id}: DPM gate accepted without certificate id")
+                raise SystemExit(
+                    f"{row.case_id}: DPM gate accepted without certificate id")
 
 
 def _matched_cells_filter(rows: list[BenchRow]) -> list[BenchRow]:
@@ -136,7 +140,7 @@ def _summary(rows: list[BenchRow]) -> dict:
         for condition in Condition
     }
 
-    dpm_rows = [r for r in rows if r.condition == Condition.DPM_PHASE3_CHECKPOINT]
+    dpm_rows = [r for r in rows if condition_uses_dpm_gate(r.condition)]
     audit_gate = {
         "dpm_rows": len(dpm_rows),
         "gate_accept_count": sum(1 for r in dpm_rows if r.gate_may_use is True),
@@ -265,7 +269,7 @@ def _write_charts(rows: list[BenchRow], out: Path) -> None:
         max_value=1.0,
     )
 
-    dpm_rows = [r for r in rows if r.condition == Condition.DPM_PHASE3_CHECKPOINT]
+    dpm_rows = [r for r in rows if condition_uses_dpm_gate(r.condition)]
     audit_bars = [
         Bar("DPM gate accepted", _rate(dpm_rows, lambda r: r.gate_may_use is True),
             condition_color(Condition.DPM_PHASE3_CHECKPOINT.value),
@@ -324,13 +328,13 @@ def _write_examples(rows: list[BenchRow], out: Path) -> None:
     )
     dpm_refusal = next(
         (r for r in rows
-         if r.condition == Condition.DPM_PHASE3_CHECKPOINT
+         if condition_uses_dpm_gate(r.condition)
          and r.gate_may_use is False),
         None,
     )
     dpm_pass = next(
         (r for r in rows
-         if r.condition == Condition.DPM_PHASE3_CHECKPOINT
+         if condition_uses_dpm_gate(r.condition)
          and r.gate_may_use is True),
         None,
     )

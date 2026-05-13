@@ -14,7 +14,7 @@ Usage:
 
   python tools/benchmarks/dpm_phase3_bench/run_phase3_bench.py \\
     --fixtures tools/benchmarks/dpm_phase3_bench/fixtures/real_sessions \\
-    --conditions raw_oracle,rolling_summary,dpm_phase3_checkpoint \\
+    --conditions raw_oracle,rolling_summary,dpm_phase3_checkpoint,rolling_summary_plus_dpm_gate \\
     --budget_chars 1338,5352,21408 \\
     --repeat 1 \\
     --output .codex-local/phase3-bench-smoke/results.jsonl
@@ -74,7 +74,10 @@ except ModuleNotFoundError:
 
 _DEFAULT_BUDGETS = "1338,5352,21408"
 _DEFAULT_TEST_KINDS = "decision,handoff,correction_safety"
-_DEFAULT_CONDITIONS = "raw_oracle,rolling_summary,dpm_phase3_checkpoint"
+_DEFAULT_CONDITIONS = (
+    "raw_oracle,rolling_summary,dpm_phase3_checkpoint,"
+    "rolling_summary_plus_dpm_gate"
+)
 
 
 # ---- Matrix expansion ------------------------------------------------

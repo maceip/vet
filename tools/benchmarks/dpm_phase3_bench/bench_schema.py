@@ -27,7 +27,8 @@ Public API:
 
   BenchRow          -- the row dataclass
   Condition         -- enum: raw_oracle / rolling_summary /
-                       dpm_phase3_checkpoint
+                       dpm_phase3_checkpoint /
+                       rolling_summary_plus_dpm_gate
   TestKind          -- enum: decision / handoff / correction_safety /
                        auditability / cost_latency / prompt_retention
   ScoreStatus       -- enum: scored / needs_judge /
@@ -60,16 +61,20 @@ SCHEMA_VERSION = 1
 # ---- Enums (closed sets) ---------------------------------------------
 
 class Condition(str, Enum):
-    """The three substrate conditions under test.
+    """The substrate conditions under test.
 
     `raw_oracle` is the quality ceiling, not a deployable baseline.
     `rolling_summary` is the deployed-everywhere antagonist.
-    `dpm_phase3_checkpoint` is the proposition; rows in this condition
-    MUST carry checkpoint/audit/gate fields.
+    `dpm_phase3_checkpoint` is the DPM-only proposition; rows in this
+    condition MUST carry checkpoint/audit/gate fields.
+    `rolling_summary_plus_dpm_gate` is the adoption-oriented shape:
+    keep rolling memory for quality, but wrap decision use with the DPM
+    gate/correction barrier.
     """
     RAW_ORACLE = "raw_oracle"
     ROLLING_SUMMARY = "rolling_summary"
     DPM_PHASE3_CHECKPOINT = "dpm_phase3_checkpoint"
+    ROLLING_SUMMARY_PLUS_DPM_GATE = "rolling_summary_plus_dpm_gate"
 
 
 class TestKind(str, Enum):
@@ -132,6 +137,13 @@ class AuditVerdict(str, Enum):
 class BenchRowError(ValueError):
     """Raised when a BenchRow violates the schema or a chart filter
     rejects a row that should not enter that chart."""
+
+
+def condition_uses_dpm_gate(condition: Condition) -> bool:
+    return condition in {
+        Condition.DPM_PHASE3_CHECKPOINT,
+        Condition.ROLLING_SUMMARY_PLUS_DPM_GATE,
+    }
 
 
 # ---- Row ----------------------------------------------------------------
@@ -293,46 +305,46 @@ def validate_row(row: BenchRow) -> None:
                 "score_status=errored requires non-empty notes "
                 "(human-readable error explanation)")
 
-    # --- DPM-condition substrate evidence
+    # --- DPM-gated condition substrate evidence
     # Errored rows skip DPM-specific evidence checks: by definition the
     # agent didn't finish, so substrate fields will be empty. The row
     # is excluded from aggregates via score_status; we just need it to
     # serialize so the runner can record what failed.
-    if (row.condition == Condition.DPM_PHASE3_CHECKPOINT
+    if (condition_uses_dpm_gate(row.condition)
             and row.score_status != ScoreStatus.ERRORED):
         if not row.projection_model_id:
             raise BenchRowError(
-                "DPM rows require projection_model_id")
+                "DPM-gated rows require projection_model_id")
         if not row.auditor_model_id:
             raise BenchRowError(
-                "DPM rows require auditor_model_id")
+                "DPM-gated rows require auditor_model_id")
         if not row.audit_policy_version:
             raise BenchRowError(
-                "DPM rows require audit_policy_version")
+                "DPM-gated rows require audit_policy_version")
         if row.audit_verdict == AuditVerdict.NOT_APPLICABLE:
             raise BenchRowError(
-                "DPM rows must carry an audit_verdict other than "
+                "DPM-gated rows must carry an audit_verdict other than "
                 "not_applicable; use 'pending' if the audit hasn't run")
         if row.gate_may_use is None:
             raise BenchRowError(
-                "DPM rows must record gate_may_use (true or false)")
+                "DPM-gated rows must record gate_may_use (true or false)")
         # Either the gate said yes (and we used a checkpoint), or it
         # said no — but the row must explain.
         if row.gate_may_use is True:
             if not row.checkpoint_manifest_hash:
                 raise BenchRowError(
-                    "DPM gate_may_use=True requires checkpoint_manifest_hash")
+                    "DPM-gated gate_may_use=True requires checkpoint_manifest_hash")
             if not row.checkpoint_body_hash:
                 raise BenchRowError(
-                    "DPM gate_may_use=True requires checkpoint_body_hash "
+                    "DPM-gated gate_may_use=True requires checkpoint_body_hash "
                     "(the gate accepted the projection; the row must "
                     "carry its content-addressed body)")
             if not row.audit_certificate_id:
                 raise BenchRowError(
-                    "DPM gate_may_use=True requires audit_certificate_id")
+                    "DPM-gated gate_may_use=True requires audit_certificate_id")
             if row.audit_pass is not True:
                 raise BenchRowError(
-                    "DPM gate_may_use=True requires audit_pass=True; "
+                    "DPM-gated gate_may_use=True requires audit_pass=True; "
                     "gate accept and audit pass are coupled")
             for h, name in (
                 (row.checkpoint_manifest_hash, "checkpoint_manifest_hash"),
@@ -341,14 +353,14 @@ def validate_row(row: BenchRow) -> None:
             ):
                 if not _is_hex(h):
                     raise BenchRowError(
-                        f"DPM {name} must be hex, got {h!r}")
+                        f"DPM-gated {name} must be hex, got {h!r}")
         else:
             if not row.gate_reason:
                 raise BenchRowError(
-                    "DPM gate_may_use=False requires non-empty gate_reason")
+                    "DPM-gated gate_may_use=False requires non-empty gate_reason")
 
-    # --- non-DPM rows must NOT carry DPM evidence
-    if row.condition != Condition.DPM_PHASE3_CHECKPOINT:
+    # --- non-DPM-gated rows must NOT carry DPM evidence
+    if not condition_uses_dpm_gate(row.condition):
         if row.checkpoint_manifest_hash or row.audit_certificate_id:
             raise BenchRowError(
                 f"condition={row.condition.value} cannot carry "
@@ -471,13 +483,17 @@ PHASE3_HANDOFF_QUALITY_CHART = ChartSpec(
         Condition.RAW_ORACLE,
         Condition.ROLLING_SUMMARY,
         Condition.DPM_PHASE3_CHECKPOINT,
+        Condition.ROLLING_SUMMARY_PLUS_DPM_GATE,
     }),
 )
 
 PHASE3_AUDIT_GATE_CHART = ChartSpec(
     name="phase3_audit_gate",
     allowed_test_kinds=frozenset({TestKind.AUDITABILITY}),
-    allowed_conditions=frozenset({Condition.DPM_PHASE3_CHECKPOINT}),
+    allowed_conditions=frozenset({
+        Condition.DPM_PHASE3_CHECKPOINT,
+        Condition.ROLLING_SUMMARY_PLUS_DPM_GATE,
+    }),
 )
 
 PHASE3_COST_LATENCY_CHART = ChartSpec(
@@ -487,6 +503,7 @@ PHASE3_COST_LATENCY_CHART = ChartSpec(
         Condition.RAW_ORACLE,
         Condition.ROLLING_SUMMARY,
         Condition.DPM_PHASE3_CHECKPOINT,
+        Condition.ROLLING_SUMMARY_PLUS_DPM_GATE,
     }),
     # Keep needs_judge rows. model_calls / input_tokens / output_tokens
     # / wall_ms are meaningful even when the answer can't be

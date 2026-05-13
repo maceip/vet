@@ -79,6 +79,8 @@ def condition_color(condition: str) -> str:
         return "#d97706"
     if condition == "dpm_phase3_checkpoint":
         return "#059669"
+    if condition == "rolling_summary_plus_dpm_gate":
+        return "#7c3aed"
     return "#6b7280"
 
 
@@ -88,4 +90,3 @@ def _format_value(value: float) -> str:
     if abs(value) >= 10:
         return f"{value:.1f}"
     return f"{value:.3f}".rstrip("0").rstrip(".")
-
