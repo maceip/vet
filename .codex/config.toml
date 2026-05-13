@@ -1,0 +1,54 @@
+[features]
+codex_hooks = true
+
+[[hooks.SessionStart]]
+matcher = "startup|resume|clear"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "python tools/agent_hooks/dpm_gate.py --agent codex"
+timeout = 5
+statusMessage = "Loading DPM gate context"
+
+[[hooks.UserPromptSubmit]]
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "python tools/agent_hooks/dpm_gate.py --agent codex"
+timeout = 5
+statusMessage = "Checking prompt against DPM corrections"
+
+[[hooks.PreToolUse]]
+matcher = "Bash|apply_patch|Edit|Write|mcp__.*"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "python tools/agent_hooks/dpm_gate.py --agent codex"
+timeout = 5
+statusMessage = "DPM gate checking tool input"
+
+[[hooks.PermissionRequest]]
+matcher = "Bash|apply_patch|Edit|Write|mcp__.*"
+
+[[hooks.PermissionRequest.hooks]]
+type = "command"
+command = "python tools/agent_hooks/dpm_gate.py --agent codex"
+timeout = 5
+statusMessage = "DPM gate checking approval request"
+
+[[hooks.PostToolUse]]
+matcher = "Bash|apply_patch|Edit|Write|mcp__.*"
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "python tools/agent_hooks/dpm_gate.py --agent codex"
+timeout = 5
+statusMessage = "Appending tool result to DPM gate ledger"
+
+[[hooks.Stop]]
+
+[[hooks.Stop.hooks]]
+type = "command"
+command = "python tools/agent_hooks/dpm_gate.py --agent codex"
+timeout = 5
+statusMessage = "Closing DPM gate turn"

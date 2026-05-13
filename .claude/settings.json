@@ -1,0 +1,109 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/tools/agent_hooks/dpm_gate.py",
+              "--agent",
+              "claude"
+            ],
+            "timeout": 5,
+            "statusMessage": "Loading DPM verified context"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/tools/agent_hooks/dpm_gate.py",
+              "--agent",
+              "claude"
+            ],
+            "timeout": 5,
+            "statusMessage": "Checking prompt against DPM correction ledger"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/tools/agent_hooks/dpm_gate.py",
+              "--agent",
+              "claude"
+            ],
+            "timeout": 5,
+            "statusMessage": "DPM gate checking tool input"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/tools/agent_hooks/dpm_gate.py",
+              "--agent",
+              "claude"
+            ],
+            "timeout": 5,
+            "statusMessage": "Appending tool result to DPM demo ledger"
+          }
+        ]
+      }
+    ],
+    "PostToolBatch": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/tools/agent_hooks/dpm_gate.py",
+              "--agent",
+              "claude"
+            ],
+            "timeout": 5,
+            "statusMessage": "Refreshing DPM verified context"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/tools/agent_hooks/dpm_gate.py",
+              "--agent",
+              "claude"
+            ],
+            "timeout": 5,
+            "statusMessage": "Checkpointing DPM context before compaction"
+          }
+        ]
+      }
+    ]
+  }
+}

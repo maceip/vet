@@ -1,2 +1,5 @@
 /MODULE.bazel.lock
 /bazel-*
+.claude/scheduled_tasks.lock
+.claude/dpm-demo/
+.dpm-agent-hooks/

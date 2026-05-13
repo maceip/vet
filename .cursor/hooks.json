@@ -1,0 +1,34 @@
+{
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "python tools/agent_hooks/dpm_gate.py --agent cursor"
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "python tools/agent_hooks/dpm_gate.py --agent cursor"
+      }
+    ],
+    "afterShellExecution": [
+      {
+        "command": "python tools/agent_hooks/dpm_gate.py --agent cursor"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "python tools/agent_hooks/dpm_gate.py --agent cursor"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "python tools/agent_hooks/dpm_gate.py --agent cursor"
+      }
+    ],
+    "stop": [
+      {
+        "command": "python tools/agent_hooks/dpm_gate.py --agent cursor"
+      }
+    ]
+  }
+}

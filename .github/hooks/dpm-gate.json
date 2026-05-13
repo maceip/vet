@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "python tools/agent_hooks/dpm_gate.py --agent copilot",
+        "powershell": "python tools/agent_hooks/dpm_gate.py --agent copilot",
+        "timeoutSec": 5
+      }
+    ],
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "python tools/agent_hooks/dpm_gate.py --agent copilot",
+        "powershell": "python tools/agent_hooks/dpm_gate.py --agent copilot",
+        "timeoutSec": 5
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "matcher": "bash|powershell|create|edit|task",
+        "bash": "python tools/agent_hooks/dpm_gate.py --agent copilot",
+        "powershell": "python tools/agent_hooks/dpm_gate.py --agent copilot",
+        "timeoutSec": 5
+      }
+    ],
+    "permissionRequest": [
+      {
+        "type": "command",
+        "matcher": "bash|powershell|create|edit|task",
+        "bash": "python tools/agent_hooks/dpm_gate.py --agent copilot",
+        "powershell": "python tools/agent_hooks/dpm_gate.py --agent copilot",
+        "timeoutSec": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "matcher": "bash|powershell|create|edit|task",
+        "bash": "python tools/agent_hooks/dpm_gate.py --agent copilot",
+        "powershell": "python tools/agent_hooks/dpm_gate.py --agent copilot",
+        "timeoutSec": 5
+      }
+    ],
+    "preCompact": [
+      {
+        "type": "command",
+        "bash": "python tools/agent_hooks/dpm_gate.py --agent copilot",
+        "powershell": "python tools/agent_hooks/dpm_gate.py --agent copilot",
+        "timeoutSec": 5
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "python tools/agent_hooks/dpm_gate.py --agent copilot",
+        "powershell": "python tools/agent_hooks/dpm_gate.py --agent copilot",
+        "timeoutSec": 5
+      }
+    ]
+  }
+}
