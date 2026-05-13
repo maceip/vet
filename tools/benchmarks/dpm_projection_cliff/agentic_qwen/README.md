@@ -106,6 +106,5 @@ the policy that the agent COULD have gotten it right."
 - Long-horizon handoff (no shift boundaries).
 - Real-user signal (the dataset is synthetic-by-design).
 
-For those, the primary matrix on `phase2-substrate` and the real
-agent-session corpus on `phase2-bench` (under `scenario/`) remain the
-load-bearing tests.
+For those, the primary substrate matrix and the real agent-session corpus
+under `scenario/` remain the load-bearing tests.

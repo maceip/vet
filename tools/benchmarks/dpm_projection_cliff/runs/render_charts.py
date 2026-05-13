@@ -437,7 +437,7 @@ def _render_twitter_combined(rows: list[ScoreRow], out: Path,
         "How much does one decision cost?",
         "real Claude session · 492 events · 1338-char memory budget",
         fonts)
-    styled_footer(fig, "runs/*.jsonl  ·  github.com/maceip/LiteRT-DPM", fonts)
+    styled_footer(fig, "runs/*.jsonl  ·  github.com/maceip/vet", fonts)
     fig.savefig(out, dpi=100)  # 16x9 @ 100dpi = 1600x900
     plt.close(fig)
     print(f"  wrote {out}")

@@ -635,7 +635,7 @@ function FeatureGlyph({ icon }: { icon: FeatureIcon }) {
       role="img"
       aria-label={icon}
       style={{
-        backgroundImage: "url(/TiHKAL/art/cubeart.png)",
+        backgroundImage: "url(/vet/art/cubeart.png)",
         backgroundPositionY: `${positionY}%`,
       }}
     />

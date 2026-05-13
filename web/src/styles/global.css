@@ -1,8 +1,8 @@
 /* Bundled fonts. */
 @font-face {
   font-family: "Foldit";
-  src: url("/TiHKAL/fonts/Foldit.ttf") format("truetype-variations"),
-       url("/TiHKAL/fonts/Foldit.ttf") format("truetype");
+  src: url("/vet/fonts/Foldit.ttf") format("truetype-variations"),
+       url("/vet/fonts/Foldit.ttf") format("truetype");
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
@@ -10,7 +10,7 @@
 
 @font-face {
   font-family: "ProductDesign";
-  src: url("/TiHKAL/fonts/ProductDesign.ttf") format("truetype");
+  src: url("/vet/fonts/ProductDesign.ttf") format("truetype");
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -18,7 +18,7 @@
 
 @font-face {
   font-family: "VeraMono";
-  src: url("/TiHKAL/fonts/VeraMono.ttf") format("truetype");
+  src: url("/vet/fonts/VeraMono.ttf") format("truetype");
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -26,7 +26,7 @@
 
 @font-face {
   font-family: "VeraMono";
-  src: url("/TiHKAL/fonts/VeraMoBd.ttf") format("truetype");
+  src: url("/vet/fonts/VeraMoBd.ttf") format("truetype");
   font-weight: bold;
   font-style: normal;
   font-display: swap;
@@ -34,7 +34,7 @@
 
 @font-face {
   font-family: "VeraMono";
-  src: url("/TiHKAL/fonts/VeraMoIt.ttf") format("truetype");
+  src: url("/vet/fonts/VeraMoIt.ttf") format("truetype");
   font-weight: normal;
   font-style: italic;
   font-display: swap;
@@ -42,7 +42,7 @@
 
 @font-face {
   font-family: "VeraMono";
-  src: url("/TiHKAL/fonts/VeraMoBI.ttf") format("truetype");
+  src: url("/vet/fonts/VeraMoBI.ttf") format("truetype");
   font-weight: bold;
   font-style: italic;
   font-display: swap;

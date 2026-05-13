@@ -1,7 +1,7 @@
 # web/ — replayable-agent-memory hero site
 
-Vite + React + TypeScript + react-three-fiber. Builds to `web/dist/`, deployed
-by `.github/workflows/pages.yml` on push to `phase2-bench`.
+Vite + React + TypeScript + react-three-fiber. Builds to repo-root `docs/`,
+deployed by `.github/workflows/pages.yml` on push to `main`.
 
 ## Local dev
 
@@ -17,11 +17,11 @@ npm run dev
 npm run build
 ```
 
-Output: `web/dist/`. The Actions workflow uploads that as the Pages artifact.
+Output: repo-root `docs/`. The Actions workflow uploads that as the Pages artifact.
 
 ## Notes
 
-- `vite.config.ts` `base: "/TiHKAL/"` — pinned to the repo's Pages path. If
+- `vite.config.ts` `base: "/vet/"` — pinned to the repo's Pages path. If
   the repo is renamed, update both `base` here and the font URLs in
   `src/styles/global.css`.
 - Fonts and chart PNGs are static assets under `public/`.

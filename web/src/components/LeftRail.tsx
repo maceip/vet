@@ -45,7 +45,7 @@ export default function LeftRail() {
       </svg>
 
       <img
-        src="/TiHKAL/art/paage.png"
+        src="/vet/art/paage.png"
         alt="Substrate flow: log, memory, certificate"
         className="leftRailArt"
         loading="eager"

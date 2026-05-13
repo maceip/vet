@@ -1,8 +1,8 @@
-# Replayable agent memory
+# vet: agent memory audit system
 
 > Today's agents rewrite their memory every few turns. By hour two of a real session the agent is acting on a copy of a copy of a copy of what you actually said. We measured a 492-event session where this approach took 17 model calls to produce a memory that had lost the user's original instruction. **No framework on the market today can tell you which events produced the agent's last decision. The memory has been edited too many times to know.**
 
-**👉 [Read the full explainer](https://maceip.github.io/LiteRT-DPM/)** · [DPM Paper](https://arxiv.org/abs/2604.20158) · [Bench data](./tools/benchmarks/dpm_projection_cliff/runs/)
+**👉 [Read the full explainer](https://maceip.github.io/vet/)** · [DPM Paper](https://arxiv.org/abs/2604.20158) · [Bench data](./tools/benchmarks/dpm_projection_cliff/runs/)
 
 A C++ inference substrate built on Google's [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) implementing **replayable agent memory** — an append-only event log, memory rebuilt from the log at decision time, and every rebuild cryptographically tied to the events that produced it. Includes two extensions: **Hierarchical Checkpoints** for instant agent handoff, and a **replay-audit substrate** that catches drift between the projection and the events that produced it.
 
