@@ -3,6 +3,12 @@
 
 # Vite local build output (Pages still serves from web/dist via Actions)
 docs/
+
 .claude/scheduled_tasks.lock
 .claude/dpm-demo/
 .dpm-agent-hooks/
+
+# Python bytecode (per 2026-05 review LOW finding on tracked pycache).
+__pycache__/
+*.pyc
+*.pyo

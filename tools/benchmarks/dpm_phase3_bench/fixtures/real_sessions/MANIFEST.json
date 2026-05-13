@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "corpus": "real_sessions",
+  "description": "Redacted SessionCase fixtures for the Phase 3 audit-safe handoff bench.",
+  "source": "Copied from runtime/platform/checkpoint/testing/golden/curated_session_cases.json so the bench and substrate property tests share one fixture shape.",
+  "privacy": {
+    "raw_private_logs_included": false,
+    "source_path_policy": "source_path values must remain redacted placeholders",
+    "secret_material_policy": "fixtures must not include credentials, tokens, hostnames, account ids, or raw local paths"
+  },
+  "files": [
+    {
+      "path": "curated_session_cases.json",
+      "case_count": 5,
+      "case_roles": [
+        "short",
+        "long",
+        "correction-heavy",
+        "tool-heavy",
+        "handoff-ish"
+      ],
+      "notes": "Initial handoff corpus. Each case has at least one deterministic probe and is safe to commit."
+    }
+  ]
+}

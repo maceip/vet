@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="620" viewBox="0 0 980 620">
+<rect width="100%" height="100%" fill="#fbf7ef"/>
+<style>text{font-family:Inter,Arial,sans-serif;fill:#263238}.axis{stroke:#2f3437;stroke-width:1.4}.grid{stroke:#d9d0c2;stroke-width:1}.label{font-size:14px}.title{font-size:24px;font-weight:700}.sub{font-size:13px;fill:#566}.legend{font-size:13px}.tiny{font-size:11px;fill:#566}</style>
+<text class="title" x="92" y="30">Phase 3 local-Qwen scatter: memory quality vs model calls</text>
+<text class="sub" x="92" y="50">6 correction-heavy agent sessions, budget 669 chars, /Qwen3-Coder-Next-4bit, repeat=1</text>
+<line class="grid" x1="92" x2="940" y1="512.0" y2="512.0"/>
+<text class="tiny" x="80" y="516.0" text-anchor="end">0</text>
+<line class="grid" x1="92" x2="940" y1="397.5" y2="397.5"/>
+<text class="tiny" x="80" y="401.5" text-anchor="end">0.25</text>
+<line class="grid" x1="92" x2="940" y1="283.0" y2="283.0"/>
+<text class="tiny" x="80" y="287.0" text-anchor="end">0.5</text>
+<line class="grid" x1="92" x2="940" y1="168.5" y2="168.5"/>
+<text class="tiny" x="80" y="172.5" text-anchor="end">0.75</text>
+<line class="grid" x1="92" x2="940" y1="54.0" y2="54.0"/>
+<text class="tiny" x="80" y="58.0" text-anchor="end">1</text>
+<line class="grid" x1="304.0" x2="304.0" y1="54" y2="512"/>
+<text class="tiny" x="304.0" y="534" text-anchor="middle">1</text>
+<line class="grid" x1="516.0" x2="516.0" y1="54" y2="512"/>
+<text class="tiny" x="516.0" y="534" text-anchor="middle">3</text>
+<line class="grid" x1="764.0" x2="764.0" y1="54" y2="512"/>
+<text class="tiny" x="764.0" y="534" text-anchor="middle">8</text>
+<line class="grid" x1="920.3" x2="920.3" y1="54" y2="512"/>
+<text class="tiny" x="920.3" y="534" text-anchor="middle">14</text>
+<line class="grid" x1="940.0" x2="940.0" y1="54" y2="512"/>
+<text class="tiny" x="940.0" y="534" text-anchor="middle">15</text>
+<line class="axis" x1="92" x2="940" y1="512" y2="512"/>
+<line class="axis" x1="92" x2="92" y1="54" y2="512"/>
+<text class="label" x="516.0" y="588" text-anchor="middle">Model calls per memory decision, log scale</text>
+<text class="label" transform="translate(28 283.0) rotate(-90)" text-anchor="middle">Decision score</text>
+<circle cx="297.2" cy="356.3" r="8" fill="#7f8c8d" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-claude-correction-04 | Full chat history | score=0.333 | calls=1 | stale=False</title></circle>
+<circle cx="896.9" cy="356.3" r="8" fill="#d98032" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-claude-correction-04 | Rolling summary | score=0.333 | calls=13 | stale=False</title></circle>
+<circle cx="518.2" cy="203.7" r="8" fill="#3568d4" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-claude-correction-04 | Audited projection | score=0.667 | calls=3 | stale=False</title></circle>
+<circle cx="927.0" cy="203.7" r="8" fill="#1f9d72" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-claude-correction-04 | Rolling + audit gate | score=0.667 | calls=14 | stale=False</title></circle>
+<circle cx="297.2" cy="283.0" r="8" fill="#7f8c8d" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-claude-correction-05 | Full chat history | score=0.500 | calls=1 | stale=False</title></circle>
+<circle cx="896.9" cy="283.0" r="8" fill="#d98032" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-claude-correction-05 | Rolling summary | score=0.500 | calls=13 | stale=False</title></circle>
+<circle cx="518.2" cy="283.0" r="8" fill="#3568d4" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-claude-correction-05 | Audited projection | score=0.500 | calls=3 | stale=False</title></circle>
+<circle cx="927.0" cy="283.0" r="8" fill="#1f9d72" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-claude-correction-05 | Rolling + audit gate | score=0.500 | calls=14 | stale=False</title></circle>
+<circle cx="297.2" cy="286.0" r="8" fill="#7f8c8d" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-claude-correction-06 | Full chat history | score=0.500 | calls=1 | stale=False</title></circle>
+<circle cx="896.9" cy="286.0" r="8" fill="#d98032" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-claude-correction-06 | Rolling summary | score=0.500 | calls=13 | stale=False</title></circle>
+<circle cx="518.2" cy="286.0" r="8" fill="#3568d4" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-claude-correction-06 | Audited projection | score=0.500 | calls=3 | stale=False</title></circle>
+<circle cx="927.0" cy="286.0" r="8" fill="#1f9d72" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-claude-correction-06 | Rolling + audit gate | score=0.500 | calls=14 | stale=False</title></circle>
+<circle cx="297.2" cy="280.0" r="8" fill="#7f8c8d" stroke="#c1121f" stroke-width="3.2"><title>judged-unredacted-codex-correction-01 | Full chat history | score=0.500 | calls=1 | stale=True</title></circle>
+<circle cx="896.9" cy="280.0" r="8" fill="#d98032" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-codex-correction-01 | Rolling summary | score=0.500 | calls=13 | stale=False</title></circle>
+<circle cx="518.2" cy="509.0" r="8" fill="#3568d4" stroke="#c1121f" stroke-width="3.2"><title>judged-unredacted-codex-correction-01 | Audited projection | score=0.000 | calls=3 | stale=True</title></circle>
+<circle cx="927.0" cy="280.0" r="8" fill="#1f9d72" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-codex-correction-01 | Rolling + audit gate | score=0.500 | calls=14 | stale=False</title></circle>
+<circle cx="297.2" cy="283.0" r="8" fill="#7f8c8d" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-codex-correction-02 | Full chat history | score=0.500 | calls=1 | stale=False</title></circle>
+<circle cx="896.9" cy="283.0" r="8" fill="#d98032" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-codex-correction-02 | Rolling summary | score=0.500 | calls=13 | stale=False</title></circle>
+<circle cx="518.2" cy="283.0" r="8" fill="#3568d4" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-codex-correction-02 | Audited projection | score=0.500 | calls=3 | stale=False</title></circle>
+<circle cx="927.0" cy="283.0" r="8" fill="#1f9d72" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-codex-correction-02 | Rolling + audit gate | score=0.500 | calls=14 | stale=False</title></circle>
+<circle cx="297.2" cy="362.3" r="8" fill="#7f8c8d" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-codex-correction-03 | Full chat history | score=0.333 | calls=1 | stale=False</title></circle>
+<circle cx="918.0" cy="362.3" r="8" fill="#d98032" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-codex-correction-03 | Rolling summary | score=0.333 | calls=14 | stale=False</title></circle>
+<circle cx="518.2" cy="362.3" r="8" fill="#3568d4" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-codex-correction-03 | Audited projection | score=0.333 | calls=3 | stale=False</title></circle>
+<circle cx="946.8" cy="362.3" r="8" fill="#1f9d72" stroke="#ffffff" stroke-width="1.2"><title>judged-unredacted-codex-correction-03 | Rolling + audit gate | score=0.333 | calls=15 | stale=False</title></circle>
+<rect x="296.0" y="300.4" width="16" height="16" fill="none" stroke="#7f8c8d" stroke-width="3" transform="rotate(45 304.0 308.4)"><title>mean Full chat history score=0.444 calls=1.00</title></rect>
+<rect x="894.8" y="300.4" width="16" height="16" fill="none" stroke="#d98032" stroke-width="3" transform="rotate(45 902.8 308.4)"><title>mean Rolling summary score=0.444 calls=13.17</title></rect>
+<rect x="508.0" y="313.2" width="16" height="16" fill="none" stroke="#3568d4" stroke-width="3" transform="rotate(45 516.0 321.2)"><title>mean Audited projection score=0.417 calls=3.00</title></rect>
+<rect x="915.6" y="275.0" width="16" height="16" fill="none" stroke="#1f9d72" stroke-width="3" transform="rotate(45 923.6 283.0)"><title>mean Rolling + audit gate score=0.500 calls=14.17</title></rect>
+<circle cx="92" cy="538" r="7" fill="#7f8c8d" stroke="#fff"/>
+<text class="legend" x="108" y="543">Full chat history</text>
+<circle cx="362" cy="538" r="7" fill="#d98032" stroke="#fff"/>
+<text class="legend" x="378" y="543">Rolling summary</text>
+<circle cx="92" cy="563" r="7" fill="#3568d4" stroke="#fff"/>
+<text class="legend" x="108" y="568">Audited projection</text>
+<circle cx="362" cy="563" r="7" fill="#1f9d72" stroke="#fff"/>
+<text class="legend" x="378" y="568">Rolling + audit gate</text>
+<circle cx="657" cy="538" r="7" fill="#fff" stroke="#c1121f" stroke-width="3"/>
+<text class="legend" x="673" y="543">red ring = stale fact escaped</text>
+</svg>

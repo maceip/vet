@@ -1,0 +1,10 @@
+condition,budget_chars,n_rows,mean_decision_score,stale_escape_rate
+dpm_phase3_checkpoint,669,15,0.55,0.0
+dpm_phase3_checkpoint,1338,15,0.7333333333333333,1.0
+dpm_phase3_checkpoint,2676,15,0.7666666666666667,0.3333333333333333
+raw_oracle,669,18,0.5972222222222222,1.0
+raw_oracle,1338,18,0.5972222222222222,1.0
+raw_oracle,2676,18,0.5972222222222222,1.0
+rolling_summary,669,18,0.537037037037037,0.0
+rolling_summary,1338,18,0.8611111111111112,0.0
+rolling_summary,2676,15,0.8,0.0

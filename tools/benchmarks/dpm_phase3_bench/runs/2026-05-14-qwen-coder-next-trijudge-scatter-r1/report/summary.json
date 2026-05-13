@@ -1,0 +1,178 @@
+{
+  "audit_gate": {
+    "audit_pass_count": 0,
+    "correction_emitted_count": 12,
+    "dpm_rows": 12,
+    "gate_accept_count": 0,
+    "gate_refuse_count": 12
+  },
+  "cases": [
+    "judged-unredacted-claude-correction-04",
+    "judged-unredacted-claude-correction-05",
+    "judged-unredacted-claude-correction-06",
+    "judged-unredacted-codex-correction-01",
+    "judged-unredacted-codex-correction-02",
+    "judged-unredacted-codex-correction-03"
+  ],
+  "cost_by_condition": {
+    "dpm_phase3_checkpoint": {
+      "input_tokens": {
+        "count": 6,
+        "max": 45894.0,
+        "mean": 38076.666666666664,
+        "min": 31169.0,
+        "stddev": 5548.024609414298
+      },
+      "model_calls": {
+        "count": 6,
+        "max": 3.0,
+        "mean": 3.0,
+        "min": 3.0,
+        "stddev": 0.0
+      },
+      "skipped_or_errored_rows": 0,
+      "wall_ms": {
+        "count": 6,
+        "max": 28569.0,
+        "mean": 21658.5,
+        "min": 6217.0,
+        "stddev": 9397.329466396292
+      }
+    },
+    "raw_oracle": {
+      "input_tokens": {
+        "count": 6,
+        "max": 22792.0,
+        "mean": 18854.833333333332,
+        "min": 15383.0,
+        "stddev": 2798.6519195260184
+      },
+      "model_calls": {
+        "count": 6,
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "stddev": 0.0
+      },
+      "skipped_or_errored_rows": 0,
+      "wall_ms": {
+        "count": 6,
+        "max": 13861.0,
+        "mean": 9610.166666666666,
+        "min": 2150.0,
+        "stddev": 4771.958231865265
+      }
+    },
+    "rolling_summary": {
+      "input_tokens": {
+        "count": 6,
+        "max": 25477.0,
+        "mean": 21927.833333333332,
+        "min": 18985.0,
+        "stddev": 2775.203662196104
+      },
+      "model_calls": {
+        "count": 6,
+        "max": 14.0,
+        "mean": 13.166666666666666,
+        "min": 13.0,
+        "stddev": 0.408248290463863
+      },
+      "skipped_or_errored_rows": 0,
+      "wall_ms": {
+        "count": 6,
+        "max": 37841.0,
+        "mean": 29356.666666666668,
+        "min": 21229.0,
+        "stddev": 6467.811706185228
+      }
+    },
+    "rolling_summary_plus_dpm_gate": {
+      "input_tokens": {
+        "count": 6,
+        "max": 48484.0,
+        "mean": 41347.666666666664,
+        "min": 35046.0,
+        "stddev": 5308.282157785762
+      },
+      "model_calls": {
+        "count": 6,
+        "max": 15.0,
+        "mean": 14.166666666666666,
+        "min": 14.0,
+        "stddev": 0.408248290463863
+      },
+      "skipped_or_errored_rows": 0,
+      "wall_ms": {
+        "count": 6,
+        "max": 40725.0,
+        "mean": 28473.5,
+        "min": 18773.0,
+        "stddev": 7988.782178780443
+      }
+    }
+  },
+  "errored_rows": 0,
+  "needs_judge_rows": 0,
+  "quality_score_by_condition": {
+    "dpm_phase3_checkpoint": {
+      "count": 6,
+      "max": 0.6666666666666666,
+      "mean": 0.41666666666666663,
+      "min": 0.0,
+      "stddev": 0.22973414586817037
+    },
+    "raw_oracle": {
+      "count": 6,
+      "max": 0.5,
+      "mean": 0.4444444444444444,
+      "min": 0.3333333333333333,
+      "stddev": 0.08606629658238706
+    },
+    "rolling_summary": {
+      "count": 6,
+      "max": 0.5,
+      "mean": 0.4444444444444444,
+      "min": 0.3333333333333333,
+      "stddev": 0.08606629658238706
+    },
+    "rolling_summary_plus_dpm_gate": {
+      "count": 6,
+      "max": 0.6666666666666666,
+      "mean": 0.5,
+      "min": 0.3333333333333333,
+      "stddev": 0.10540925533894598
+    }
+  },
+  "row_count": 24,
+  "stale_escape_by_condition": {
+    "dpm_phase3_checkpoint": {
+      "count": 6,
+      "max": 1.0,
+      "mean": 0.16666666666666666,
+      "min": 0.0,
+      "stddev": 0.408248290463863
+    },
+    "raw_oracle": {
+      "count": 6,
+      "max": 1.0,
+      "mean": 0.16666666666666666,
+      "min": 0.0,
+      "stddev": 0.408248290463863
+    },
+    "rolling_summary": {
+      "count": 6,
+      "max": 0.0,
+      "mean": 0.0,
+      "min": 0.0,
+      "stddev": 0.0
+    },
+    "rolling_summary_plus_dpm_gate": {
+      "count": 6,
+      "max": 0.0,
+      "mean": 0.0,
+      "min": 0.0,
+      "stddev": 0.0
+    }
+  }
+}
