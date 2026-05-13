@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Edges, Html } from "@react-three/drei";
+import { Edges } from "@react-three/drei";
 import * as THREE from "three";
 import "./ReplayableSpinBlock.css";
 
@@ -11,14 +11,12 @@ const GRAPH_INDEX = 4;
 const FACE_W = 5.6;
 const FACE_H = 3.9;
 const DEPTH = 5.6;
-const HTML_SCALE: [number, number, number] = [0.01, 0.01, 0.01];
 
 type FeatureIcon = "log" | "refresh" | "certificate" | "receipt";
 
 type Feature = {
   number: string;
   title: string;
-  body: string;
   icon: FeatureIcon;
 };
 
@@ -26,58 +24,53 @@ const FEATURES: Feature[] = [
   {
     number: "1",
     title: "Append-only logs don’t hallucinate",
-    body:
-      "Every prompt, every tool call, every result is written once and never edited. The log is just what happened. Hallucinations belong to models, not logs.",
     icon: "log",
   },
   {
     number: "2",
     title: "Memory rebuilt at decision time",
-    body:
-      "The agent reads the log, builds the memory it needs, uses it once, throws it away. Next decision, fresh build.",
     icon: "refresh",
   },
   {
     number: "3",
     title: "Content-addressed audit certificates",
-    body:
-      "The substrate replays the log to verify every memory the agent uses. If the replay doesn’t match, the agent stops. The certificate is a child node of the checkpoint in a Merkle DAG.",
     icon: "certificate",
   },
   {
     number: "4",
     title: "Decisions with receipts",
-    body:
-      "Every decision the agent makes points back to the exact events that caused it. Not a paraphrase, not a summary — the events themselves.",
     icon: "receipt",
   },
 ];
 
-export default function ReplayableSpinBlock() {
-  const [featureIndex, setFeatureIndex] = useState(1); // Start on section 2, like the mockup.
-  const [showGraphs, setShowGraphs] = useState(false);
+const PANEL_COUNT = FEATURES.length + 1;
+
+type ReplayableSpinBlockProps = {
+  activeIndex: number;
+  onActiveIndexChange: (index: number) => void;
+};
+
+export default function ReplayableSpinBlock({
+  activeIndex,
+  onActiveIndexChange,
+}: ReplayableSpinBlockProps) {
 
   const dragStartX = useRef<number | null>(null);
 
-  const currentIndex = showGraphs ? GRAPH_INDEX : featureIndex;
+  const currentIndex = Math.min(Math.max(activeIndex, 0), PANEL_COUNT - 1);
 
   const goTo = useCallback((index: number) => {
-    if (index === GRAPH_INDEX) {
-      setShowGraphs(true);
-      return;
-    }
-
-    setFeatureIndex(index);
-    setShowGraphs(false);
-  }, []);
+    const boundedIndex = (index + PANEL_COUNT) % PANEL_COUNT;
+    onActiveIndexChange(boundedIndex);
+  }, [onActiveIndexChange]);
 
   const next = useCallback(() => {
-    const nextIndex = (currentIndex + 1) % 5;
+    const nextIndex = (currentIndex + 1) % PANEL_COUNT;
     goTo(nextIndex);
   }, [currentIndex, goTo]);
 
   const previous = useCallback(() => {
-    const previousIndex = (currentIndex + 4) % 5;
+    const previousIndex = (currentIndex + PANEL_COUNT - 1) % PANEL_COUNT;
     goTo(previousIndex);
   }, [currentIndex, goTo]);
 
@@ -116,7 +109,7 @@ export default function ReplayableSpinBlock() {
         />
         <pointLight position={[-4, -2, 4]} intensity={0.9} color="#dce35a" />
 
-        <SpinBlock featureIndex={featureIndex} showGraphs={showGraphs} />
+        <SpinBlock activeIndex={currentIndex} />
       </Canvas>
 
       <button
@@ -160,13 +153,13 @@ export default function ReplayableSpinBlock() {
 }
 
 function SpinBlock({
-  featureIndex,
-  showGraphs,
+  activeIndex,
 }: {
-  featureIndex: number;
-  showGraphs: boolean;
+  activeIndex: number;
 }) {
   const groupRef = useRef<THREE.Group | null>(null);
+  const showGraphs = activeIndex === GRAPH_INDEX;
+  const featureIndex = showGraphs ? 0 : activeIndex;
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
@@ -175,18 +168,19 @@ function SpinBlock({
     // rotated -π/2 apart on Y. Graphs lives on top (X-axis tilt).
     const targetY = showGraphs ? 0 : -featureIndex * (Math.PI / 2);
     const targetX = showGraphs ? Math.PI / 2 : 0;
+    const frameDelta = Math.min(delta, 1 / 30);
 
     groupRef.current.rotation.y = THREE.MathUtils.damp(
       groupRef.current.rotation.y,
       targetY,
-      7,
-      delta,
+      5.5,
+      frameDelta,
     );
     groupRef.current.rotation.x = THREE.MathUtils.damp(
       groupRef.current.rotation.x,
       targetX,
-      7,
-      delta,
+      5.5,
+      frameDelta,
     );
   });
 
@@ -198,134 +192,429 @@ function SpinBlock({
           color="#0b0e08"
           roughness={0.85}
           metalness={0.12}
-          transparent
-          opacity={0.12}
-          depthWrite={false}
         />
         <Edges scale={1.002} color="#d9df4f" threshold={15} linewidth={1} />
       </mesh>
 
       {/* Front: feature 1 */}
-      <HtmlFace position={[0, 0, DEPTH / 2 + 0.01]} rotation={[0, 0, 0]}>
-        <FeatureFace feature={FEATURES[0]} />
-      </HtmlFace>
+      <TextureFace
+        position={[0, 0, DEPTH / 2 + 0.01]}
+        rotation={[0, 0, 0]}
+        texture={<FeatureFaceTexture feature={FEATURES[0]} />}
+      />
 
       {/* Right: feature 2 */}
-      <HtmlFace
+      <TextureFace
         position={[FACE_W / 2 + 0.01, 0, 0]}
         rotation={[0, Math.PI / 2, 0]}
-      >
-        <FeatureFace feature={FEATURES[1]} />
-      </HtmlFace>
+        texture={<FeatureFaceTexture feature={FEATURES[1]} />}
+      />
 
       {/* Back: feature 3 */}
-      <HtmlFace
+      <TextureFace
         position={[0, 0, -DEPTH / 2 - 0.01]}
         rotation={[0, Math.PI, 0]}
-      >
-        <FeatureFace feature={FEATURES[2]} />
-      </HtmlFace>
+        texture={<FeatureFaceTexture feature={FEATURES[2]} />}
+      />
 
       {/* Left: feature 4 */}
-      <HtmlFace
+      <TextureFace
         position={[-FACE_W / 2 - 0.01, 0, 0]}
         rotation={[0, -Math.PI / 2, 0]}
-      >
-        <FeatureFace feature={FEATURES[3]} />
-      </HtmlFace>
+        texture={<FeatureFaceTexture feature={FEATURES[3]} />}
+      />
 
       {/* Top: graphs deck */}
-      <HtmlFace
+      <TextureFace
         position={[0, FACE_H / 2 + 0.01, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
-      >
-        <GraphsFace />
-      </HtmlFace>
+        texture={<GraphsFaceTexture />}
+      />
     </group>
   );
 }
 
-function HtmlFace({
-  children,
+function TextureFace({
   position,
   rotation,
+  texture,
 }: {
-  children: React.ReactNode;
   position: [number, number, number];
   rotation: [number, number, number];
+  texture: React.ReactElement;
 }) {
   return (
     <group position={position} rotation={rotation}>
       <mesh>
         <planeGeometry args={[FACE_W, FACE_H]} />
-        <meshStandardMaterial
-          color="#0b0e08"
-          roughness={0.9}
-          metalness={0.08}
-          transparent
-          opacity={0.88}
-          side={THREE.DoubleSide}
-        />
+        {texture}
       </mesh>
-
-      <Html
-        transform
-        center
-        scale={HTML_SCALE}
-        zIndexRange={[20, 0]}
-        className="spinHtml"
-      >
-        {children}
-      </Html>
     </group>
   );
 }
 
-function FeatureFace({ feature }: { feature: Feature }) {
-  return (
-    <article className="spinFace featureFace">
-      <div className="featureCopy">
-        <div className="featureNumber">{feature.number}.</div>
-        <h3>{feature.title}</h3>
-        <div className="titleRule" />
-        <p>{feature.body}</p>
-      </div>
+function FeatureFaceTexture({ feature }: { feature: Feature }) {
+  const texture = useFaceTexture(() => createFeatureTexture(feature), [feature]);
 
-      <div className="featureIconWrap">
-        <FeatureGlyph icon={feature.icon} />
-      </div>
-    </article>
+  return (
+    <meshStandardMaterial
+      map={texture}
+      roughness={0.9}
+      metalness={0.08}
+      side={THREE.FrontSide}
+    />
   );
 }
 
-function GraphsFace() {
-  return (
-    <article className="spinFace graphsFace">
-      <header className="graphsHeader">
-        <p>Graphs</p>
-        <h3>Evidence layer</h3>
-        <span>Data-backed checks from replayable simulations.</span>
-      </header>
+function GraphsFaceTexture() {
+  const texture = useFaceTexture(createGraphsTexture, []);
 
-      <div className="miniGraphGrid">
-        <MiniChart
-          title="Append-Only Log Integrity"
-          subtitle="Monotonic event growth"
-          kind="line"
-        />
-        <MiniChart
-          title="Memory Rebuild Latency"
-          subtitle="Fresh build per decision"
-          kind="bars"
-        />
-        <MiniChart
-          title="Audit Verification"
-          subtitle="Replay match rate"
-          kind="flat"
-        />
-      </div>
-    </article>
+  return (
+    <meshStandardMaterial
+      map={texture}
+      roughness={0.9}
+      metalness={0.08}
+      side={THREE.FrontSide}
+    />
   );
+}
+
+function useFaceTexture(factory: () => THREE.CanvasTexture, deps: React.DependencyList) {
+  const texture = useMemo(factory, deps);
+
+  useEffect(() => {
+    return () => texture.dispose();
+  }, [texture]);
+
+  return texture;
+}
+
+const TEXTURE_W = 1120;
+const TEXTURE_H = 780;
+const TEXTURE_PADDING = 96;
+
+function createFeatureTexture(feature: Feature) {
+  const { canvas, ctx } = createFaceCanvas();
+
+  drawFacePanel(ctx);
+  drawDivider(ctx);
+  drawFeatureCopy(ctx, feature);
+  drawFeatureIcon(ctx, feature.icon);
+
+  return createTexture(canvas);
+}
+
+function createGraphsTexture() {
+  const { canvas, ctx } = createFaceCanvas();
+
+  drawFacePanel(ctx);
+
+  ctx.fillStyle = "#dce452";
+  ctx.font = "700 34px ui-monospace, Menlo, Consolas, monospace";
+  ctx.letterSpacing = "4px";
+  ctx.fillText("GRAPHS", TEXTURE_PADDING, 150);
+
+  ctx.letterSpacing = "0px";
+  ctx.font = "800 66px ui-monospace, Menlo, Consolas, monospace";
+  wrapCanvasText(ctx, "Evidence layer", TEXTURE_PADDING, 235, 300, 68);
+
+  ctx.fillStyle = "rgba(246, 246, 232, 0.68)";
+  ctx.font = "400 28px Inter, system-ui, sans-serif";
+  wrapCanvasText(
+    ctx,
+    "Data-backed checks from replayable simulations.",
+    TEXTURE_PADDING,
+    420,
+    310,
+    42,
+  );
+
+  drawMiniGraph(ctx, 490, 94, "Append-Only Log Integrity", "line");
+  drawMiniGraph(ctx, 490, 288, "Memory Rebuild Latency", "bars");
+  drawMiniGraph(ctx, 490, 482, "Audit Verification", "flat");
+
+  return createTexture(canvas);
+}
+
+function createFaceCanvas() {
+  const canvas = document.createElement("canvas");
+  canvas.width = TEXTURE_W;
+  canvas.height = TEXTURE_H;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Unable to create cube face texture canvas");
+  }
+
+  return { canvas, ctx };
+}
+
+function createTexture(canvas: HTMLCanvasElement) {
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function drawFacePanel(ctx: CanvasRenderingContext2D) {
+  const gradient = ctx.createLinearGradient(0, 0, TEXTURE_W, TEXTURE_H);
+  gradient.addColorStop(0, "#15190e");
+  gradient.addColorStop(0.42, "#090b07");
+  gradient.addColorStop(1, "#050604");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, TEXTURE_W, TEXTURE_H);
+
+  const glow = ctx.createRadialGradient(130, 60, 0, 130, 60, 440);
+  glow.addColorStop(0, "rgba(220, 228, 82, 0.18)");
+  glow.addColorStop(1, "rgba(220, 228, 82, 0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, TEXTURE_W, TEXTURE_H);
+
+  ctx.strokeStyle = "rgba(220, 228, 82, 0.52)";
+  ctx.lineWidth = 2;
+  roundedRect(ctx, 20, 20, TEXTURE_W - 40, TEXTURE_H - 40, 52);
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
+  ctx.lineWidth = 2;
+  roundedRect(ctx, 32, 32, TEXTURE_W - 64, TEXTURE_H - 64, 44);
+  ctx.stroke();
+}
+
+function drawDivider(ctx: CanvasRenderingContext2D) {
+  ctx.strokeStyle = "rgba(220, 228, 82, 0.3)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(700, 120);
+  ctx.lineTo(700, 660);
+  ctx.stroke();
+}
+
+function drawFeatureCopy(ctx: CanvasRenderingContext2D, feature: Feature) {
+  ctx.fillStyle = "#dce452";
+  ctx.font = "800 116px ui-monospace, Menlo, Consolas, monospace";
+  ctx.fillText(`${feature.number}.`, TEXTURE_PADDING, 280);
+
+  ctx.font = "800 58px ui-monospace, Menlo, Consolas, monospace";
+  wrapCanvasText(ctx, feature.title, TEXTURE_PADDING, 370, 460, 62);
+}
+
+function drawFeatureIcon(ctx: CanvasRenderingContext2D, icon: FeatureIcon) {
+  ctx.save();
+  ctx.translate(840, 390);
+
+  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 230);
+  glow.addColorStop(0, "rgba(220, 228, 82, 0.16)");
+  glow.addColorStop(1, "rgba(220, 228, 82, 0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(-230, -230, 460, 460);
+
+  ctx.strokeStyle = "rgba(220, 228, 82, 0.34)";
+  ctx.lineWidth = 2;
+  roundedRect(ctx, -150, -150, 300, 300, 18);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(220, 228, 82, 0.82)";
+  ctx.strokeStyle = "#dce452";
+  ctx.lineWidth = 10;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  if (icon === "log") {
+    for (let row = 0; row < 5; row += 1) {
+      ctx.beginPath();
+      ctx.arc(-105, -82 + row * 42, 9, 0, Math.PI * 2);
+      ctx.fill();
+      roundedRect(ctx, -70, -98 + row * 42, 145, 24, 4);
+      ctx.fillStyle = "rgba(220, 228, 82, 0.46)";
+      ctx.fill();
+      ctx.fillStyle = "rgba(220, 228, 82, 0.82)";
+    }
+    ctx.font = "800 44px ui-monospace, Menlo, Consolas, monospace";
+    ctx.fillText("...", -34, 124);
+  } else if (icon === "refresh") {
+    drawGrid(ctx, -105, -92, 52, 3, 3);
+    ctx.beginPath();
+    ctx.moveTo(-34, 104);
+    ctx.lineTo(0, 132);
+    ctx.lineTo(34, 104);
+    ctx.stroke();
+  } else if (icon === "certificate") {
+    ctx.beginPath();
+    ctx.moveTo(0, -130);
+    ctx.lineTo(70, -90);
+    ctx.lineTo(70, -12);
+    ctx.lineTo(0, 30);
+    ctx.lineTo(-70, -12);
+    ctx.lineTo(-70, -90);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, 30);
+    ctx.lineTo(0, 82);
+    ctx.moveTo(-86, 82);
+    ctx.lineTo(86, 82);
+    ctx.moveTo(-86, 82);
+    ctx.lineTo(-86, 124);
+    ctx.moveTo(0, 82);
+    ctx.lineTo(0, 124);
+    ctx.moveTo(86, 82);
+    ctx.lineTo(86, 124);
+    ctx.stroke();
+    [-86, 0, 86].forEach((x) => {
+      ctx.beginPath();
+      ctx.arc(x, 134, 22, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(-76, -126);
+    ctx.lineTo(46, -126);
+    ctx.lineTo(92, -80);
+    ctx.lineTo(92, 130);
+    ctx.lineTo(72, 112);
+    ctx.lineTo(48, 130);
+    ctx.lineTo(24, 112);
+    ctx.lineTo(0, 130);
+    ctx.lineTo(-24, 112);
+    ctx.lineTo(-48, 130);
+    ctx.lineTo(-76, 112);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, -40, 46, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-20, -40);
+    ctx.lineTo(-4, -22);
+    ctx.lineTo(32, -64);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-44, 50);
+    ctx.lineTo(52, 50);
+    ctx.moveTo(-44, 92);
+    ctx.lineTo(28, 92);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawGrid(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  cell: number,
+  cols: number,
+  rows: number,
+) {
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      ctx.fillStyle = row === 0 && col === 2 ? "#dce452" : "rgba(220, 228, 82, 0.34)";
+      ctx.fillRect(x + col * (cell + 10), y + row * (cell + 10), cell, cell);
+    }
+  }
+}
+
+function drawMiniGraph(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  title: string,
+  kind: "line" | "bars" | "flat",
+) {
+  roundedRect(ctx, x, y, 520, 154, 22);
+  ctx.fillStyle = "rgba(5, 7, 5, 0.5)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(220, 228, 82, 0.28)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = "#dce452";
+  ctx.font = "700 24px ui-monospace, Menlo, Consolas, monospace";
+  ctx.fillText(title, x + 28, y + 42);
+
+  ctx.strokeStyle = "rgba(246, 246, 232, 0.12)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 4; i += 1) {
+    const lineY = y + 68 + i * 22;
+    ctx.beginPath();
+    ctx.moveTo(x + 28, lineY);
+    ctx.lineTo(x + 492, lineY);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "#dce452";
+  ctx.fillStyle = "rgba(220, 228, 82, 0.78)";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  if (kind === "bars") {
+    [42, 68, 52, 86, 64, 94, 74, 58, 84, 50].forEach((height, index) => {
+      ctx.fillRect(x + 44 + index * 42, y + 130 - height, 18, height);
+    });
+  } else {
+    const points =
+      kind === "line"
+        ? [128, 116, 106, 92, 84, 70, 58, 44, 34]
+        : [50, 52, 49, 51, 49, 52, 50, 51, 50];
+    points.forEach((pointY, index) => {
+      const px = x + 34 + index * 54;
+      const py = y + pointY;
+      if (index === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+  }
+}
+
+function wrapCanvasText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+) {
+  const words = text.split(" ");
+  let line = "";
+  let cursorY = y;
+
+  words.forEach((word) => {
+    const testLine = line ? `${line} ${word}` : word;
+    if (ctx.measureText(testLine).width > maxWidth && line) {
+      ctx.fillText(line, x, cursorY);
+      line = word;
+      cursorY += lineHeight;
+    } else {
+      line = testLine;
+    }
+  });
+
+  if (line) {
+    ctx.fillText(line, x, cursorY);
+  }
+}
+
+function roundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
 }
 
 function FeatureGlyph({ icon }: { icon: FeatureIcon }) {
@@ -346,7 +635,7 @@ function FeatureGlyph({ icon }: { icon: FeatureIcon }) {
       role="img"
       aria-label={icon}
       style={{
-        backgroundImage: "url(/LiteRT-DPM/art/cubeart.png)",
+        backgroundImage: "url(/TiHKAL/art/cubeart.png)",
         backgroundPositionY: `${positionY}%`,
       }}
     />

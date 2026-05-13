@@ -1,8 +1,8 @@
 /* Bundled fonts. */
 @font-face {
   font-family: "Foldit";
-  src: url("/LiteRT-DPM/fonts/Foldit.ttf") format("truetype-variations"),
-       url("/LiteRT-DPM/fonts/Foldit.ttf") format("truetype");
+  src: url("/TiHKAL/fonts/Foldit.ttf") format("truetype-variations"),
+       url("/TiHKAL/fonts/Foldit.ttf") format("truetype");
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
@@ -10,7 +10,7 @@
 
 @font-face {
   font-family: "ProductDesign";
-  src: url("/LiteRT-DPM/fonts/ProductDesign.ttf") format("truetype");
+  src: url("/TiHKAL/fonts/ProductDesign.ttf") format("truetype");
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -18,7 +18,7 @@
 
 @font-face {
   font-family: "VeraMono";
-  src: url("/LiteRT-DPM/fonts/VeraMono.ttf") format("truetype");
+  src: url("/TiHKAL/fonts/VeraMono.ttf") format("truetype");
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -26,7 +26,7 @@
 
 @font-face {
   font-family: "VeraMono";
-  src: url("/LiteRT-DPM/fonts/VeraMoBd.ttf") format("truetype");
+  src: url("/TiHKAL/fonts/VeraMoBd.ttf") format("truetype");
   font-weight: bold;
   font-style: normal;
   font-display: swap;
@@ -34,7 +34,7 @@
 
 @font-face {
   font-family: "VeraMono";
-  src: url("/LiteRT-DPM/fonts/VeraMoIt.ttf") format("truetype");
+  src: url("/TiHKAL/fonts/VeraMoIt.ttf") format("truetype");
   font-weight: normal;
   font-style: italic;
   font-display: swap;
@@ -42,7 +42,7 @@
 
 @font-face {
   font-family: "VeraMono";
-  src: url("/LiteRT-DPM/fonts/VeraMoBI.ttf") format("truetype");
+  src: url("/TiHKAL/fonts/VeraMoBI.ttf") format("truetype");
   font-weight: bold;
   font-style: italic;
   font-display: swap;
@@ -77,6 +77,12 @@ body {
 
 a {
   color: #dce452;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
 }
 
 .heroPage {
@@ -137,11 +143,16 @@ a {
   margin-top: 36px;
 }
 
+.heroMainColumn {
+  width: min(100%, 920px);
+}
+
 .leftRail {
   position: sticky;
   top: 24px;
   display: flex;
   align-items: stretch;
+  overflow: visible;
 }
 
 .leftRail .leftRailInner {
@@ -150,11 +161,15 @@ a {
 
 .railWires {
   flex: 1 1 auto;
-  width: 100%;
-  height: 600px;
-  margin-top: 36px;
+  width: 172px;
+  min-width: 172px;
+  height: 700px;
+  margin-top: 22px;
+  margin-right: -172px;
   pointer-events: none;
-  opacity: 0.85;
+  opacity: 0.92;
+  overflow: visible;
+  filter: drop-shadow(0 0 5px rgba(220, 228, 82, 0.18));
 }
 
 @media (max-width: 980px) {
@@ -167,5 +182,8 @@ a {
   }
   .leftRail {
     position: static;
+  }
+  .railWires {
+    display: none;
   }
 }
