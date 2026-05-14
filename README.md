@@ -1,4 +1,4 @@
-![vet](./vet.jpg)
+![vet](./vet.webp)
 
 # vet: agent memory audit system
 
