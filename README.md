@@ -1,3 +1,5 @@
+![vet](./vet.jpg)
+
 # vet: agent memory audit system
 
 > Long-running agents need memory, but memory gets edited. vet keeps the useful parts of rolling memory while adding a replayable audit layer that can prove where a decision came from, apply corrections, and block stale actions before they reach tools.
