@@ -69,7 +69,7 @@ jobs:
   build-windows:
     name: "Build VET Windows x86_64"
     needs: guard-main
-    runs-on: Windows_x64
+    runs-on: windows-latest
     defaults:
       run:
         shell: pwsh
