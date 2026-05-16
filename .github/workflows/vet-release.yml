@@ -1,0 +1,195 @@
+name: "VET Release"
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Semver component to increment from the latest vet-vX.Y.Z tag."
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      prerelease:
+        description: "Mark the GitHub release as a prerelease."
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: vet-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  guard-main:
+    name: "Require main"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ref must be main
+        run: |
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "VET releases must be cut from main; got ${GITHUB_REF}."
+            exit 1
+          fi
+
+  build-macos:
+    name: "Build VET macOS arm64"
+    needs: guard-main
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code.
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Build VET.
+        run: |
+          bazel build --config=macos_arm64 -c opt //tools/vet:vet
+          cp bazel-bin/tools/vet/vet VET-macos-arm64
+          chmod +x VET-macos-arm64
+          shasum -a 256 VET-macos-arm64 > VET-macos-arm64.sha256
+
+      - name: Upload macOS artifact.
+        uses: actions/upload-artifact@v4
+        with:
+          name: vet-macos-arm64
+          path: |
+            VET-macos-arm64
+            VET-macos-arm64.sha256
+          if-no-files-found: error
+
+  build-windows:
+    name: "Build VET Windows x86_64"
+    needs: guard-main
+    runs-on: Windows_x64
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout code.
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set Bazel output base.
+        run: |
+          $BAZEL_OUTPUT_BASE = "C:/w"
+          if ($env:GITHUB_WORKSPACE -match "^[Dd]:") {
+            $BAZEL_OUTPUT_BASE = "D:/w"
+          }
+          $SHORT_SHA = "${{ github.sha }}".SubString(0, 8)
+          echo "BAZEL_OUTPUT_BASE=${BAZEL_OUTPUT_BASE}-$SHORT_SHA" >> "$env:GITHUB_ENV"
+
+      - name: Build VET.
+        run: |
+          bazel --output_base="$env:BAZEL_OUTPUT_BASE" `
+            build -c opt `
+            --build_tag_filters='-nowindows' `
+            //tools/vet:vet
+          Copy-Item bazel-bin/tools/vet/vet.exe VET-windows-x86_64.exe
+          $hash = (Get-FileHash VET-windows-x86_64.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  VET-windows-x86_64.exe" | Out-File -Encoding ascii VET-windows-x86_64.exe.sha256
+
+      - name: Upload Windows artifact.
+        uses: actions/upload-artifact@v4
+        with:
+          name: vet-windows-x86_64
+          path: |
+            VET-windows-x86_64.exe
+            VET-windows-x86_64.exe.sha256
+          if-no-files-found: error
+
+  publish-release:
+    name: "Tag and publish VET release"
+    needs:
+      - build-macos
+      - build-windows
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VET_BUMP: ${{ github.event.inputs.bump || 'patch' }}
+      VET_PRERELEASE: ${{ github.event.inputs.prerelease || 'false' }}
+    steps:
+      - name: Checkout code.
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download VET artifacts.
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Compute next VET tag.
+        id: next-tag
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          latest="$(git tag -l 'vet-v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)"
+          if [[ -z "${latest}" ]]; then
+            major=0
+            minor=1
+            patch=0
+          else
+            version="${latest#vet-v}"
+            IFS=. read -r major minor patch <<< "${version}"
+            case "${VET_BUMP}" in
+              patch)
+                patch=$((patch + 1))
+                ;;
+              minor)
+                minor=$((minor + 1))
+                patch=0
+                ;;
+              major)
+                major=$((major + 1))
+                minor=0
+                patch=0
+                ;;
+              *)
+                echo "Unsupported bump: ${VET_BUMP}"
+                exit 1
+                ;;
+            esac
+          fi
+          next_tag="vet-v${major}.${minor}.${patch}"
+          if git rev-parse "${next_tag}" >/dev/null 2>&1; then
+            echo "Computed tag already exists: ${next_tag}"
+            exit 1
+          fi
+          echo "tag=${next_tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${next_tag#vet-v}" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag and GitHub release.
+        run: |
+          set -euo pipefail
+          tag="${{ steps.next-tag.outputs.tag }}"
+          version="${{ steps.next-tag.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${tag}" -m "Release VET ${version}"
+          git push origin "${tag}"
+
+          release_args=(
+            "${tag}"
+            dist/VET-macos-arm64
+            dist/VET-macos-arm64.sha256
+            dist/VET-windows-x86_64.exe
+            dist/VET-windows-x86_64.exe.sha256
+            --target "${GITHUB_SHA}"
+            --title "VET ${version}"
+            --notes "Automated VET release from main at ${GITHUB_SHA}."
+          )
+          if [[ "${VET_PRERELEASE}" == "true" ]]; then
+            release_args+=(--prerelease)
+          fi
+          gh release create "${release_args[@]}"

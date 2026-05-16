@@ -7,6 +7,7 @@ docs/
 .claude/scheduled_tasks.lock
 .claude/dpm-demo/
 .dpm-agent-hooks/
+.vet/
 
 # Python bytecode (per 2026-05 review LOW finding on tracked pycache).
 __pycache__/
