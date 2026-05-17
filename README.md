@@ -82,6 +82,10 @@ PowerShell:
 $env:VET_BIN = "C:\path\to\vet.exe"
 ```
 
+For scripted Claude CLI validation, force an explicit model and use a fresh VET
+session/root so smoke-test records do not pollute real project memory. See the
+Claude smoke test in [`tools/vet/README.md`](./tools/vet/README.md).
+
 ## How Hybrid Mode Works
 
 VET does not replace your coding agent. It runs beside it.

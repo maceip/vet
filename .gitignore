@@ -1,5 +1,6 @@
 /MODULE.bazel.lock
 /bazel-*
+/artifacts/
 
 # Vite local build output (Pages still serves from web/dist via Actions)
 docs/

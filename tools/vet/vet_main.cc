@@ -262,7 +262,9 @@ std::string FormatVetCorrectionDirectives(
       "[VET BLOCKING CORRECTIONS]\n"
       "Apply every correction below before producing active task memory. "
       "Suppress invalidated facts exactly; prefer replacement facts when "
-      "provided; if a conflict remains, emit unknown instead of the old fact.\n";
+      "provided; if a conflict remains, emit unknown instead of the old fact. "
+      "Invalidated facts listed here are suppression targets, not active "
+      "memory.\n";
   for (const ProjectionCorrectionDirective& directive : directives) {
     absl::StrAppend(
         &out, "- correction_id: ",
@@ -673,10 +675,12 @@ absl::Status RunHandoff(const std::vector<std::string>& args) {
                "superseding conflicting older facts.\n"
             << "- Do not carry invalidated facts into the active plan, answer, "
                "or future handoff.\n"
+            << "- Invalidated facts may be quoted below only as correction "
+               "metadata or audit log content.\n"
             << "- Cite event indices when relying on remembered context.\n\n";
   const std::string correction_block = FormatVetCorrectionDirectives(directives);
   if (!correction_block.empty()) std::cout << correction_block;
-  std::cout << "[RECENT EVENT LOG]\n"
+  std::cout << "[RECENT EVENT LOG - AUDIT ONLY]\n"
             << RenderEventLog(*events, max_events) << "\n";
   return absl::OkStatus();
 }

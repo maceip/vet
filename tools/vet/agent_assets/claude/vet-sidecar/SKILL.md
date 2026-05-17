@@ -16,6 +16,8 @@ ${VET_BIN:-vet} handoff --task "<current task>"
 
 Treat correction events as authoritative over older conflicting facts. Do not
 reuse invalidated facts in plans, answers, code comments, PR text, or handoffs.
+Invalidated facts can appear inside correction metadata so you know what to
+suppress; those quoted facts are not active memory.
 
 Record important durable context:
 
@@ -37,3 +39,7 @@ ${VET_BIN:-vet} correction \
 For dense sessions, run `${VET_BIN:-vet} prompt --task "<current task>"` and
 use the returned DPM projection prompt to make a compact, cited memory view
 before proceeding.
+
+For scripted validation, use a fresh VET root/session and an explicit Claude
+model/budget. VET logs are append-only, so interrupted smoke tests should not
+reuse a release or benchmark session.

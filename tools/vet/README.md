@@ -45,3 +45,33 @@ tools/vet/install_agent_asset.sh gemini
 The assets assume `vet` is on `PATH`. During local development, set
 `VET_BIN=/absolute/path/to/bazel-bin/tools/vet/vet` if the binary is not
 installed globally.
+
+## Claude Code Smoke Test
+
+For non-interactive Claude CLI validation, use a fresh temp project, a fresh VET
+session, and an explicit low-cost model. This keeps append-only smoke records
+out of real project memory and avoids model auto-selection changing cost.
+
+```sh
+tmp="$(mktemp -d)"
+mkdir -p "$tmp/.claude/skills/vet-sidecar" "$tmp/bin"
+cp tools/vet/agent_assets/claude/vet-sidecar/SKILL.md \
+  "$tmp/.claude/skills/vet-sidecar/SKILL.md"
+ln -sf "$(pwd)/bazel-bin/tools/vet/vet" "$tmp/bin/vet"
+
+(
+  cd "$tmp"
+  PATH="$tmp/bin:$PATH" claude -p \
+    --model haiku \
+    --no-session-persistence \
+    --max-budget-usd 0.25 \
+    --tools Bash \
+    --allowedTools 'Bash(vet *)' \
+    'Use /vet-sidecar. With the vet CLI only, initialize session claude-smoke, record one user fact, record one correction, run status, run handoff, and return compact JSON confirming the replacement fact is active and the invalidated fact is only a suppression target.'
+)
+```
+
+In the handoff output, invalidated facts may be quoted inside
+`[VET BLOCKING CORRECTIONS]` or `[RECENT EVENT LOG - AUDIT ONLY]`; that is
+expected. They are suppression targets or audit content, not facts the agent
+should carry forward.
