@@ -1,105 +1,139 @@
 ![vet](./vet.webp)
 
-# vet: agent memory audit system
+# VET: memory safety for coding agents
 
-> Long-running agents need memory, but memory gets edited. vet keeps the useful parts of rolling memory while adding a replayable audit layer that can prove where a decision came from, apply corrections, and block stale actions before they reach tools.
+VET is a small sidecar binary for Claude Code, Codex, Gemini CLI, and other coding agents. It gives agents a durable project memory that can be replayed, corrected, and handed off without trusting a stale rolling summary.
 
-**Read the explainer:** https://maceip.github.io/vet/
+Use it when an agent needs to remember project decisions, benchmark state, release constraints, or user corrections across long sessions.
 
-**Bench data:** [`tools/benchmarks/`](./tools/benchmarks/)
+## Quickstart
 
-vet is a C++ runtime substrate and agent-hook demo for auditable agent memory. It is built on Google's [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) and extends deterministic projection memory into a practical hybrid mode.
+Download the latest release for your platform:
 
-## Genesis
+- macOS arm64: `VET-macos-arm64`
+- Windows x86_64: `VET-windows-x86_64.exe`
 
-The original DPM insight is simple: do not ask an agent to remember by endlessly rewriting its own memory. Record what happened, project only what matters for the next decision, and verify that projection before the agent acts.
+Release page: https://github.com/maceip/vet/releases
 
-vet keeps that shape:
+Put the binary on your `PATH` as `vet`:
 
-- **Append-only log** - every user message, tool call, result, and correction is recorded.
-- **Task-conditioned projection** - decision memory is rebuilt from the log at action boundaries.
-- **Audit certificate** - the rebuilt memory is tied to an event range, manifest hash, model identity, and gate verdict.
-
-In hybrid mode, those pieces wrap the agent's existing rolling memory. Rolling memory keeps the session fluent; vet checks the state the agent is about to use when mistakes would escape into tools, handoff, or resumed work.
-
-The goal is not to replace every memory system. The goal is to make existing agents safer at the moments that matter: tool use, handoff, resuming old work, and acting after the user corrected a prior assumption.
-
-## What It Does
-
-- **Hybrid memory gate** — lets rolling memory keep the agent fluent, while vet verifies action-boundary memory against an append-only log.
-- **Correction-aware replay** — records user corrections as first-class events and prevents invalidated facts from leaking into later actions.
-- **Decision receipts** — every accepted projection has a manifest hash, audit certificate, event range, model identity, and gate verdict.
-- **Replayable handoff** — another agent or future session can resume from a checked memory artifact instead of an unverifiable summary.
-- **Local-first hooks** — demo adapters let common coding agents call the same gate before tool use.
-
-## Supported Agents
-
-The hook adapters live in [`tools/agent_hooks/`](./tools/agent_hooks/).
-
-| Agent | Hook surface |
-|---|---|
-| Claude Code | `.claude/settings.json` |
-| Codex CLI | `.codex/config.toml` plus `tools/agent_hooks/codex_user_hook.ps1` |
-| Gemini CLI | `.gemini/settings.json` |
-| Cursor Agent | `.cursor/hooks.json` plus `tools/agent_hooks/cursor_agent_gate.py` fallback wrapper |
-| GitHub Copilot | `.github/hooks/dpm-gate.json` |
-
-Smoke the local gate:
-
-```powershell
-python tools/agent_hooks/dpm_gate.py --agent claude --reset
-python tools/agent_hooks/dpm_gate.py --agent claude --demo-seed
-python tools/agent_hooks/dpm_gate.py --agent claude --status
+```sh
+chmod +x VET-macos-arm64
+sudo mv VET-macos-arm64 /usr/local/bin/vet
 ```
 
-Synthetic denial example:
+Windows PowerShell:
 
 ```powershell
-'{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"content":"transport as the main result"}}' |
-  python tools/agent_hooks/dpm_gate.py --agent claude
+New-Item -ItemType Directory -Force "$env:USERPROFILE\bin" | Out-Null
+Move-Item .\VET-windows-x86_64.exe "$env:USERPROFILE\bin\vet.exe"
 ```
 
-## Core Runtime
+Initialize memory in a repo:
 
-The runtime lives under [`runtime/dpm/`](./runtime/dpm/) and [`runtime/platform/`](./runtime/platform/).
+```sh
+vet init
+```
 
-The main pieces are:
+Record useful context:
 
-- append-only event logging
-- deterministic projection prompts
-- checkpoint manifests and Merkle provenance
-- audit certificates
-- correction payloads and correction barriers
-- a fail-closed checkpoint loader for decisions
+```sh
+vet record --type user --payload "The Phase 3 benchmark harness is frozen unless a serious issue is found."
+vet record --type model --payload "Release assets must include macOS and Windows VET binaries."
+vet record --type tool --payload "CI release vet-v0.1.0 uploaded platform binaries and sha256 files."
+```
 
-## Benchmarks
+Record a correction when old memory becomes wrong:
 
-Benchmarks live under [`tools/benchmarks/`](./tools/benchmarks/).
+```sh
+vet correction \
+  --text "The stale escape metric means final-answer escape only." \
+  --invalidated-fact "stale_memory_escape counts any stale text in memory" \
+  --replacement-fact "stale escape is counted only when stale facts reach the final answer"
+```
 
-The most useful current framing is hybrid:
+Give an agent a handoff:
 
-- full chat history: highest context cost, no memory audit
-- rolling summary: common baseline, good continuity, weak provenance
-- audited projection: cheaper and replayable, but stricter
-- rolling summary plus vet gate: adoption path for existing agents
+```sh
+vet handoff --task "Continue release notes for the VET binary"
+```
 
-## Build
+## Agent Setup
 
-This repo follows the upstream LiteRT-LM build shape. For local work on this Windows machine, avoid accidentally invoking Android builds unless that is the task:
+This repository includes ready-to-copy agent assets in [`tools/vet/agent_assets`](./tools/vet/agent_assets). If you build from source, install them with:
+
+```sh
+tools/vet/install_agent_asset.sh codex --scope project
+tools/vet/install_agent_asset.sh claude --scope project
+tools/vet/install_agent_asset.sh gemini
+```
+
+The assets all do the same thing: tell the agent to call `vet handoff --task "<current task>"` before relying on prior project memory, and to call `vet correction` when the user fixes a stale or wrong assumption.
+
+If the binary is not on `PATH`, set `VET_BIN`:
+
+```sh
+export VET_BIN=/absolute/path/to/vet
+```
+
+PowerShell:
 
 ```powershell
-$env:ANDROID_NDK_HOME=""
-$env:ANDROID_NDK_ROOT=""
-$env:BAZEL_SH="C:\Program Files\Git\bin\bash.exe"
+$env:VET_BIN = "C:\path\to\vet.exe"
 ```
 
-Run focused tests before broad builds. The Phase 3 bench Python smoke tests are:
+## How Hybrid Mode Works
 
-```powershell
-python tools\benchmarks\dpm_phase3_bench\bench_schema.py
-python tools\benchmarks\dpm_phase3_bench\score.py
+VET does not replace your coding agent. It runs beside it.
+
+The agent still uses its normal chat history and rolling memory for flow. VET adds a replayable memory layer for facts that should survive handoffs, restarts, and corrections:
+
+1.  `vet record` appends important events to `.vet/<tenant>/<session>/events.dpmlog`.
+2.  `vet correction` records invalidated facts and replacement facts as first-class events.
+3.  `vet handoff` prints an agent-readable memory view that includes recent events and blocking corrections.
+4.  `vet prompt` emits a deterministic projection prompt for producing compact, cited task memory from the event log.
+
+The important behavior is forgetting by correction. VET keeps the append-only history, but its handoff and projection prompts tell the agent not to carry invalidated facts into plans, tool use, release notes, or later handoffs.
+
+## Common Commands
+
+```sh
+vet status --json
+vet events --max-events 20
+vet record --type tool --payload "bazel build //tools/vet:vet succeeded"
+vet handoff --task "Review the release workflow"
+vet prompt --task "Summarize project decisions for the next agent"
 ```
 
-## Credits
+Event types:
 
-Built on Google's [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM). The original deterministic projection memory architecture is from Srinivasan et al., [arXiv:2604.20158](https://arxiv.org/abs/2604.20158).
+- `user` - durable user constraints or decisions
+- `model` - accepted agent decisions, summaries, or outcomes
+- `tool` - important command results
+- `internal` - local notes that should be replayable
+- `correction` - stale fact invalidations and replacements
+
+## Storage
+
+By default VET stores local state under `.vet/`, which is gitignored. The event log is append-only; VET does not rewrite history to hide mistakes. Corrections are additional events.
+
+Use a custom root or session when needed:
+
+```sh
+vet init --root /secure/vet/logs --tenant acme --session release
+vet handoff --root /secure/vet/logs --tenant acme --session release --task "Ship VET"
+```
+
+## Build From Source
+
+```sh
+bazelisk build --config=vet_release_no_android //tools/vet:vet
+```
+
+The `vet_release_no_android` config prevents hosted CI or developer machines with Android NDK variables set from accidentally initializing Android repository rules for this non-Android binary.
+
+## More
+
+- Architecture overview: [`docs/architecture-overview.md`](./docs/architecture-overview.md)
+- VET tool docs: [`tools/vet/README.md`](./tools/vet/README.md)
+- Benchmarks: [`tools/benchmarks/`](./tools/benchmarks/)
