@@ -52,7 +52,7 @@ jobs:
 
       - name: Build VET.
         run: |
-          bazel build --config=macos_arm64 -c opt //tools/vet:vet
+          bazel build --config=macos_arm64 --config=vet_release_no_android -c opt //tools/vet:vet
           cp bazel-bin/tools/vet/vet VET-macos-arm64
           chmod +x VET-macos-arm64
           shasum -a 256 VET-macos-arm64 > VET-macos-arm64.sha256
@@ -92,6 +92,7 @@ jobs:
         run: |
           bazel --output_base="$env:BAZEL_OUTPUT_BASE" `
             build -c opt `
+            --config=vet_release_no_android `
             --build_tag_filters='-nowindows' `
             //tools/vet:vet
           Copy-Item bazel-bin/tools/vet/vet.exe VET-windows-x86_64.exe
