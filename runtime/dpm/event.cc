@@ -38,6 +38,12 @@ nlohmann::ordered_json EventToJson(const Event& event) {
   if (!event.model_id.empty()) {
     json["model_id"] = event.model_id;
   }
+  if (event.step_index > 0) {
+    json["step_index"] = event.step_index;
+  }
+  if (!event.tool_call_id.empty()) {
+    json["tool_call_id"] = event.tool_call_id;
+  }
   return json;
 }
 
@@ -79,6 +85,8 @@ absl::StatusOr<Event> EventFromJson(const nlohmann::ordered_json& json) {
         .payload = json["payload"].get<std::string>(),
         .timestamp_us = json["timestamp_us"].get<int64_t>(),
         .model_id = json.value("model_id", std::string()),
+        .step_index = json.value("step_index", static_cast<int64_t>(0)),
+        .tool_call_id = json.value("tool_call_id", std::string()),
     };
   } catch (const std::exception& e) {
     return absl::InvalidArgumentError(

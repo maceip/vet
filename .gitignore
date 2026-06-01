@@ -2,13 +2,17 @@
 /bazel-*
 /artifacts/
 
-# Vite local build output (Pages still serves from web/dist via Actions)
-docs/
+# Vite local build output at repo root (Pages serves from web/dist via Actions)
+/docs/*
+!/docs/architecture-overview.md
 
 .claude/scheduled_tasks.lock
 .claude/dpm-demo/
 .dpm-agent-hooks/
 .vet/
+# Allow committed golden session fixtures for VeriHandoff CI.
+!tools/vet/examples/verihandoff/fixtures/golden/.vet/
+!tools/vet/examples/verihandoff/fixtures/golden/.vet/**
 
 # Python bytecode (per 2026-05 review LOW finding on tracked pycache).
 __pycache__/

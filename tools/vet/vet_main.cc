@@ -30,6 +30,8 @@
 #include "runtime/dpm/event.h"
 #include "runtime/dpm/event_sourced_log.h"
 #include "runtime/dpm/projection_prompt.h"
+#include "tools/vet/vet_aid.h"
+#include "tools/vet/vet_trace.h"
 
 namespace {
 
@@ -41,11 +43,24 @@ using ::litert::lm::EventTypeFromString;
 using ::litert::lm::ProjectionCorrectionDirective;
 using ::litert::lm::ProjectionCorrectionScopeFromString;
 using ::litert::lm::ProjectionCorrectionScopeToString;
+using ::litert::lm::vet::BuildDefaultAid;
+using ::litert::lm::vet::BuildHandoffBundle;
+using ::litert::lm::vet::BuildHandoffText;
+using ::litert::lm::vet::ComputeAidDigest;
+using ::litert::lm::vet::ComputeTraceDigestFromFile;
+using ::litert::lm::vet::HandoffBundleRequest;
+using ::litert::lm::vet::kDefaultSchemaId;
+using ::litert::lm::vet::MakeSessionPaths;
+using ::litert::lm::vet::ParseJsonInput;
+using ::litert::lm::vet::ReadAidFile;
+using ::litert::lm::vet::SessionPaths;
+using ::litert::lm::vet::VerifyHandoffBundle;
+using ::litert::lm::vet::WriteAidFile;
 
-constexpr absl::string_view kDefaultSchemaId = "vet.agent_sidecar.v1";
+constexpr absl::string_view kLegacyDefaultSchemaId = kDefaultSchemaId;
 
 std::string Usage() {
-  return R"usage(VET: DPM sidecar memory for coding agents.
+  return R"usage(VET: durable memory sidecar for coding agents.
 
 Usage:
   vet init [--root .vet] [--tenant local] [--session NAME]
@@ -54,13 +69,14 @@ Usage:
   vet status [--json]
   vet events [--max-events N]
   vet prompt --task TEXT [--memory-budget-chars N] [--max-events N]
-  vet handoff --task TEXT [--max-events N]
+  vet handoff --task TEXT [--format text|json] [--max-events N] [--out FILE]
+  vet verify (--bundle FILE | --stdin) [--json]
 
 Common flags:
-  --root PATH       DPM event-log root. Default: .vet
+  --root PATH       Event log root directory. Default: .vet
   --tenant ID       Tenant id. Default: local
   --session ID      Session id. Default: sanitized repository directory name
-  --model ID        Optional model id recorded on events
+  --model ID        Optional model id stored on new events
 )usage";
 }
 
@@ -308,11 +324,23 @@ std::string DefaultSchemaJson(absl::string_view task) {
 }
 
 absl::Status AppendEvent(const CommonOptions& options, Event::Type type,
-                         absl::string_view payload) {
+                         absl::string_view payload, int64_t step_index = 0,
+                         absl::string_view tool_call_id = "") {
   if (payload.empty()) {
     return absl::InvalidArgumentError("event payload must not be empty.");
   }
   EventSourcedLog log = OpenLog(options);
+  int64_t resolved_step = step_index;
+  if (resolved_step <= 0) {
+    auto existing = log.GetAllEvents();
+    resolved_step = existing.ok()
+                        ? static_cast<int64_t>(existing->size()) + 1
+                        : 1;
+  }
+  std::string resolved_tool_call_id(tool_call_id);
+  if (type == Event::Type::kTool && resolved_tool_call_id.empty()) {
+    resolved_tool_call_id = absl::StrCat("tool-", resolved_step);
+  }
   return log.Append(Event{
       .type = type,
       .tenant_id = options.tenant,
@@ -320,6 +348,8 @@ absl::Status AppendEvent(const CommonOptions& options, Event::Type type,
       .payload = std::string(payload),
       .timestamp_us = NowUnixMicros(),
       .model_id = options.model_id,
+      .step_index = resolved_step,
+      .tool_call_id = resolved_tool_call_id,
   });
 }
 
@@ -333,20 +363,25 @@ absl::Status RunInit(const std::vector<std::string>& args) {
     }
     return absl::InvalidArgumentError(absl::StrCat("unknown flag: ", args[i]));
   }
-  std::filesystem::path session_dir =
-      std::filesystem::path(options.root) / options.tenant / options.session;
+  const SessionPaths paths =
+      MakeSessionPaths(options.root, options.tenant, options.session);
   std::error_code fs_error;
-  std::filesystem::create_directories(session_dir, fs_error);
+  std::filesystem::create_directories(paths.session_dir, fs_error);
   if (fs_error) {
     return absl::InternalError(
         absl::StrCat("failed to create VET log directory: ",
                      fs_error.message()));
   }
+  const nlohmann::ordered_json aid =
+      BuildDefaultAid(paths, options.model_id, NowUnixMicros());
+  absl::Status aid_status = WriteAidFile(paths, aid);
+  if (!aid_status.ok()) return aid_status;
   std::cout << "VET initialized\n"
             << "root: " << options.root << "\n"
             << "tenant: " << options.tenant << "\n"
             << "session: " << options.session << "\n"
-            << "path: " << (session_dir / "events.dpmlog").string() << "\n";
+            << "path: " << paths.log_path.string() << "\n"
+            << "aid: " << paths.aid_path.string() << "\n";
   return absl::OkStatus();
 }
 
@@ -355,6 +390,8 @@ absl::Status RunRecord(const std::vector<std::string>& args) {
   std::string type = "user";
   std::string payload;
   bool read_stdin = false;
+  int64_t step_index = 0;
+  std::string tool_call_id;
   absl::Status error;
 
   for (size_t i = 2; i < args.size(); ++i) {
@@ -373,6 +410,21 @@ absl::Status RunRecord(const std::vector<std::string>& args) {
       payload = value;
       continue;
     }
+    if (TakeFlagValue(args, &i, "--step-index", &value, &error)) {
+      if (!error.ok()) return error;
+      uint64_t parsed = 0;
+      if (!absl::SimpleAtoi(value, &parsed) || parsed == 0) {
+        return absl::InvalidArgumentError(
+            "--step-index must be a positive integer.");
+      }
+      step_index = static_cast<int64_t>(parsed);
+      continue;
+    }
+    if (TakeFlagValue(args, &i, "--tool-call-id", &value, &error)) {
+      if (!error.ok()) return error;
+      tool_call_id = value;
+      continue;
+    }
     if (args[i] == "--stdin") {
       read_stdin = true;
       continue;
@@ -383,7 +435,8 @@ absl::Status RunRecord(const std::vector<std::string>& args) {
   if (read_stdin) payload = ReadStdin();
   auto parsed_type = EventTypeFromString(type);
   if (!parsed_type.ok()) return parsed_type.status();
-  absl::Status status = AppendEvent(options, *parsed_type, payload);
+  absl::Status status =
+      AppendEvent(options, *parsed_type, payload, step_index, tool_call_id);
   if (!status.ok()) return status;
   std::cout << "recorded " << type << " event for " << options.tenant << "/"
             << options.session << "\n";
@@ -560,7 +613,7 @@ absl::Status RunEvents(const std::vector<std::string>& args) {
 absl::Status RunPrompt(const std::vector<std::string>& args) {
   CommonOptions options;
   std::string task;
-  std::string schema_id(kDefaultSchemaId);
+  std::string schema_id(kLegacyDefaultSchemaId);
   std::string schema_json;
   size_t memory_budget_chars = 4096;
   size_t max_event_log_chars = 1 << 20;
@@ -637,6 +690,8 @@ absl::Status RunPrompt(const std::vector<std::string>& args) {
 absl::Status RunHandoff(const std::vector<std::string>& args) {
   CommonOptions options;
   std::string task = "current coding-agent task";
+  std::string format = "text";
+  std::string out_path;
   size_t max_events = 40;
   absl::Status error;
 
@@ -651,6 +706,20 @@ absl::Status RunHandoff(const std::vector<std::string>& args) {
       task = value;
       continue;
     }
+    if (TakeFlagValue(args, &i, "--format", &value, &error)) {
+      if (!error.ok()) return error;
+      if (value != "text" && value != "json") {
+        return absl::InvalidArgumentError(
+            "--format must be text or json.");
+      }
+      format = value;
+      continue;
+    }
+    if (TakeFlagValue(args, &i, "--out", &value, &error)) {
+      if (!error.ok()) return error;
+      out_path = value;
+      continue;
+    }
     if (TakeFlagValue(args, &i, "--max-events", &value, &error)) {
       if (!error.ok()) return error;
       auto parsed = ParseSize(value, "--max-events");
@@ -661,28 +730,158 @@ absl::Status RunHandoff(const std::vector<std::string>& args) {
     return absl::InvalidArgumentError(absl::StrCat("unknown flag: ", args[i]));
   }
 
+  const SessionPaths paths =
+      MakeSessionPaths(options.root, options.tenant, options.session);
   auto events = LoadEvents(options);
   if (!events.ok()) return events.status();
+
+  auto aid = ReadAidFile(paths);
+  if (!aid.ok()) {
+    nlohmann::ordered_json created =
+        BuildDefaultAid(paths, options.model_id, NowUnixMicros());
+    absl::Status write_status = WriteAidFile(paths, created);
+    if (!write_status.ok()) return write_status;
+    aid = created;
+  }
+
+  auto aid_digest = ComputeAidDigest(*aid);
+  if (!aid_digest.ok()) return aid_digest.status();
+  auto trace_digest = ComputeTraceDigestFromFile(paths.log_path.string());
+  if (!trace_digest.ok()) return trace_digest.status();
+
   const std::vector<ProjectionCorrectionDirective> directives =
       BuildGenericCorrectionDirectives(*events);
-  std::cout << "[VET HANDOFF v1]\n"
-            << "task: " << task << "\n"
-            << "identity: " << options.tenant << "/" << options.session
-            << "\n"
-            << "events_total: " << events->size() << "\n\n"
-            << "[POLICY]\n"
-            << "- Treat correction events and blocking corrections as "
-               "superseding conflicting older facts.\n"
-            << "- Do not carry invalidated facts into the active plan, answer, "
-               "or future handoff.\n"
-            << "- Invalidated facts may be quoted below only as correction "
-               "metadata or audit log content.\n"
-            << "- Cite event indices when relying on remembered context.\n\n";
-  const std::string correction_block = FormatVetCorrectionDirectives(directives);
-  if (!correction_block.empty()) std::cout << correction_block;
-  std::cout << "[RECENT EVENT LOG - AUDIT ONLY]\n"
-            << RenderEventLog(*events, max_events) << "\n";
+  const std::string output_text =
+      BuildHandoffText(task, paths, *events, directives, max_events);
+
+  std::string rendered;
+  if (format == "json") {
+    HandoffBundleRequest request{
+        .paths = paths,
+        .task = task,
+        .output_text = output_text,
+        .events = &(*events),
+        .corrections = &directives,
+        .max_events = max_events,
+        .created_unix_micros = NowUnixMicros(),
+        .aid = *aid,
+        .aid_digest = *aid_digest,
+        .trace_digest = *trace_digest,
+    };
+    rendered = BuildHandoffBundle(request).dump(2);
+  } else {
+    rendered = output_text;
+  }
+
+  if (!out_path.empty()) {
+    std::ofstream output(out_path, std::ios::out | std::ios::binary);
+    if (!output.is_open()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("cannot write handoff output: ", out_path));
+    }
+    output << rendered;
+    if (!output.good()) {
+      return absl::InternalError(
+          absl::StrCat("failed while writing handoff output: ", out_path));
+    }
+    std::cout << "wrote " << format << " handoff to " << out_path << "\n";
+    return absl::OkStatus();
+  }
+
+  std::cout << rendered;
+  if (format == "text" && !rendered.empty() && rendered.back() != '\n') {
+    std::cout << "\n";
+  }
   return absl::OkStatus();
+}
+
+absl::Status RunVerify(const std::vector<std::string>& args) {
+  CommonOptions options;
+  std::string bundle_path;
+  bool read_stdin = false;
+  bool as_json = false;
+  absl::Status error;
+
+  for (size_t i = 2; i < args.size(); ++i) {
+    std::string value;
+    if (ParseCommonFlag(args, &i, &options, &error)) {
+      if (!error.ok()) return error;
+      continue;
+    }
+    if (TakeFlagValue(args, &i, "--bundle", &value, &error)) {
+      if (!error.ok()) return error;
+      bundle_path = value;
+      continue;
+    }
+    if (args[i] == "--stdin") {
+      read_stdin = true;
+      continue;
+    }
+    if (args[i] == "--json") {
+      as_json = true;
+      continue;
+    }
+    return absl::InvalidArgumentError(absl::StrCat("unknown flag: ", args[i]));
+  }
+
+  if (bundle_path.empty() && !read_stdin) {
+    return absl::InvalidArgumentError(
+        "verify requires --bundle FILE or --stdin.");
+  }
+
+  std::string bundle_text;
+  if (read_stdin) {
+    bundle_text = ReadStdin();
+  } else {
+    auto file = ReadTextFile(bundle_path);
+    if (!file.ok()) return file.status();
+    bundle_text = *file;
+  }
+
+  auto bundle = ParseJsonInput(bundle_text);
+  if (!bundle.ok()) return bundle.status();
+
+  const SessionPaths paths =
+      MakeSessionPaths(options.root, options.tenant, options.session);
+  auto report = VerifyHandoffBundle(*bundle, paths);
+  if (!report.ok()) return report.status();
+
+  if (as_json) {
+    nlohmann::ordered_json json = nlohmann::ordered_json::object();
+    json["verified"] = report->verified;
+    json["checks_passed"] = report->checks_passed;
+    json["checks_failed"] = report->checks_failed;
+    json["failure_details"] = report->failure_details;
+    json["trace_valid"] = report->trace_report.valid;
+    json["trace_errors"] = report->trace_report.errors;
+    json["trace_warnings"] = report->trace_report.warnings;
+    std::cout << json.dump(2) << "\n";
+    return report->verified ? absl::OkStatus()
+                            : absl::FailedPreconditionError(
+                                  "handoff bundle verification failed.");
+  }
+
+  std::cout << (report->verified ? "VERIFIED" : "FAILED") << "\n";
+  for (const std::string& check : report->checks_passed) {
+    std::cout << "  pass: " << check << "\n";
+  }
+  for (const std::string& check : report->checks_failed) {
+    std::cout << "  fail: " << check;
+    const auto detail = report->failure_details.find(check);
+    if (detail != report->failure_details.end() && detail->is_string()) {
+      std::cout << " — " << detail->get<std::string>();
+    }
+    std::cout << "\n";
+  }
+  for (const std::string& error : report->trace_report.errors) {
+    std::cout << "  trace: " << error << "\n";
+  }
+  for (const std::string& warning : report->trace_report.warnings) {
+    std::cout << "  warn: " << warning << "\n";
+  }
+  return report->verified ? absl::OkStatus()
+                          : absl::FailedPreconditionError(
+                                "handoff bundle verification failed.");
 }
 
 absl::Status RunCommand(const std::vector<std::string>& args) {
@@ -699,6 +898,7 @@ absl::Status RunCommand(const std::vector<std::string>& args) {
   if (command == "events") return RunEvents(args);
   if (command == "prompt") return RunPrompt(args);
   if (command == "handoff") return RunHandoff(args);
+  if (command == "verify") return RunVerify(args);
   return absl::InvalidArgumentError(absl::StrCat("unknown command: ", command));
 }
 
@@ -710,7 +910,11 @@ int main(int argc, char** argv) {
   for (int i = 0; i < argc; ++i) args.emplace_back(argv[i]);
   absl::Status status = RunCommand(args);
   if (!status.ok()) {
-    std::cerr << "vet: " << status.message() << "\n\n" << Usage();
+    std::cerr << "vet: " << status.message() << "\n";
+    if (status.code() == absl::StatusCode::kInvalidArgument ||
+        status.code() == absl::StatusCode::kUnimplemented) {
+      std::cerr << "\n" << Usage();
+    }
     return 1;
   }
   return 0;

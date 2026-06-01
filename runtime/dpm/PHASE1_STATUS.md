@@ -1,5 +1,9 @@
 # Phase 1 Status
 
+> **Note:** This file is an internal engineering checklist, not the user guide.
+> For how to use VET today, start at [`README.md`](../../README.md) and
+> [`docs/architecture-overview.md`](../../docs/architecture-overview.md).
+
 > **Phase 1 is complete for stateless replay and paper-aligned DPM runtime
 > semantics. Remaining work is performance tuning for long-sequence prefill
 > and Phase 2 checkpointing, not Phase 1 correctness.**

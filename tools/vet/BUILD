@@ -13,20 +13,69 @@
 # limitations under the License.
 
 # [Google-internal load of `cc_binary`]
+# [Google-internal load of `cc_library`]
+# [Google-internal load of `cc_test`]
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
+cc_library(
+    name = "vet_aid",
+    srcs = ["vet_aid.cc"],
+    hdrs = ["vet_aid.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@nlohmann_json//:json",
+        "//runtime/platform/hash:hasher",
+    ],
+)
+
+cc_library(
+    name = "vet_trace",
+    srcs = ["vet_trace.cc"],
+    hdrs = ["vet_trace.h"],
+    deps = [
+        ":vet_aid",
+        "//runtime/dpm",
+        "//runtime/platform/hash:hasher",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@nlohmann_json//:json",
+    ],
+)
+
 cc_binary(
     name = "vet",
     srcs = ["vet_main.cc"],
     deps = [
+        ":vet_aid",
+        ":vet_trace",
         "//runtime/dpm",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@nlohmann_json//:json",
+    ],
+)
+
+cc_test(
+    name = "vet_stage2_test",
+    # Name kept for build-label stability; tests cover handoff bundles and verify.
+    srcs = ["vet_stage2_test.cc"],
+    deps = [
+        ":vet_aid",
+        ":vet_trace",
+        "//runtime/dpm",
+        "//runtime/util:test_utils",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )

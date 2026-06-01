@@ -1,0 +1,56 @@
+{
+  "aid_version": 1,
+  "schema_id": "vet.agent_sidecar.v1",
+  "agent_id": "local/verihandoff-golden",
+  "tenant_id": "local",
+  "session_id": "verihandoff-golden",
+  "created_unix_micros": 1780305866249880,
+  "framework": "vet_sidecar",
+  "reference": "VET sidecar: bind handoffs to append-only session logs and an Agent Identity Document (AID).",
+  "core": {
+    "mode": "coding_agent_sidecar",
+    "authorized_tools": [
+      "Bash",
+      "Read",
+      "Write",
+      "Edit",
+      "MultiEdit",
+      "Glob",
+      "Grep",
+      "Task",
+      "WebFetch",
+      "WebSearch",
+      "NotebookEdit"
+    ]
+  },
+  "components": [
+    {
+      "id": "event_log",
+      "kind": "local_trace",
+      "proof_type": "trace_digest",
+      "path": "events.dpmlog"
+    },
+    {
+      "id": "projection",
+      "kind": "local_projection",
+      "proof_type": "correction_aware_projection",
+      "schema_id": "vet.agent_sidecar.v1"
+    }
+  ],
+  "claims": {
+    "verifies": [
+      "session_identity",
+      "trace_digest",
+      "correction_aware_handoff"
+    ],
+    "does_not_verify": [
+      "host_orchestration",
+      "llm_api_calls",
+      "tool_http_transcripts"
+    ]
+  },
+  "trust_assumptions": {
+    "host": "untrusted_for_memory_replay",
+    "verifier": "honest_but_curious"
+  }
+}

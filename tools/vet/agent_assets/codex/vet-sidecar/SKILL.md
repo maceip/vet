@@ -1,24 +1,32 @@
 ---
 name: vet-sidecar
-description: Use the VET DPM sidecar to preserve task memory, apply corrections, and avoid carrying stale facts across coding-agent turns.
+description: Use the VET sidecar for durable project memory, corrections, and verifiable handoffs in Codex.
 ---
 
-# VET Sidecar
+# VET sidecar
 
-Use this skill when the task depends on prior project decisions, benchmark state,
-corrections, or a handoff from another coding agent.
+Use this skill when the task depends on prior project decisions, benchmark state, corrections, or a handoff from another coding agent.
 
-Resolve the executable as `${VET_BIN:-vet}`. At the start of the task, run:
+Resolve the executable as `${VET_BIN:-vet}`.
+
+## Start of task
 
 ```sh
 ${VET_BIN:-vet} handoff --task "<current task>"
 ```
 
-Use the handoff as task memory. Correction events supersede older conflicting
-facts; invalidated facts must not appear in the active plan, answer, or future
-handoff.
+## Verifiable JSON handoff
 
-Record durable events when they will help a later agent:
+```sh
+${VET_BIN:-vet} handoff --task "<current task>" --format json --out .vet/handoff.json
+${VET_BIN:-vet} verify --bundle .vet/handoff.json --json
+```
+
+Run `verify` before trusting host-supplied memory. On failure, read `failure_details`.
+
+Verification checks log integrity and corrections. It does not prove language model (LLM) or tool HTTP calls.
+
+## Record durable events
 
 ```sh
 ${VET_BIN:-vet} record --type user --payload "<important user constraint>"
@@ -26,7 +34,7 @@ ${VET_BIN:-vet} record --type model --payload "<accepted decision or result>"
 ${VET_BIN:-vet} record --type tool --payload "<important tool result>"
 ```
 
-When the user corrects prior project memory, record the correction directly:
+## Record corrections
 
 ```sh
 ${VET_BIN:-vet} correction \
@@ -35,9 +43,12 @@ ${VET_BIN:-vet} correction \
   --replacement-fact "<new fact>"
 ```
 
-For long or ambiguous sessions, ask VET for the projection prompt and use it to
-produce a compact task memory before acting:
+Correction events supersede older conflicting facts.
+
+## Dense sessions
 
 ```sh
 ${VET_BIN:-vet} prompt --task "<current task>"
 ```
+
+Use the projection prompt to build compact task memory before acting.

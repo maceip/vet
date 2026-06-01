@@ -1,5 +1,9 @@
 # Phase 2 Status
 
+> **Note:** This file is an internal engineering checklist, not the user guide.
+> For how to use VET today, start at [`README.md`](../../README.md) and
+> [`docs/architecture-overview.md`](../../docs/architecture-overview.md).
+
 > **Phase 2 substrate is complete: the data formats, the durable stores, the
 > Merkle DAG, and the policy decisions are in code. Remaining work is the
 > cloud / hardware providers (S3 Express, MemoryDB, RDMA, NPU mmap thaw)

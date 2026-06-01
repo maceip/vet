@@ -1,105 +1,114 @@
 ![vet](../vet.webp)
 
-# vet: agent memory audit system
+# Architecture overview
 
-> Long-running agents need memory, but memory gets edited. vet keeps the useful parts of rolling memory while adding a replayable audit layer that can prove where a decision came from, apply corrections, and block stale actions before they reach tools.
+This page explains how **VET** (the coding-agent memory sidecar) fits together with the **Deterministic Projection Memory (DPM)** runtime underneath it.
 
-**Read the explainer:** https://maceip.github.io/vet/
+**Read the public explainer:** https://maceip.github.io/vet/
 
-**Bench data:** [`tools/benchmarks/`](../tools/benchmarks/)
+## The problem in plain terms
 
-vet is a C++ runtime substrate and agent-hook demo for auditable agent memory. It is built on Google's [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) and extends deterministic projection memory into a practical hybrid mode.
+Long-running coding agents need memory. Rolling chat summaries are convenient, but they can:
 
-## Genesis
+- drop important facts
+- keep facts that the user already corrected
+- hand off work with no way to check what changed
 
-The original DPM insight is simple: do not ask an agent to remember by endlessly rewriting its own memory. Record what happened, project only what matters for the next decision, and verify that projection before the agent acts.
+VET keeps a **complete, append-only log** and rebuilds **task memory** from that log when it matters.
 
-vet keeps that shape:
+## Big ideas
 
-- **Append-only log** - every user message, tool call, result, and correction is recorded.
-- **Task-conditioned projection** - decision memory is rebuilt from the log at action boundaries.
-- **Audit certificate** - the rebuilt memory is tied to an event range, manifest hash, model identity, and gate verdict.
+### Append-only event log
 
-In hybrid mode, those pieces wrap the agent's existing rolling memory. Rolling memory keeps the session fluent; vet checks the state the agent is about to use when mistakes would escape into tools, handoff, or resumed work.
+Every user message, tool result, model note, and correction is stored as an **event** in `events.dpmlog`. New events are appended; old events are not edited away.
 
-The goal is not to replace every memory system. The goal is to make existing agents safer at the moments that matter: tool use, handoff, resuming old work, and acting after the user corrected a prior assumption.
+### Task-conditioned projection
 
-## What It Does
+**Projection** means: read the log, pick what matters for the current task, and format it as memory the agent can use. The DPM runtime builds projection prompts deterministically from the log so the same log + task yields the same prompt.
 
-- **Hybrid memory gate** - lets rolling memory keep the agent fluent, while vet verifies action-boundary memory against an append-only log.
-- **Correction-aware replay** - records user corrections as first-class events and prevents invalidated facts from leaking into later actions.
-- **Decision receipts** - every accepted projection has a manifest hash, audit certificate, event range, model identity, and gate verdict.
-- **Replayable handoff** - another agent or future session can resume from a checked memory artifact instead of an unverifiable summary.
-- **Local-first hooks** - demo adapters let common coding agents call the same gate before tool use.
+### Corrections are first-class
 
-## Supported Agents
+When the user says an old fact is wrong, VET records a **correction event**. Handoffs and projection prompts treat corrected facts as **suppressed**, not as active memory.
 
-The hook adapters live in [`tools/agent_hooks/`](../tools/agent_hooks/).
+### Hybrid mode
 
-| Agent | Hook surface |
-|---|---|
+Agents keep their normal rolling chat for fluency. VET adds a **checked memory layer** at important boundaries:
+
+- before tool use (via optional agent hooks)
+- at handoff between agents or sessions
+- when resuming work after a correction
+
+### Verifiable handoffs (VET sidecar)
+
+The `vet` binary can emit a **JSON handoff bundle** tied to:
+
+- an **Agent Identity Document (AID)** in `aid.json` — session metadata and what verification claims to check
+- a **trace digest** — a BLAKE3 hash fingerprint of the log file
+- correction metadata copied from the log
+
+Anyone with the live `.vet/` folder can run:
+
+```sh
+vet verify --bundle handoff.json --json
+```
+
+The **VeriHandoff** demo (`tools/vet/examples/verihandoff/`) shows this end to end, including a browser verifier UI and continuous integration (CI) checks on golden fixtures.
+
+Verification checks log integrity and session binding. It does **not** prove that a language model (LLM) API call occurred or that the host agent followed every rule.
+
+## Runtime layout
+
+| Area | Role |
+|------|------|
+| [`runtime/dpm/`](../runtime/dpm/) | Event log, projection prompts, projector, stateless decision engine |
+| [`runtime/platform/`](../runtime/platform/) | Checkpoint manifests, Merkle provenance, audit certificates |
+| [`tools/vet/`](../tools/vet/) | Sidecar CLI: `init`, `record`, `correction`, `handoff`, `verify` |
+| [`tools/agent_hooks/`](../tools/agent_hooks/) | Demo hooks that gate tool use using correction-aware context |
+
+## Agent hooks (optional demo layer)
+
+Hooks run a small Python gate before tool use. Supported surfaces:
+
+| Agent | Config location |
+|-------|-----------------|
 | Claude Code | `.claude/settings.json` |
-| Codex CLI | `.codex/config.toml` plus `tools/agent_hooks/codex_user_hook.ps1` |
+| Codex CLI | `.codex/config.toml` |
 | Gemini CLI | `.gemini/settings.json` |
-| Cursor Agent | `.cursor/hooks.json` plus `tools/agent_hooks/cursor_agent_gate.py` fallback wrapper |
+| Cursor Agent | `.cursor/hooks.json` |
 | GitHub Copilot | `.github/hooks/dpm-gate.json` |
 
-Smoke the local gate:
+Smoke test:
 
-```powershell
+```sh
 python tools/agent_hooks/dpm_gate.py --agent claude --reset
 python tools/agent_hooks/dpm_gate.py --agent claude --demo-seed
 python tools/agent_hooks/dpm_gate.py --agent claude --status
 ```
 
-Synthetic denial example:
-
-```powershell
-'{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"content":"transport as the main result"}}' |
-  python tools/agent_hooks/dpm_gate.py --agent claude
-```
-
-## Core Runtime
-
-The runtime lives under [`runtime/dpm/`](../runtime/dpm/) and [`runtime/platform/`](../runtime/platform/).
-
-The main pieces are:
-
-- append-only event logging
-- deterministic projection prompts
-- checkpoint manifests and Merkle provenance
-- audit certificates
-- correction payloads and correction barriers
-- a fail-closed checkpoint loader for decisions
-
 ## Benchmarks
 
-Benchmarks live under [`tools/benchmarks/`](../tools/benchmarks/).
+Benchmark scripts live under [`tools/benchmarks/`](../tools/benchmarks/). They compare memory strategies such as:
 
-The most useful current framing is hybrid:
+- full chat history (high context cost, no audit trail)
+- rolling summary (common baseline, weak provenance)
+- audited projection (stricter, replayable)
+- rolling summary plus VET gate (practical adoption path)
 
-- full chat history: highest context cost, no memory audit
-- rolling summary: common baseline, good continuity, weak provenance
-- audited projection: cheaper and replayable, but stricter
-- rolling summary plus vet gate: adoption path for existing agents
+## Build note
 
-## Build
+This repository follows the upstream [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) layout. For focused VET work:
 
-This repo follows the upstream LiteRT-LM build shape. For local work on this Windows machine, avoid accidentally invoking Android builds unless that is the task:
-
-```powershell
-$env:ANDROID_NDK_HOME=""
-$env:ANDROID_NDK_ROOT=""
-$env:BAZEL_SH="C:\Program Files\Git\bin\bash.exe"
+```sh
+bazelisk build --config=vet_release_no_android //tools/vet:vet
+bazelisk test --config=vet_release_no_android //tools/vet:vet_stage2_test
 ```
 
-Run focused tests before broad builds. The Phase 3 bench Python smoke tests are:
-
-```powershell
-python tools\benchmarks\dpm_phase3_bench\bench_schema.py
-python tools\benchmarks\dpm_phase3_bench\score.py
-```
+On Windows, if Android environment variables are set, clear them before broad builds unless you intentionally need Android targets.
 
 ## Credits
 
-Built on Google's [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM). The original deterministic projection memory architecture is from Srinivasan et al., [arXiv:2604.20158](https://arxiv.org/abs/2604.20158).
+Built on Google's [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM).
+
+The Deterministic Projection Memory (DPM) research direction is described in Srinivasan et al., [arXiv:2604.20158](https://arxiv.org/abs/2604.20158).
+
+The verifiable handoff shape in `vet` is inspired by the separate academic **Verifiable Execution Traces (VET)** paper (Oxford, [arXiv:2512.15892](https://arxiv.org/abs/2512.15892)). This repo's sidecar implements log-bound verification for coding agents; it does not implement that paper's cryptographic web proofs or trading-agent demo.

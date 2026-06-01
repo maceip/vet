@@ -1,0 +1,57 @@
+{
+  "bundle_version": 1,
+  "task": "Continue",
+  "output_text": "[VET HANDOFF]\ntask: Continue\nidentity: local/sample\nevents_total: 2\naid: aid.json\n\n[POLICY]\n- Treat correction events and blocking corrections as superseding conflicting older facts.\n- Do not carry invalidated facts into the active plan, answer, or future handoff.\n- Invalidated facts may be quoted below only as correction metadata or audit log content.\n- Cite event indices when relying on remembered context.\n- Use `vet verify` on JSON bundles before trusting host handoffs.\n\n[VET BLOCKING CORRECTIONS]\nApply every correction below before producing active task memory. Suppress invalidated facts exactly; prefer replacement facts when provided; if a conflict remains, emit unknown instead of the old fact. Invalidated facts listed here are suppression targets, not active memory.\n- correction_id: vet-1780305866286468\n  correction_event: [2]\n  scope: global\n  correction_text: Fix.\n  invalidated_facts:\n    - old\n  replacement_facts:\n    - new\nRules: do not include invalidated facts in Facts, Reasoning, Compliance, decisions, plans, release notes, or handoffs.\n\n[RECENT EVENT LOG - AUDIT ONLY]\n[1] {\"type\":\"user\",\"tenant_id\":\"local\",\"session_id\":\"sample\",\"payload\":\"Demo fact.\",\"timestamp_us\":1780305866282945,\"step_index\":1}\n[2] {\"type\":\"correction\",\"tenant_id\":\"local\",\"session_id\":\"sample\",\"payload\":\"{\\\"kind\\\":\\\"vet_correction\\\",\\\"correction_id\\\":\\\"vet-1780305866286468\\\",\\\"correction_text\\\":\\\"Fix.\\\",\\\"invalidated_facts\\\":[\\\"old\\\"],\\\"replacement_facts\\\":[\\\"new\\\"],\\\"scope\\\":\\\"global\\\",\\\"created_unix_micros\\\":1780305866286468}\",\"timestamp_us\":1780305866286546,\"step_index\":2}\n",
+  "identity": "local/sample",
+  "tenant_id": "local",
+  "session_id": "sample",
+  "schema_id": "vet.agent_sidecar.v1",
+  "aid_path": "aid.json",
+  "aid_digest": "ca839af1c593a3764eaf50a58e7b44909a9fcb5d2fe35e63ad659886062a22b8",
+  "created_unix_micros": 1780305866290364,
+  "trace": {
+    "event_count": 2,
+    "event_range_start": 1,
+    "event_range_end": 2,
+    "log_path": "events.dpmlog",
+    "trace_digest": "9385cfa9c7354b9cd187d44d13dcd5bdee96f3df9454ccc2cbbc8746e91b2b25"
+  },
+  "corrections": [
+    {
+      "correction_event_index": 2,
+      "correction_event_id": "vet-1780305866286468",
+      "correction_text": "Fix.",
+      "invalidated_facts": [
+        "old"
+      ],
+      "replacement_facts": [
+        "new"
+      ],
+      "scope": "global"
+    }
+  ],
+  "recent_events": [
+    {
+      "index": 1,
+      "line": "{\"type\":\"user\",\"tenant_id\":\"local\",\"session_id\":\"sample\",\"payload\":\"Demo fact.\",\"timestamp_us\":1780305866282945,\"step_index\":1}"
+    },
+    {
+      "index": 2,
+      "line": "{\"type\":\"correction\",\"tenant_id\":\"local\",\"session_id\":\"sample\",\"payload\":\"{\\\"kind\\\":\\\"vet_correction\\\",\\\"correction_id\\\":\\\"vet-1780305866286468\\\",\\\"correction_text\\\":\\\"Fix.\\\",\\\"invalidated_facts\\\":[\\\"old\\\"],\\\"replacement_facts\\\":[\\\"new\\\"],\\\"scope\\\":\\\"global\\\",\\\"created_unix_micros\\\":1780305866286468}\",\"timestamp_us\":1780305866286546,\"step_index\":2}"
+    }
+  ],
+  "component_proofs": [
+    {
+      "component_id": "event_log",
+      "proof_type": "trace_digest",
+      "algorithm": "blake3",
+      "digest": "9385cfa9c7354b9cd187d44d13dcd5bdee96f3df9454ccc2cbbc8746e91b2b25"
+    },
+    {
+      "component_id": "projection",
+      "proof_type": "correction_aware_projection",
+      "schema_id": "vet.agent_sidecar.v1",
+      "correction_count": 1
+    }
+  ]
+}

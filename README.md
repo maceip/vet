@@ -1,21 +1,29 @@
 ![vet](./vet.webp)
 
-# VET: memory safety for coding agents
+# VET — memory you can check for coding agents
 
-VET is a small sidecar binary for Claude Code, Codex, Gemini CLI, and other coding agents. It gives agents a durable project memory that can be replayed, corrected, and handed off without trusting a stale rolling summary.
+**VET** is a small command-line program that sits beside coding agents like Claude Code, Codex, and Gemini CLI. It keeps a **durable project memory** that agents can replay, correct, and hand off to the next session.
 
-Use it when an agent needs to remember project decisions, benchmark state, release constraints, or user corrections across long sessions.
+Most agents rely on a rolling chat summary. Summaries are easy to use, but they can quietly drop old facts or keep facts that are no longer true. VET adds an **append-only event log** (a file that only grows; nothing is erased) plus tools to **record corrections** and **verify handoffs** before you trust them.
+
+## Who this is for
+
+Use VET when an agent must remember things like:
+
+- release rules or benchmark decisions
+- user corrections ("that old fact was wrong")
+- tool results that should survive a session restart or agent swap
 
 ## Quickstart
 
-Download the latest release for your platform:
+### 1. Get the binary
 
-- macOS arm64: `VET-macos-arm64`
-- Windows x86_64: `VET-windows-x86_64.exe`
+Download a release for your platform from [GitHub Releases](https://github.com/maceip/vet/releases):
 
-Release page: https://github.com/maceip/vet/releases
+- macOS (Apple Silicon): `VET-macos-arm64`
+- Windows (64-bit): `VET-windows-x86_64.exe`
 
-Put the binary on your `PATH` as `vet`:
+Put it on your path as `vet`:
 
 ```sh
 chmod +x VET-macos-arm64
@@ -29,38 +37,99 @@ New-Item -ItemType Directory -Force "$env:USERPROFILE\bin" | Out-Null
 Move-Item .\VET-windows-x86_64.exe "$env:USERPROFILE\bin\vet.exe"
 ```
 
-Initialize memory in a repo:
+### 2. Start a session in your repo
 
 ```sh
 vet init
 ```
 
-Record useful context:
+This creates a local folder `.vet/` (ignored by git) with:
+
+- `events.dpmlog` — the append-only memory log
+- `aid.json` — an **Agent Identity Document (AID)** that describes this session
+
+### 3. Record facts and corrections
 
 ```sh
-vet record --type user --payload "The Phase 3 benchmark harness is frozen unless a serious issue is found."
-vet record --type model --payload "Release assets must include macOS and Windows VET binaries."
-vet record --type tool --payload "CI release vet-v0.1.0 uploaded platform binaries and sha256 files."
-```
+vet record --type user --payload "Release builds must ship macOS and Windows binaries."
+vet record --type model --payload "CI uploaded vet-v0.1.0 with checksum files."
 
-Record a correction when old memory becomes wrong:
-
-```sh
 vet correction \
-  --text "The stale escape metric means final-answer escape only." \
-  --invalidated-fact "stale_memory_escape counts any stale text in memory" \
-  --replacement-fact "stale escape is counted only when stale facts reach the final answer"
+  --text "The escape metric definition changed." \
+  --invalidated-fact "escape counts any stale text in memory" \
+  --replacement-fact "escape counts only when stale text reaches the final answer"
 ```
 
-Give an agent a handoff:
+A **correction** does not delete old log entries. It adds a new entry that tells the agent which facts to stop using.
+
+### 4. Hand memory to an agent
+
+Plain-text handoff (easy to paste into a chat):
 
 ```sh
-vet handoff --task "Continue release notes for the VET binary"
+vet handoff --task "Continue the release notes"
 ```
 
-## Agent Setup
+JSON handoff (for verification):
 
-This repository includes ready-to-copy agent assets in [`tools/vet/agent_assets`](./tools/vet/agent_assets). If you build from source, install them with:
+```sh
+vet handoff --task "Continue the release notes" --format json --out handoff.json
+vet verify --bundle handoff.json --json
+```
+
+If verification passes, you see `"verified": true`. If someone tampered with the log or bundle, verification fails with a named reason in `failure_details`.
+
+## How hybrid mode works
+
+VET does **not** replace your coding agent.
+
+The agent still uses its normal chat history for flow. VET adds a **replayable memory layer** for facts that must survive handoffs and corrections:
+
+1. **`vet record`** — append important events to the log
+2. **`vet correction`** — mark old facts as invalid and add replacements
+3. **`vet handoff`** — produce task memory that respects corrections
+4. **`vet prompt`** — build a compact, cited memory view from the log
+5. **`vet verify`** — check that a JSON handoff still matches the live log
+
+**Forgetting happens by correction**, not by erasing history. The log stays complete for audit; handoffs tell the agent what is *active* vs *suppressed*.
+
+## VeriHandoff — the worked example
+
+**VeriHandoff** is the end-to-end demo that shows verification working. It includes:
+
+| Piece | What it does |
+|-------|----------------|
+| `run_demo.sh` | Runs a full session, verifies, then shows tampering fails |
+| `verify.html` | Browser page to read verify results without parsing JSON |
+| Golden fixtures + CI | Automated check that verification still passes |
+
+```sh
+bazelisk build --config=vet_release_no_android //tools/vet:vet
+tools/vet/examples/verihandoff/run_demo.sh
+open tools/vet/examples/verihandoff/verify.html
+```
+
+Details: [`tools/vet/examples/verihandoff/README.md`](./tools/vet/examples/verihandoff/README.md)
+
+### What verification checks
+
+- session identity matches
+- Agent Identity Document (AID) unchanged
+- log digest matches (BLAKE3 hash over the log file)
+- event counts and correction counts match
+- log structure is valid (order, identities)
+
+### What verification does **not** check
+
+- whether the host agent ran the right tools
+- whether a language model (LLM) API call really happened
+- raw HTTP transcripts from tools
+
+Those limits are listed in `aid.json` under `claims.does_not_verify`.
+
+## Agent setup
+
+Ready-to-copy skill files live in [`tools/vet/agent_assets`](./tools/vet/agent_assets):
 
 ```sh
 tools/vet/install_agent_asset.sh codex --scope project
@@ -68,76 +137,65 @@ tools/vet/install_agent_asset.sh claude --scope project
 tools/vet/install_agent_asset.sh gemini
 ```
 
-The assets all do the same thing: tell the agent to call `vet handoff --task "<current task>"` before relying on prior project memory, and to call `vet correction` when the user fixes a stale or wrong assumption.
+Each skill tells the agent to call `vet handoff` before relying on old memory and `vet correction` when the user fixes a stale fact.
 
-If the binary is not on `PATH`, set `VET_BIN`:
+If `vet` is not on your path:
 
 ```sh
 export VET_BIN=/absolute/path/to/vet
 ```
 
-PowerShell:
-
-```powershell
-$env:VET_BIN = "C:\path\to\vet.exe"
-```
-
-For scripted Claude CLI validation, force an explicit model and use a fresh VET
-session/root so smoke-test records do not pollute real project memory. See the
-Claude smoke test in [`tools/vet/README.md`](./tools/vet/README.md).
-
-## How Hybrid Mode Works
-
-VET does not replace your coding agent. It runs beside it.
-
-The agent still uses its normal chat history and rolling memory for flow. VET adds a replayable memory layer for facts that should survive handoffs, restarts, and corrections:
-
-1.  `vet record` appends important events to `.vet/<tenant>/<session>/events.dpmlog`.
-2.  `vet correction` records invalidated facts and replacement facts as first-class events.
-3.  `vet handoff` prints an agent-readable memory view that includes recent events and blocking corrections.
-4.  `vet prompt` emits a deterministic projection prompt for producing compact, cited task memory from the event log.
-
-The important behavior is forgetting by correction. VET keeps the append-only history, but its handoff and projection prompts tell the agent not to carry invalidated facts into plans, tool use, release notes, or later handoffs.
-
-## Common Commands
+## Common commands
 
 ```sh
 vet status --json
 vet events --max-events 20
 vet record --type tool --payload "bazel build //tools/vet:vet succeeded"
 vet handoff --task "Review the release workflow"
-vet prompt --task "Summarize project decisions for the next agent"
+vet prompt --task "Summarize decisions for the next agent"
 ```
 
-Event types:
+**Event types**
 
-- `user` - durable user constraints or decisions
-- `model` - accepted agent decisions, summaries, or outcomes
-- `tool` - important command results
-- `internal` - local notes that should be replayable
-- `correction` - stale fact invalidations and replacements
+| Type | Use for |
+|------|---------|
+| `user` | durable user constraints or decisions |
+| `model` | accepted agent decisions or outcomes |
+| `tool` | important command results |
+| `internal` | local notes that should be replayable |
+| `correction` | invalidations and replacement facts |
 
 ## Storage
 
-By default VET stores local state under `.vet/`, which is gitignored. The event log is append-only; VET does not rewrite history to hide mistakes. Corrections are additional events.
+Default location: `.vet/<tenant>/<session>/`
 
-Use a custom root or session when needed:
+Custom location:
 
 ```sh
 vet init --root /secure/vet/logs --tenant acme --session release
-vet handoff --root /secure/vet/logs --tenant acme --session release --task "Ship VET"
+vet handoff --root /secure/vet/logs --tenant acme --session release --task "Ship release"
 ```
 
-## Build From Source
+## Build from source
 
 ```sh
 bazelisk build --config=vet_release_no_android //tools/vet:vet
 ```
 
-The `vet_release_no_android` config prevents hosted CI or developer machines with Android NDK variables set from accidentally initializing Android repository rules for this non-Android binary.
+The `vet_release_no_android` build flag avoids pulling Android build rules on machines that happen to have Android tools installed.
 
-## More
+## Learn more
 
-- Architecture overview: [`docs/architecture-overview.md`](./docs/architecture-overview.md)
-- VET tool docs: [`tools/vet/README.md`](./tools/vet/README.md)
+- Architecture (Deterministic Projection Memory runtime): [`docs/architecture-overview.md`](./docs/architecture-overview.md)
+- VET tool reference: [`tools/vet/README.md`](./tools/vet/README.md)
+- Agent gate hooks demo: [`tools/agent_hooks/README.md`](./tools/agent_hooks/README.md)
 - Benchmarks: [`tools/benchmarks/`](./tools/benchmarks/)
+- Public explainer site: https://maceip.github.io/vet/
+
+## Related research
+
+This project shares a name with the academic paper **VET Your Agent: Towards Host-Independent Autonomy via Verifiable Execution Traces** (Oxford, December 2025):
+
+https://arxiv.org/abs/2512.15892
+
+That paper focuses on cryptographic proof that an autonomous agent's outputs match a declared configuration, even when the host machine is untrusted. This repository's **VET sidecar** applies a related idea to coding agents: bind handoffs to an append-only log and an **Agent Identity Document (AID)** so others can run `vet verify` and see whether memory was tampered with. We do not implement the paper's web proofs or trading-agent demo; see [`tools/vet/examples/verihandoff/`](./tools/vet/examples/verihandoff/) for our worked example.

@@ -1,40 +1,76 @@
-# VET Sidecar Release Assets
+# VET sidecar tool
 
-VET is a small DPM sidecar binary for coding agents. It gives Claude Code,
-Codex, Gemini CLI, and similar tools one shared way to record working memory,
-record corrections, and request a task-conditioned handoff that suppresses stale
-facts.
+The **VET** command-line program gives coding agents a shared way to:
 
-Build the binary:
+- record durable project memory
+- record user corrections
+- produce task handoffs that suppress stale facts
+- verify JSON handoffs against the live log
+
+Build:
 
 ```sh
-bazelisk build //tools/vet:vet
+bazelisk build --config=vet_release_no_android //tools/vet:vet
 ```
 
-Use it from a repo:
+Binary path after build: `bazel-bin/tools/vet/vet`
+
+## Basic workflow
 
 ```sh
 ./bazel-bin/tools/vet/vet init
-./bazel-bin/tools/vet/vet record --type user --payload "We are stabilizing the Phase 3 bench story."
+./bazel-bin/tools/vet/vet record --type user --payload "We freeze the release harness unless a serious bug appears."
 ./bazel-bin/tools/vet/vet correction \
-  --text "The stale escape metric means final-answer escape only." \
-  --invalidated-fact "stale_memory_escape counts any stale text in memory" \
-  --replacement-fact "stale escape is only counted when stale facts reach the final answer"
-./bazel-bin/tools/vet/vet handoff --task "Continue the benchmark release notes"
+  --text "The escape metric definition changed." \
+  --invalidated-fact "escape counts any stale text in memory" \
+  --replacement-fact "escape counts only when stale text reaches the final answer"
+./bazel-bin/tools/vet/vet handoff --task "Continue the release notes"
 ```
 
-The event log is stored under `.vet/<tenant>/<session>/events.dpmlog` by
-default. That log is append-only; VET does not rewrite history. Forgetting is
-handled by correction events and correction-aware projection prompts, so agents
-carry forward the right active memory without hiding the audit trail.
+## Verifiable JSON handoffs
 
-Agent assets:
+```sh
+./bazel-bin/tools/vet/vet init
+./bazel-bin/tools/vet/vet handoff --task "Continue release notes" --format json --out handoff.json
+./bazel-bin/tools/vet/vet verify --bundle handoff.json --json
+```
 
-- `agent_assets/codex/vet-sidecar/SKILL.md`: Codex skill instructions.
-- `agent_assets/claude/vet-sidecar/SKILL.md`: Claude Code skill instructions.
-- `agent_assets/gemini/vet-sidecar/`: Gemini CLI extension source.
+`vet init` writes `.vet/<tenant>/<session>/aid.json`, an **Agent Identity Document (AID)** that describes the session.
 
-Install an asset:
+The JSON handoff binds the task to:
+
+- AID digest
+- BLAKE3 trace digest over `events.dpmlog`
+- event range and correction metadata
+
+On failure, `failure_details` names the check and explains why it failed.
+
+## VeriHandoff case study
+
+VeriHandoff is the complete worked example (command-line demo, browser verifier, golden fixtures, CI). See [`examples/verihandoff/README.md`](./examples/verihandoff/README.md).
+
+```sh
+chmod +x tools/vet/examples/verihandoff/run_demo.sh
+tools/vet/examples/verihandoff/run_demo.sh
+open tools/vet/examples/verihandoff/verify.html
+tools/vet/examples/verihandoff/verify_golden.sh
+```
+
+## What lives on disk
+
+Default log path: `.vet/<tenant>/<session>/events.dpmlog`
+
+The log is **append-only**. VET does not rewrite history. Corrections add new events; handoffs and projection prompts tell agents which older facts to suppress.
+
+## Agent skill files
+
+| Agent | Path |
+|-------|------|
+| Codex | `agent_assets/codex/vet-sidecar/SKILL.md` |
+| Claude Code | `agent_assets/claude/vet-sidecar/SKILL.md` |
+| Gemini CLI | `agent_assets/gemini/vet-sidecar/` |
+
+Install:
 
 ```sh
 tools/vet/install_agent_asset.sh codex --scope project
@@ -42,15 +78,15 @@ tools/vet/install_agent_asset.sh claude --scope project
 tools/vet/install_agent_asset.sh gemini
 ```
 
-The assets assume `vet` is on `PATH`. During local development, set
-`VET_BIN=/absolute/path/to/bazel-bin/tools/vet/vet` if the binary is not
-installed globally.
+Skills assume `vet` is on `PATH`. During development:
 
-## Claude Code Smoke Test
+```sh
+export VET_BIN=/absolute/path/to/bazel-bin/tools/vet/vet
+```
 
-For non-interactive Claude CLI validation, use a fresh temp project, a fresh VET
-session, and an explicit low-cost model. This keeps append-only smoke records
-out of real project memory and avoids model auto-selection changing cost.
+## Claude Code smoke test
+
+Use a fresh temp project and session so smoke records do not pollute real memory:
 
 ```sh
 tmp="$(mktemp -d)"
@@ -71,7 +107,4 @@ ln -sf "$(pwd)/bazel-bin/tools/vet/vet" "$tmp/bin/vet"
 )
 ```
 
-In the handoff output, invalidated facts may be quoted inside
-`[VET BLOCKING CORRECTIONS]` or `[RECENT EVENT LOG - AUDIT ONLY]`; that is
-expected. They are suppression targets or audit content, not facts the agent
-should carry forward.
+In handoff output, invalidated facts may appear inside `[VET BLOCKING CORRECTIONS]` or `[RECENT EVENT LOG - AUDIT ONLY]`. That is expected: they are suppression targets or audit text, not facts to reuse.

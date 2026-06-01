@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VET VeriHandoff Verifier</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a222c;
+      --border: #2d3844;
+      --text: #e7ecf1;
+      --muted: #8b9aab;
+      --pass: #3ecf8e;
+      --fail: #ff6b6b;
+      --accent: #5b9cff;
+      --warn: #f0b429;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(circle at top, #18202a 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 32px 20px 48px;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    header { margin-bottom: 28px; }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.75rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+    .subtitle { color: var(--muted); font-size: 0.98rem; line-height: 1.5; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 18px;
+    }
+    @media (max-width: 860px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.22);
+    }
+    .card h2 {
+      margin: 0 0 14px;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 18px;
+      border-radius: 12px;
+      margin-bottom: 18px;
+      border: 1px solid transparent;
+    }
+    .status.pass {
+      background: rgba(62, 207, 142, 0.12);
+      border-color: rgba(62, 207, 142, 0.35);
+    }
+    .status.fail {
+      background: rgba(255, 107, 107, 0.12);
+      border-color: rgba(255, 107, 107, 0.35);
+    }
+    .badge {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 1.5rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .pass .badge { background: var(--pass); color: #0f1419; }
+    .fail .badge { background: var(--fail); color: #fff; }
+    .status-title { font-size: 1.25rem; font-weight: 650; margin: 0 0 4px; }
+    .status-copy { color: var(--muted); margin: 0; font-size: 0.92rem; }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .meta-item {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .meta-item span {
+      display: block;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .meta-item strong {
+      font-size: 0.88rem;
+      word-break: break-all;
+      font-weight: 550;
+    }
+    .checks { list-style: none; padding: 0; margin: 0; }
+    .checks li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.9rem;
+    }
+    .checks li:last-child { border-bottom: 0; }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-top: 5px;
+      flex-shrink: 0;
+    }
+    .dot.pass { background: var(--pass); }
+    .dot.fail { background: var(--fail); }
+    .detail { color: var(--muted); font-size: 0.82rem; margin-top: 3px; }
+    pre {
+      margin: 0;
+      padding: 14px;
+      border-radius: 10px;
+      background: #0b1015;
+      border: 1px solid var(--border);
+      overflow: auto;
+      font-size: 0.78rem;
+      line-height: 1.45;
+      color: #c8d3df;
+      max-height: 320px;
+    }
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+    button, label.file {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    button:hover, label.file:hover { border-color: var(--accent); }
+    label.file input { display: none; }
+    .footnote {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }
+    .claims {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .pill {
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .pill.good { color: var(--pass); border-color: rgba(62,207,142,0.35); }
+    .pill.bad { color: var(--warn); border-color: rgba(240,180,41,0.35); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>VET VeriHandoff Verifier</h1>
+      <p class="subtitle">
+        Browser view for <code>vet verify --json</code> output. Run verification
+        in the terminal first, then load the JSON here to review pass/fail checks
+        and failure reasons.
+      </p>
+    </header>
+
+    <div class="toolbar">
+      <button type="button" id="load-pass">Load sample: verified</button>
+      <button type="button" id="load-fail">Load sample: tampered</button>
+      <label class="file">Load verify JSON<input type="file" id="verify-file" accept="application/json"></label>
+    </div>
+
+    <div id="status-card" class="status pass">
+      <div class="badge">✓</div>
+      <div>
+        <p class="status-title" id="status-title">Verified</p>
+        <p class="status-copy" id="status-copy">Handoff bundle matches live session log and AID.</p>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Handoff summary</h2>
+        <div class="meta" id="meta"></div>
+        <div class="claims" id="claims"></div>
+      </section>
+      <section class="card">
+        <h2>Verification checks</h2>
+        <ul class="checks" id="checks"></ul>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top:18px;">
+      <h2>Raw verify report</h2>
+      <pre id="raw"></pre>
+    </section>
+
+    <p class="footnote">
+      This page displays verify results. It does not read <code>.vet/</code> logs
+      or re-run checks. Trust comes from running
+      <code>vet verify --bundle handoff.json --json</code> on the machine that
+      holds the live session files.
+    </p>
+  </div>
+
+  <script>
+    const samplePass = {"verified":true,"checks_passed":["bundle_is_object","bundle_version","identity_match","aid_present","aid_digest_match","trace_digest_compute","trace_digest_match","event_log_readable","event_log_parse","event_count_match","event_range_match","correction_count_match","projection_correction_count_match","valid_trace"],"checks_failed":[],"failure_details":{},"trace_valid":true,"trace_errors":[],"trace_warnings":[]};
+    const sampleFail = {"verified":false,"checks_passed":["bundle_is_object","bundle_version","identity_match","aid_present","aid_digest_match","trace_digest_compute","event_log_readable"],"checks_failed":["trace_digest_match","event_log_parse"],"failure_details":{"trace_digest_match":"bundle trace_digest 8362e342... != live trace_digest 007ed3df...","event_log_parse":"DPM event log record length is corrupt."},"trace_valid":false,"trace_errors":["DPM event log record length is corrupt."],"trace_warnings":[]};
+    const sampleHandoff = {"bundle_version":1,"task":"Continue release notes","identity":"local/verihandoff-demo","tenant_id":"local","session_id":"verihandoff-demo","schema_id":"vet.agent_sidecar.v1","aid_path":"aid.json","aid_digest":"sample","created_unix_micros":1,"trace":{"event_count":3,"event_range_start":1,"event_range_end":3,"log_path":"events.dpmlog","trace_digest":"sample"},"corrections":[{"correction_event_index":2,"correction_event_id":"event-2","correction_text":"Metric definition changed.","invalidated_facts":["escape counts any stale text"],"replacement_facts":["escape counts final-answer stale text only"],"scope":"global"}],"component_proofs":[{"component_id":"event_log","proof_type":"trace_digest","algorithm":"blake3","digest":"sample"},{"component_id":"projection","proof_type":"correction_aware_projection","schema_id":"vet.agent_sidecar.v1","correction_count":1}]};
+
+    let handoff = sampleHandoff;
+
+    function renderVerify(report) {
+      const verified = !!report.verified;
+      const statusCard = document.getElementById('status-card');
+      const badge = statusCard.querySelector('.badge');
+      statusCard.className = 'status ' + (verified ? 'pass' : 'fail');
+      badge.textContent = verified ? '✓' : '✕';
+      document.getElementById('status-title').textContent = verified ? 'Verified' : 'Verification failed';
+      document.getElementById('status-copy').textContent = verified
+        ? 'Handoff bundle matches live session log and AID.'
+        : 'One or more checks failed. Inspect failure details before trusting the handoff.';
+
+      const meta = document.getElementById('meta');
+      meta.innerHTML = [
+        ['Task', handoff.task || '—'],
+        ['Identity', handoff.identity || `${handoff.tenant_id}/${handoff.session_id}`],
+        ['Events', handoff.trace ? `${handoff.trace.event_count}` : '—'],
+        ['Corrections', Array.isArray(handoff.corrections) ? handoff.corrections.length : '—'],
+        ['AID digest', handoff.aid_digest || '—'],
+        ['Trace digest', handoff.trace?.trace_digest || '—'],
+      ].map(([label, value]) => `<div class="meta-item"><span>${label}</span><strong>${value}</strong></div>`).join('');
+
+      document.getElementById('claims').innerHTML = [
+        '<span class="pill good">session identity</span>',
+        '<span class="pill good">log fingerprint</span>',
+        '<span class="pill good">corrections</span>',
+        '<span class="pill bad">not checked: host wiring</span>',
+        '<span class="pill bad">not checked: model API calls</span>',
+      ].join('');
+
+      const checks = document.getElementById('checks');
+      const items = [];
+      for (const id of report.checks_passed || []) {
+        items.push(`<li><span class="dot pass"></span><div><strong>${id}</strong></div></li>`);
+      }
+      for (const id of report.checks_failed || []) {
+        const detail = report.failure_details?.[id] || '';
+        items.push(`<li><span class="dot fail"></span><div><strong>${id}</strong>${detail ? `<div class="detail">${detail}</div>` : ''}</div></li>`);
+      }
+      checks.innerHTML = items.join('') || '<li>No checks loaded.</li>';
+      document.getElementById('raw').textContent = JSON.stringify(report, null, 2);
+    }
+
+    document.getElementById('load-pass').addEventListener('click', () => renderVerify(samplePass));
+    document.getElementById('load-fail').addEventListener('click', () => {
+      handoff = {...sampleHandoff, trace: {...sampleHandoff.trace, trace_digest: 'tampered'}};
+      renderVerify(sampleFail);
+    });
+    document.getElementById('verify-file').addEventListener('change', async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      renderVerify(JSON.parse(await file.text()));
+    });
+
+    fetch('sample-verify-pass.json').then(r => r.ok ? r.json() : samplePass).then(renderVerify).catch(() => renderVerify(samplePass));
+    fetch('sample-handoff.json').then(r => r.ok ? r.json() : sampleHandoff).then(h => { handoff = h; }).catch(() => {});
+  </script>
+</body>
+</html>

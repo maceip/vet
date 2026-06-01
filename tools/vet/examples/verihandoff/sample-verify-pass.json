@@ -1,0 +1,24 @@
+{
+  "verified": true,
+  "checks_passed": [
+    "bundle_is_object",
+    "bundle_version",
+    "identity_match",
+    "aid_present",
+    "aid_digest_match",
+    "trace_digest_compute",
+    "trace_digest_match",
+    "event_log_readable",
+    "event_log_parse",
+    "event_count_match",
+    "event_range_match",
+    "correction_count_match",
+    "projection_correction_count_match",
+    "valid_trace"
+  ],
+  "checks_failed": [],
+  "failure_details": {},
+  "trace_valid": true,
+  "trace_errors": [],
+  "trace_warnings": []
+}

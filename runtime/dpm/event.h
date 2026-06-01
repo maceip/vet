@@ -39,6 +39,10 @@ struct Event {
   std::string payload;
   int64_t timestamp_us = 0;
   std::string model_id;
+  // step_index: one-based position in the session log (0 means unset).
+  int64_t step_index = 0;
+  // tool_call_id: links a tool event to a specific tool invocation when set.
+  std::string tool_call_id;
 };
 
 absl::string_view EventTypeToString(Event::Type type);

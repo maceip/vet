@@ -1,0 +1,48 @@
+name: VeriHandoff
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'tools/vet/**'
+      - 'runtime/dpm/**'
+      - '.github/workflows/verihandoff.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'tools/vet/**'
+      - 'runtime/dpm/**'
+      - '.github/workflows/verihandoff.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: verihandoff-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verihandoff:
+    name: VeriHandoff case study
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build vet
+        run: |
+          bazelisk build --config=vet_release_no_android //tools/vet:vet
+
+      - name: Unit tests
+        run: |
+          bazelisk test --config=vet_release_no_android //tools/vet:vet_stage2_test
+
+      - name: Live demo script
+        run: |
+          chmod +x tools/vet/examples/verihandoff/run_demo.sh
+          tools/vet/examples/verihandoff/run_demo.sh
+
+      - name: Golden bundle verify
+        run: |
+          chmod +x tools/vet/examples/verihandoff/verify_golden.sh
+          tools/vet/examples/verihandoff/verify_golden.sh
